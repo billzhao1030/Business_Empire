@@ -60,10 +60,11 @@ export default {
         </div>
 
         <button class="hustle-btn" id="ot-btn" ${j.canOvertime ? '' : 'disabled'}>
-          <span id="ot-label">${j.canOvertime ? `💪 ${t('career.otStart')} · +${money(j.otPay)}`
+          <span id="ot-label">${j.canOvertime ? `${j.night ? '🌙' : '💪'} ${j.night ? t('career.nightShift') : t('career.otStart')} · +${money(j.otPay)}`
             : j.otBusy ? `⏳ ${t('career.otWorking')}` : `🚫 ${t('career.otBlock.' + j.otBlock)}`}</span>
           <span class="cd" id="ot-cd" style="width:0%"></span>
         </button>
+        ${j.night ? `<div class="dim2" style="font-size:11.5px;line-height:1.6;margin-top:8px;color:var(--purple)">🌙 ${t('career.nightHint', { m: j.nightMult })}</div>` : ''}
 
         <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:11px">${t('career.hint', { m: j.otMult, n: j.otMax })}</div>
         <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:5px">🕘 ${t('career.scheduleHint', { a: j.workStart, b: j.workEnd, h: j.workHours, m: minutesPerHour })}</div>
@@ -162,7 +163,7 @@ export default {
     const btn = $('#ot-btn'), lb = $('#ot-label');
     if (btn && !j.otBusy) {
       btn.disabled = !j.canOvertime;
-      lb.innerHTML = j.canOvertime ? `💪 ${t('career.otStart')} · +${money(j.otPay)}`
+      lb.innerHTML = j.canOvertime ? `${j.night ? '🌙' : '💪'} ${j.night ? t('career.nightShift') : t('career.otStart')} · +${money(j.otPay)}`
         : `🚫 ${t('career.otBlock.' + j.otBlock)}`;
       const cd = $('#ot-cd'); if (cd) cd.style.width = '0%';
     }

@@ -159,7 +159,6 @@ export function getState(uid) {
       let block = null;
       if (!job) block = 'nojob';
       else if (job.car && !carOwned) block = 'needcar';
-      else if (phase === 'sleep') block = 'sleep';
       else if (phase === 'shift') block = 'shift';
       else if (busy) block = 'busy';
       else if (otUsed >= S.OVERTIME_MAX_HOURS) block = 'cap';
@@ -172,7 +171,8 @@ export function getState(uid) {
         phase, hod, wakeHour: S.WAKE_HOUR, sleepHour: S.SLEEP_HOUR,
         workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
         otUsed, otMax: S.OVERTIME_MAX_HOURS, otMult: S.OVERTIME_MULT,
-        otPay: S.overtimePay(p), otBlock: block, canOvertime: !block,
+        night: phase === 'sleep', nightMult: S.NIGHT_MULT,
+        otPay: S.overtimePay(p, phase === 'sleep'), otBlock: block, canOvertime: !block,
         otBusy: busy, otPending: p.ot_pending, otUntil: p.ot_until,
         otRemainMs: busy ? Math.max(0, (p.ot_until - hour - M.hourProgress()) * M.MS_PER_GAME_HOUR) : 0,
         hustles: p.hustles, nextDayInHours: 24 - hod,
@@ -587,8 +587,7 @@ export function hustle(uid) {
   if (j.car && !S.hasCar(uid)) throw new Err('这份工作需要一辆车 / This job requires a vehicle');
 
   const phase = S.dayPhase(hod);
-  if (phase === 'sleep')
-    throw new Err(`现在是休息时间（${S.SLEEP_HOUR}:00–${S.WAKE_HOUR}:00），该睡觉了 / It is rest time (${S.SLEEP_HOUR}:00–${S.WAKE_HOUR}:00)`);
+  const night = phase === 'sleep';        // 熬夜加班：钱多，但体力代价极大
   if (phase === 'shift')
     throw new Err(`你正在上正常班（${S.WORK_START}:00–${S.WORK_END}:00），下班后才能加班 / You are on your regular shift (${S.WORK_START}:00–${S.WORK_END}:00)`);
   if (p.ot_pending > 0 && hour < p.ot_until)
@@ -600,13 +599,13 @@ export function hustle(uid) {
   if (p.stamina < S.ST_MIN_FOR_OT)
     throw new Err(`体力只剩 ${Math.round(p.stamina)}，太累了干不动，先睡一觉 / Too exhausted (stamina ${Math.round(p.stamina)}) — get some sleep first`);
 
-  const pay = S.overtimePay(p);              // 报酬按接单时的体力锁定
-  const stamina = Math.max(0, p.stamina + S.ST_OVERTIME);
+  const pay = S.overtimePay(p, night);       // 报酬按接单时的体力锁定
+  const stamina = Math.max(0, p.stamina + (night ? S.ST_NIGHT : S.ST_OVERTIME));
   db.prepare(`UPDATE players SET stamina=?, ot_pending=?, ot_until=?, ot_hours=?, ot_day=?,
               hustles=hustles+1, last_hustle=? WHERE user_id=?`)
     .run(stamina, pay, hour + 1, used + 1, day, Date.now(), uid);
-  ledger(uid, 'job', 0, L('led.otStart', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
-  return { ok: true, pay, otUsed: used + 1, otMax: S.OVERTIME_MAX_HOURS,
+  ledger(uid, 'job', 0, L(night ? 'led.otNight' : 'led.otStart', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
+  return { ok: true, pay, night, otUsed: used + 1, otMax: S.OVERTIME_MAX_HOURS,
            until: hour + 1, stamina, cash: p.cash };
 }
 
@@ -709,6 +708,15 @@ export function leaderboard() {
 }
 
 export function resetSave(uid) {
+  const before = S.computeNetWorth(uid);
+  const cleared = {
+    cash: before?.cash || 0, netWorth: before?.total || 0,
+    businesses: db.prepare('SELECT COUNT(*) c FROM businesses WHERE user_id=?').get(uid).c,
+    holdings: db.prepare('SELECT COUNT(*) c FROM holdings WHERE user_id=? AND qty>0').get(uid).c,
+    items: db.prepare('SELECT COUNT(*) c FROM items WHERE user_id=?').get(uid).c,
+    loans: db.prepare("SELECT COUNT(*) c FROM loans WHERE user_id=? AND status='active'").get(uid).c,
+    ledger: db.prepare('SELECT COUNT(*) c FROM ledger WHERE user_id=?').get(uid).c,
+  };
   db.exec('BEGIN');
   try {
     for (const t of ['holdings', 'businesses', 'items', 'loans', 'deposits', 'ledger', 'networth'])
@@ -718,7 +726,8 @@ export function resetSave(uid) {
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   const u = db.prepare('SELECT username FROM users WHERE id=?').get(uid);
   S.ensurePlayer(uid, u.username);
-  return { ok: true };
+  const after = S.computeNetWorth(uid);
+  return { ok: true, cleared, now: { cash: after.cash, netWorth: after.total } };
 }
 
 export { Err };

@@ -31,8 +31,9 @@ export default {
           `<b>${mins} real minutes</b> = <b>1 in-game hour</b>. One game day is ${mins * 24} minutes; one game month is ${(mins * 720 / 60).toFixed(0)} real hours; one game year is ${(mins * 8640 / 1440).toFixed(1)} days.<br><b>Everything accrues offline</b> — stores trade, interest compounds, loans are debited and prices move. It is all settled when you come back.`)}</p>`)}
 
         ${S('🧭', L('白手起家的路线', 'The path from zero'), `<ol style="padding-left:20px;color:var(--dim);line-height:2;font-size:13px">
-          <li>${L('开局有 $144（上一份工作的最后一笔工资），够直接摆个 <b>$120 街头小摊</b>', 'You start with $144 — the final paycheck from your last job — enough for a <b>$120 street stall</b>')}</li>
-          <li>${L('下班后（17:00 之后）去<b>生涯</b>页接加班：每单实打实占用 <b>1 个游戏工时</b>，干完才到账', 'After 17:00, take overtime on the <b>Career</b> page: each one genuinely occupies <b>one in-game work hour</b> and pays out when it finishes')}</li>
+          <li>${L('开局身上是 <b>$0</b>。上班时间工资自动结算，非上班时间可以去<b>生涯</b>页接加班', 'You start with <b>$0</b>. Wages accrue automatically during your shift; outside it you can take overtime on the <b>Career</b> page')}</li>
+          <li>${L('每单加班实打实占用 <b>1 个游戏工时</b>（现实 2 分钟），干完才到账。深夜加班有 2.2× 夜班津贴，但极耗体力', 'Each overtime hour genuinely occupies <b>one in-game work hour</b> (2 real minutes) and pays when it finishes. Night shifts pay a 2.2× premium but drain stamina fast')}</li>
+          <li>${L('攒到 <b>$80</b> 开出第一个街头小摊，它会替你 24 小时不停地赚钱', 'At <b>$80</b> you can open your first street stall, which then earns around the clock')}</li>
           <li>${L('$120 开一个<b>街头小摊</b>，它会 24 小时不停地替你赚钱', 'Open a <b>Street Stall</b> for $120 — it earns around the clock')}</li>
           <li>${L('攒到 $900 买一辆<b>二手电动车</b>，解锁网约车司机，时薪从 $18 跳到 $130', 'Buy a <b>$900 e-scooter</b> to unlock Rideshare Driver — wages jump from $18 to $130/hr')}</li>
           <li>${L('用店铺利润滚出更多店铺，同时开始<b>炒股</b>和买<b>商圈份额</b>', 'Compound store profits into more stores, then start <b>trading</b> and buying <b>district units</b>')}</li>
@@ -179,7 +180,13 @@ export default {
       if (!ok) return;
       const old = rb.textContent;
       rb.disabled = true; rb.textContent = t('common.loading');
-      try { await app.guard(() => api.reset()); toast(t('toast.success'), 'ok'); await app.refresh(true); }
+      try {
+        const r = await app.guard(() => api.reset());
+        const c = r.cleared || {};
+        toast(t('career.resetDone', { biz: c.businesses ?? 0, hold: c.holdings ?? 0, items: c.items ?? 0,
+          loans: c.loans ?? 0, from: money(c.netWorth ?? 0), to: money(r.now?.netWorth ?? 0) }), 'ok', t('about.resetSave'));
+        await app.refresh(true);
+      }
       catch (e) { toast(e.message, 'err', t('toast.failed')); rb.disabled = false; rb.textContent = old; }
     };
     const doDelete = () => {

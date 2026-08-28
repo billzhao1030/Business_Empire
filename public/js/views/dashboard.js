@@ -55,7 +55,7 @@ export default {
           <span class="dim2">${t('career.efficiency')} <b class="mono">${pctPlain(s.job.efficiency, 0)}</b></span>
         </div>
         <button class="hustle-btn" id="d-hustle" ${s.job.canOvertime ? '' : 'disabled'}>
-          <span id="d-hb-label">${s.job.canOvertime ? `💪 ${t('career.otStart')} · +${money(s.job.otPay)}`
+          <span id="d-hb-label">${s.job.canOvertime ? `${s.job.night ? '🌙' : '💪'} ${s.job.night ? t('career.nightShift') : t('career.otStart')} · +${money(s.job.otPay)}`
             : s.job.otBusy ? `⏳ ${t('career.otWorking')}` : `🚫 ${t('career.otBlock.' + s.job.otBlock)}`}</span>
           <span class="cd" id="d-hb-cd" style="width:0%"></span></button>
         <div class="dim2" style="font-size:11px;margin-top:9px;line-height:1.6">${t('career.startHint')}</div>

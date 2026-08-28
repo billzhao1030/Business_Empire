@@ -57,9 +57,10 @@ export function nextJob(p) {
   return JOBS[cur + 1] || null;
 }
 // 一次加班 = 一个游戏工时：接单后必须等这个工时在游戏里真正过完，才能接下一单
-export function overtimePay(p) {
+export function overtimePay(p, night = false) {
   const j = jobOf(p);
-  return j ? j.wage * OVERTIME_MULT * efficiency(p.stamina) : 0;
+  if (!j) return 0;
+  return j.wage * (night ? NIGHT_MULT : OVERTIME_MULT) * efficiency(p.stamina);
 }
 export const HUSTLE_COOLDOWN_MS = 0;
 // ── 作息与体力 ──────────────────────────────────────────────
@@ -70,6 +71,8 @@ export const OVERTIME_MAX_HOURS = 6;              // 每游戏日最多加班 6 
 export const OVERTIME_MULT = 1.6;                 // 加班费倍率
 export const STAMINA_MAX = 100;
 export const ST_SLEEP = 11, ST_SHIFT = -5, ST_OVERTIME = -9, ST_AWAKE = -1.5;
+export const ST_NIGHT = -20;                      // 熬夜加班的体力代价
+export const NIGHT_MULT = 2.2;                    // 夜班津贴
 export const ST_MIN_FOR_OT = 15;                  // 体力低于此值无法加班
 
 export function dayPhase(hod) {
@@ -153,12 +156,10 @@ export function ensurePlayer(userId, nickname) {
   const p = db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
   if (p) return p;
   const h = Number(db.prepare("SELECT value FROM meta WHERE key='market_hour'").get()?.value || 0);
-  // 上一份工作结清的最后一笔工资：一天的班，刚好够摆个小摊
-  const seed = JOBS[0].wage * WORK_HOURS_PER_DAY;
   db.prepare(`INSERT INTO players(user_id,nickname,cash,bank,last_hour,created_hour,peak_networth,stamina)
-              VALUES(?,?,?,?,?,?,?,?)`).run(userId, nickname, seed, 0, h, h, seed, STAMINA_MAX);
+              VALUES(?,?,?,?,?,?,?,?)`).run(userId, nickname, START_CASH, 0, h, h, START_CASH, STAMINA_MAX);
   db.prepare('INSERT INTO ledger(user_id,hour,kind,amount,detail,icon) VALUES(?,?,?,?,?,?)')
-    .run(userId, h, 'start', seed, L('led.start', { amt: seed }), '🧳');
+    .run(userId, h, 'start', 0, L('led.start'), '🧳');
   return db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
 }
 

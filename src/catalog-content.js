@@ -3,7 +3,7 @@
 // ── 实业 ────────────────────────────────────────────────────
 // 实业：cost = 开店成本，pay = 目标回本周期（游戏小时），rev/opc 由下方自动推算
 const BIZ_RAW = [
-  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',120,55,'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
+  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',80,55,'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
   ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',450,65,'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
   ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',1_100,75,'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
   ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',2_400,85,'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
