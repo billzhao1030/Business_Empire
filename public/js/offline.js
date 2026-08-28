@@ -69,6 +69,8 @@ export function showOfflineReport(o, app) {
             <div class="mono gold" style="font-size:17px;font-weight:800">${gameText(o.gameHours)}</div></div>
         </div>
         <div class="dim2 mono" style="font-size:11px;margin-top:8px">${o.fromDate} → ${o.toDate}</div>
+        ${o.capped ? `<div class="summary" style="margin-top:12px;border-color:var(--orange);color:var(--orange);font-size:12px;text-align:left">
+          ⏳ <b>${t('offline.capped')}</b> · ${t('offline.cappedNote', { elapsed: Math.round(o.gameHours / 24), settled: o.capDays })}</div>` : ''}
 
         <div style="margin-top:20px;padding:18px;border-radius:var(--r);
           background:linear-gradient(140deg,${up ? 'rgba(44,232,164,.14)' : 'rgba(255,92,124,.12)'},transparent);

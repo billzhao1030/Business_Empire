@@ -148,6 +148,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// 安全网：任何未捕获的异常都不许把服务打死——记下来，继续服务
+function logFatal(kind, err) {
+  const msg = `\n[${new Date().toISOString()}] ${kind}: ${err && err.stack || err}\n`;
+  try { fs.appendFileSync(path.join(ROOT, 'data', 'error.log'), msg); } catch {}
+  console.error(msg);
+}
+process.on('uncaughtException', e => logFatal('uncaughtException', e));
+process.on('unhandledRejection', e => logFatal('unhandledRejection', e));
+server.on('clientError', (e, socket) => { try { socket.destroy(); } catch {} });
+
 server.listen(PORT, () => {
   const h = M.currentGameHour();
   console.log(`\n  💼  Business Empire 已启动`);

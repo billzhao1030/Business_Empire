@@ -30,7 +30,7 @@ overtime hour genuinely *takes an hour*: the money only lands once it has elapse
 a second one until the first is done, and it burns stamina you only get back by sleeping. A day is
 still 24 hours and you are still a person.
 
-You start with **nothing at all** — $0. Your first eighty dollars buy a street stall, and the stall
+You start with **nothing at all** — $0. Your first fifty dollars buy a street stall, and the stall
 keeps earning while you're asleep. The stall buys a pancake cart. The cart buys a bubble tea shop.
 
 Somewhere around your fourth store you stop caring about your salary. You start caring about
@@ -124,15 +124,15 @@ sparkline is meaningful from the first second.
 ### The ladder
 
 ```
-$0  →  wages & overtime  →  $80 street stall  →  $900 scooter (unlocks driving jobs, $18→$130/hr)
+$0  →  wages & overtime  →  $50 street stall  →  $900 scooter (unlocks driving jobs, $8→$28/hr)
     →  a portfolio of stores  →  equities & district units  →  leverage & mortgaged property
     →  50% of a company  →  100% of a company  →  the top of the rich list
 ```
 
 ### Systems at a glance
 
-- **12 jobs** ($18 → $3,200 per work-hour). Regular shift 09:00–17:00, up to 6 overtime hours at 1.6× pay (2.2× at night), gated by a stamina system. The in-game clock and your current day-phase are pinned to the top of the interface at all times.
-- **36 business formats** from an $80 street stall to a $5 B commercial spaceport, across 6 cities.
+- **12 jobs** ($8 → $900 per work-hour, set at realistic rates). Regular shift 09:00–17:00, up to 6 overtime hours at 1.6× pay (2.2× at night), gated by a stamina system. The in-game clock and your current day-phase are pinned to the top of the interface at all times.
+- **36 business formats** from a $50 street stall to a $5 B commercial spaceport, across 6 cities.
 - **243 tradable instruments**: 200 stocks in 54 sectors, 12 commercial districts, 8 commodities, 23 cryptocurrencies — plus 14 non-tradable indices (broad market, 10 regional housing markets, watches, fine art, classic cars).
 - **94 purchasable assets**: 21 cars (a car unlocks the driving jobs), 53 properties across 10 regions with independent live housing indices, yachts, jets, watches, fine art. Prestige from luxury lifts revenue at *every* store, up to +60%.
 - **A bank** whose rates float off the policy rate, with a 300–850 credit score, term deposits, unsecured credit, mortgages (20–100% down, 5/10/20/30 years) and punitive overdraft.

@@ -3,13 +3,13 @@
 // ── 实业 ────────────────────────────────────────────────────
 // 实业：cost = 开店成本，pay = 目标回本周期（游戏小时），rev/opc 由下方自动推算
 const BIZ_RAW = [
-  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',80,55,'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
-  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',450,65,'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
-  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',1_100,75,'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
-  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',2_400,85,'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
-  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',5_200,95,'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
-  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',9_500,110,'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
-  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',18_000,140,'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
+  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',50,55,'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
+  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',200,65,'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
+  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',500,75,'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
+  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',1_200,85,'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
+  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',3_000,95,'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
+  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',6_000,110,'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
+  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',12_000,140,'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
   ['coffeecart','流动咖啡车','Coffee Cart','☕','餐饮','Food & Bev',32_000,165,'一台意式咖啡机 + 一辆小推车，写字楼下的早高峰就是印钞机。','One espresso machine, one cart. The morning rush is a money printer.'],
   ['milktea','奶茶店','Bubble Tea Shop','🧋','餐饮','Food & Bev',58_000,195,'年轻人的快乐水。翻台率高，毛利惊人。','Liquid happiness for the young. High turnover, stunning margins.'],
   ['bakery','面包烘焙坊','Bakery','🥐','餐饮','Food & Bev',95_000,225,'凌晨四点开工，香味就是最好的广告。','Up at 4am. The smell is the only advertising you need.'],
@@ -248,18 +248,18 @@ export const sectorEn = s => SECTOR_EN[s] || s;
 
 // ── 打工：白手起家的第一步（wage = 每游戏小时工资，exp = 解锁所需工作经验）──
 export const JOBS = [
-  { id:'flyer',    zh:'发传单',        en:'Flyer Handout',       emoji:'📄', wage:18,    exp:0,     descZh:'街口站一天，嗓子哑了，钱也就那么点。', descEn:'A day on the corner. Your voice goes; the money barely comes.' },
-  { id:'delivery', zh:'送外卖',        en:'Food Courier',        emoji:'🛵', wage:30,   exp:8,    descZh:'风里雨里，超时就扣钱。', descEn:'Rain or shine — every late order costs you.' },
-  { id:'clerk',    zh:'便利店店员',    en:'Store Clerk',         emoji:'🏪', wage:50,   exp:24,    descZh:'上夜班加班费更高，但生物钟废了。', descEn:'Night shifts pay more and wreck your sleep.' },
-  { id:'waiter',   zh:'餐厅服务员',    en:'Restaurant Server',   emoji:'🍽️', wage:80,   exp:60,   descZh:'小费是真正的收入来源。', descEn:'Tips are the real income.' },
-  { id:'rideshare',zh:'网约车司机',    en:'Rideshare Driver',    emoji:'🚕', wage:130,   exp:130,   car:true, descZh:'需要一辆自己的车。跑得越晚，单价越高。', descEn:'Requires your own car. The later you drive, the better the fares.' },
-  { id:'trucker',  zh:'长途货车司机',  en:'Long-haul Trucker',   emoji:'🚚', wage:210,   exp:250,   car:true, descZh:'需要一辆车。一趟三天，路上全是风景和困意。', descEn:'Requires a vehicle. Three days out, all scenery and sleep debt.' },
-  { id:'sales',    zh:'销售代表',      en:'Sales Rep',           emoji:'💼', wage:330,  exp:450, descZh:'底薪很低，提成才是本体。', descEn:'Low base, the commission is the job.' },
-  { id:'coder',    zh:'软件工程师',    en:'Software Engineer',   emoji:'💻', wage:520,  exp:750, descZh:'一边写代码，一边看招聘网站。', descEn:'Writing code with the job board open in another tab.' },
-  { id:'analyst',  zh:'金融分析师',    en:'Financial Analyst',   emoji:'📊', wage:820,  exp:1_200, descZh:'终于坐到了离钱最近的位置。', descEn:'Finally seated close to where the money is.' },
-  { id:'manager',  zh:'部门经理',      en:'Department Manager',  emoji:'👔', wage:1_300,  exp:1_900, descZh:'开会的时间比干活多。', descEn:'More time in meetings than doing the work.' },
-  { id:'vp',       zh:'投行副总裁',    en:'Investment Bank VP',  emoji:'🏦', wage:2_000,exp:3_000, descZh:'年终奖比年薪多，代价是没有周末。', descEn:'The bonus beats the salary; the cost is your weekends.' },
-  { id:'ceo',      zh:'职业经理人 CEO',en:'Professional CEO',    emoji:'👑', wage:3_200,exp:4_500,descZh:'替别人打理帝国——直到你有自己的。', descEn:'Running someone else empire — until you build your own.' },
+  { id:'flyer',    zh:'发传单',        en:'Flyer Handout',       emoji:'📄', wage:8,    exp:0,     descZh:'街口站一天，嗓子哑了，钱也就那么点。', descEn:'A day on the corner. Your voice goes; the money barely comes.' },
+  { id:'delivery', zh:'送外卖',        en:'Food Courier',        emoji:'🛵', wage:14,   exp:8,    descZh:'风里雨里，超时就扣钱。', descEn:'Rain or shine — every late order costs you.' },
+  { id:'clerk',    zh:'便利店店员',    en:'Store Clerk',         emoji:'🏪', wage:16,   exp:24,    descZh:'上夜班加班费更高，但生物钟废了。', descEn:'Night shifts pay more and wreck your sleep.' },
+  { id:'waiter',   zh:'餐厅服务员',    en:'Restaurant Server',   emoji:'🍽️', wage:20,   exp:60,   descZh:'小费是真正的收入来源。', descEn:'Tips are the real income.' },
+  { id:'rideshare',zh:'网约车司机',    en:'Rideshare Driver',    emoji:'🚕', wage:28,   exp:130,   car:true, descZh:'需要一辆自己的车。跑得越晚，单价越高。', descEn:'Requires your own car. The later you drive, the better the fares.' },
+  { id:'trucker',  zh:'长途货车司机',  en:'Long-haul Trucker',   emoji:'🚚', wage:38,   exp:250,   car:true, descZh:'需要一辆车。一趟三天，路上全是风景和困意。', descEn:'Requires a vehicle. Three days out, all scenery and sleep debt.' },
+  { id:'sales',    zh:'销售代表',      en:'Sales Rep',           emoji:'💼', wage:55,  exp:450, descZh:'底薪很低，提成才是本体。', descEn:'Low base, the commission is the job.' },
+  { id:'coder',    zh:'软件工程师',    en:'Software Engineer',   emoji:'💻', wage:85,  exp:750, descZh:'一边写代码，一边看招聘网站。', descEn:'Writing code with the job board open in another tab.' },
+  { id:'analyst',  zh:'金融分析师',    en:'Financial Analyst',   emoji:'📊', wage:120,  exp:1_200, descZh:'终于坐到了离钱最近的位置。', descEn:'Finally seated close to where the money is.' },
+  { id:'manager',  zh:'部门经理',      en:'Department Manager',  emoji:'👔', wage:180,  exp:1_900, descZh:'开会的时间比干活多。', descEn:'More time in meetings than doing the work.' },
+  { id:'vp',       zh:'投行副总裁',    en:'Investment Bank VP',  emoji:'🏦', wage:320,exp:3_000, descZh:'年终奖比年薪多，代价是没有周末。', descEn:'The bonus beats the salary; the cost is your weekends.' },
+  { id:'ceo',      zh:'职业经理人 CEO',en:'Professional CEO',    emoji:'👑', wage:900,exp:4_500,descZh:'替别人打理帝国——直到你有自己的。', descEn:'Running someone else empire — until you build your own.' },
 ];
 
 // ── 世界富豪榜（化名，财富与游戏内公司股价实时联动）──

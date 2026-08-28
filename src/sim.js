@@ -16,6 +16,10 @@ export const RATES = {
 };
 export const START_CASH = 0;
 
+// 离线结算上限：最多只补算这么多游戏小时（默认 7 个游戏日）
+// 市场行情仍会照常推进整段时间——只是你的生意最多累积一周的收益
+export const OFFLINE_CAP_HOURS = Math.max(24, Number(process.env.OFFLINE_CAP_DAYS || 7) * 24);
+
 // ── 利率随央行政策利率浮动 ────────────────────────────────
 export function savingsRate()  { return Math.max(0.002, M.policyRate() * 0.85); }
 export function overdraftRate(){ return M.policyRate() + 0.19; }
@@ -213,7 +217,9 @@ export function advancePlayer(userId) {
   if (!p || target <= p.last_hour) return p;
 
   let from = p.last_hour;
-  if (target - from > 40_000) from = target - 40_000;
+  const elapsed = target - from;
+  const capped = elapsed > OFFLINE_CAP_HOURS;
+  if (capped) from = target - OFFLINE_CAP_HOURS;   // 只结算最近 N 个游戏日
 
   const biz = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(userId);
   const items = db.prepare('SELECT * FROM items WHERE user_id=?').all(userId);
@@ -395,6 +401,10 @@ export function advancePlayer(userId) {
   } else if (nwFinal > 0 && p.bankrupt) p.bankrupt = 0;
   p.peak_networth = Math.max(p.peak_networth, nwFinal);
   p.last_hour = target;
+  if (capped) {
+    ledger.push([target, 'event', 0,
+      L('led.offlineCap', { elapsed: Math.round(elapsed / 24), settled: Math.round(OFFLINE_CAP_HOURS / 24) }), '⏳']);
+  }
 
   db.exec('BEGIN');
   try {

@@ -34,19 +34,24 @@ function buildOfflineReport(uid, p, hour, nwNow) {
   let report = null;
 
   if (p.last_seen_ms && awayMs >= OFFLINE_MIN_MS && hour > p.last_seen_hour) {
+    const fromHour = Math.max(p.last_seen_hour, hour - S.OFFLINE_CAP_HOURS);
     const rows = db.prepare(`SELECT kind, SUM(amount) amt, COUNT(*) n FROM ledger
                              WHERE user_id=? AND hour > ? AND hour <= ? AND kind != 'start'
-                             GROUP BY kind`).all(uid, p.last_seen_hour, hour);
+                             GROUP BY kind`).all(uid, fromHour, hour);
     const sum = rows.reduce((a, r) => a + r.amt, 0);
     const nwDelta = nwNow - p.last_seen_nw;
     const highlights = db.prepare(`SELECT * FROM ledger WHERE user_id=? AND hour > ? AND hour <= ?
                                    AND kind IN ('event','deposit','dividend','loan')
                                    ORDER BY CASE kind WHEN 'event' THEN 0 WHEN 'deposit' THEN 1
                                                       WHEN 'dividend' THEN 2 ELSE 3 END,
-                                            ABS(amount) DESC LIMIT 5`).all(uid, p.last_seen_hour, hour);
+                                            ABS(amount) DESC LIMIT 5`).all(uid, fromHour, hour);
+    const elapsedHours = hour - p.last_seen_hour;
+    const settledHours = Math.min(elapsedHours, S.OFFLINE_CAP_HOURS);
     report = {
       awayMs, awayRealHours: awayMs / 3.6e6, awayRealDays: awayMs / 8.64e7,
-      gameHours: hour - p.last_seen_hour,
+      gameHours: elapsedHours, settledHours,
+      capped: elapsedHours > S.OFFLINE_CAP_HOURS,
+      capHours: S.OFFLINE_CAP_HOURS, capDays: S.OFFLINE_CAP_HOURS / 24,
       fromHour: p.last_seen_hour, toHour: hour,
       fromDate: M.gameDate(p.last_seen_hour).text, toDate: M.gameDate(hour).text,
       nwBefore: p.last_seen_nw, nwAfter: nwNow, nwDelta,
@@ -187,6 +192,7 @@ export function getState(uid) {
       policyRate: M.policyRate(),
       loanRate: S.loanRate(p.credit_score), mortgageRate: S.mortgageRate(p.credit_score),
       creditLimit, totalDebt: nw.debt, mortgageDebt: nw.mortgage },
+    offlineCap: { hours: S.OFFLINE_CAP_HOURS, days: S.OFFLINE_CAP_HOURS / 24 },
     tax: { corp: RATES.corpTax, div: RATES.divTax, capGain: RATES.capGainTax, property: RATES.propertyTax },
     fees: { commission: RATES.commission, minCommission: RATES.minCommission, spread: RATES.spread },
     ledger: db.prepare('SELECT * FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 80').all(uid),
