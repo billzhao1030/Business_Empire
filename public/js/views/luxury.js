@@ -162,4 +162,15 @@ export default {
       }
     });
   },
+
+  patch(app) {
+    // 只有在用户没有打开弹窗、也没有在输入时，才安全地整页刷新
+    if (document.querySelector('.modal-mask')) return;
+    const a = document.activeElement;
+    if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
+    const root = document.getElementById('view');
+    const top = root.scrollTop;
+    this.render(root, app);
+    root.scrollTop = top;
+  }
 };

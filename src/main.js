@@ -72,10 +72,18 @@ function serveStatic(req, res, urlPath) {
   });
 }
 
+const ACCESS_LOG = path.join(ROOT, 'data', 'access.log');
+function logApi(req, p, code, extra = '') {
+  if (p === '/api/state' || p === '/api/ping' || p === '/api/health' || p === '/api/sparks') return;  // 高频轮询不记
+  const line = `${new Date().toISOString()} ${req.method} ${p} -> ${code}${extra ? ' ' + extra : ''}\n`;
+  fs.appendFile(ACCESS_LOG, line, () => {});
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
   if (!p.startsWith('/api/')) return serveStatic(req, res, p);
+  res.once('finish', () => logApi(req, p, res.statusCode));
 
   try {
     const body = req.method === 'POST' ? await readBody(req) : {};

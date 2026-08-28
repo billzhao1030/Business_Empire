@@ -3,7 +3,7 @@ import { db, getMeta, setMeta } from './db.js';
 import { STOCKS, COMMODITIES, CRYPTOS, INDICES, DISTRICTS } from './catalog-assets.js';
 import * as C from './catalog-content.js';
 
-// ── 时间：现实 1 分钟 = 游戏 1 小时 ─────────────────────────
+// ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 2 分钟）──
 export const MS_PER_GAME_HOUR = Number(process.env.GAME_HOUR_MS || 120_000);
 export const DAY_HOURS   = 24;
 export const MONTH_HOURS = 720;    // 30 天

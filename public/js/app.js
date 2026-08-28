@@ -29,6 +29,11 @@ export const app = {
   async boot() {
     document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
     applyTheme(localStorage.getItem('be_theme') || 'neon');
+    try {
+      const ping = await (await fetch('/api/ping')).json();
+      this.serverBuild = ping.build;
+      this.hourMinutes = 2;
+    } catch {}
     this.paintAuthTexts();
     if (token) {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -59,7 +64,7 @@ export const app = {
     $('#auth-submit').textContent = t('auth.enter');
     const f = a.querySelector('.auth-foot');
     f.children[0].innerHTML = t('auth.foot1');
-    f.children[1].textContent = t('auth.foot2');
+    f.children[1].textContent = t('auth.foot2', { m: this.hourMinutes ?? 2 });
   },
 
   async enter() {
@@ -128,9 +133,9 @@ export const app = {
       this.syncClock();
       this.paintTop();
       if (this.state.offline && !prevOffline) showOfflineReport(this.state.offline, this);
+      // 只做增量更新。绝不在后台整页重绘——那会把用户正在进行的操作结果冲掉
       if (full) this.renderView();
-      else if (this.viewObj?.patch) this.viewObj.patch(this);
-      else if (this.canRerender()) this.renderView();
+      else if (this.viewObj?.patch && !this.busy) this.viewObj.patch(this);
       this.setOnline(true);
       if (this.build && this.build !== this.state.build) {
         this.build = this.state.build;
@@ -144,12 +149,11 @@ export const app = {
     }
   },
 
-  // 有弹窗打开、或用户正在输入时，不要整页重绘——否则会把输入内容和交互一起冲掉
-  canRerender() {
-    if (document.querySelector('.modal-mask')) return false;
-    const a = document.activeElement;
-    if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return false;
-    return true;
+  // 有请求在飞时挂起后台更新，避免打断正在进行的操作
+  busy: false,
+  async guard(fn) {
+    this.busy = true;
+    try { return await fn(); } finally { this.busy = false; }
   },
 
   paintTop() {
@@ -190,7 +194,7 @@ export const app = {
 
   async act(fn, okMsg) {
     try {
-      const r = await fn();
+      const r = await this.guard(fn);
       if (okMsg) toast(okMsg, 'ok');
       await this.refresh(true);
       return r;

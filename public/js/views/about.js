@@ -114,6 +114,8 @@ export default {
               <dt>${L('服务版本', 'Server build')}</dt><dd style="font-size:11px" id="ab-build">${esc(String(s.build || '-')).slice(-8)}</dd>
             </dl>
             <div style="border-top:1px solid var(--line);padding-top:14px">
+              <button class="btn btn-sm btn-ghost btn-block" id="ab-selftest" style="margin-bottom:10px">🩺 ${L('运行自检', 'Run self-test')}</button>
+              <div id="ab-diag" class="summary hidden" style="font-size:11.5px;line-height:1.9;margin-bottom:14px"></div>
               <div class="down" style="font-size:11px;font-weight:800;letter-spacing:.5px;margin-bottom:10px">⚠️ ${t('about.danger')}</div>
               <p class="dim2" style="font-size:11.5px;line-height:1.6;margin-bottom:8px">${t('about.resetDesc')}</p>
               <button class="btn btn-sm btn-danger btn-block" id="ab-reset" style="margin-bottom:14px">${t('about.resetSave')}</button>
@@ -126,10 +128,50 @@ export default {
 
     // 用事件委托绑在容器上：即使视图被重渲染，按钮也永远有效
     root.onclick = async ev => {
-      const btn = ev.target.closest?.('#ab-reset, #ab-del');
+      const btn = ev.target.closest?.('#ab-reset, #ab-del, #ab-selftest');
       if (!btn) return;
       if (btn.id === 'ab-del') return doDelete();
+      if (btn.id === 'ab-selftest') return selfTest(btn);
       await doReset(btn);
+    };
+
+    // 一键自检：把每一步是通是断都摆出来
+    const selfTest = async btn => {
+      const box = $('#ab-diag');
+      box.classList.remove('hidden');
+      const rows = [];
+      const put = (name, ok, detail) => {
+        rows.push(`<div style="display:flex;gap:8px"><span>${ok ? '✅' : '❌'}</span><span style="flex:1">${name}</span><span class="mono dim2" style="font-size:10.5px">${esc(detail || '')}</span></div>`);
+        box.innerHTML = rows.join('');
+      };
+      btn.disabled = true; box.innerHTML = t('common.loading');
+      app.busy = true;
+      const hit = async (path, opts) => {
+        const t0 = Date.now();
+        const r = await fetch(path, { headers: { Authorization: 'Bearer ' + (localStorage.getItem('be_token') || '') }, ...opts });
+        let body = {}; try { body = await r.json(); } catch {}
+        return { status: r.status, ok: r.ok, ms: Date.now() - t0, body, build: r.headers.get('X-Build') };
+      };
+      rows.length = 0;
+      put(L('访问地址', 'Origin'), true, location.origin);
+      try {
+        const ping = await hit('/api/ping');
+        put(L('服务连通', 'Server reachable'), ping.ok, ping.status + ' · ' + ping.ms + 'ms');
+        const jsHead = await fetch('/js/views/about.js', { method: 'HEAD' });
+        const jsBuild = jsHead.headers.get('X-Build');
+        const same = !ping.body.build || !jsBuild || ping.body.build === jsBuild;
+        put(L('前后端版本一致', 'Client/server build match'), same, String(ping.body.build || '').slice(-8));
+        const me = await hit('/api/me');
+        put(L('登录状态', 'Session valid'), me.ok, me.ok ? me.body.user?.username : (me.body.error || me.status));
+        const st = await hit('/api/state');
+        put(L('读取存档', 'Save readable'), st.ok, st.ok ? (L('现金 ', 'cash ') + Math.round(st.body.player?.cash)) : (st.body.error || st.status));
+        const w = await hit('/api/biz/action', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem('be_token') || '') }, body: JSON.stringify({ id: 999999, action: 'repair' }) });
+        put(L('写入通道', 'Write channel'), w.status === 404 || w.status === 400, w.status + ' ' + (w.body.error || '').split(' / ')[0]);
+      } catch (e) {
+        put(L('请求失败', 'Request failed'), false, e.message);
+      }
+      app.busy = false;
+      btn.disabled = false;
     };
 
     const doReset = async rb => {
@@ -137,7 +179,7 @@ export default {
       if (!ok) return;
       const old = rb.textContent;
       rb.disabled = true; rb.textContent = t('common.loading');
-      try { await api.reset(); toast(t('toast.success'), 'ok'); await app.refresh(true); }
+      try { await app.guard(() => api.reset()); toast(t('toast.success'), 'ok'); await app.refresh(true); }
       catch (e) { toast(e.message, 'err', t('toast.failed')); rb.disabled = false; rb.textContent = old; }
     };
     const doDelete = () => {
@@ -151,6 +193,7 @@ export default {
           const ok = el.querySelector('#del-ok');
           ok.onclick = async () => {
             ok.disabled = true; ok.textContent = t('common.loading');
+            app.busy = true;
             try {
               await fetch('/api/account/delete', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('be_token') },
@@ -158,6 +201,7 @@ export default {
               }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error); });
               setToken(null); location.reload();
             } catch (e) {
+              app.busy = false;
               toast(e.message, 'err', t('toast.failed'));
               ok.disabled = false; ok.textContent = t('about.delAcc');
             }
