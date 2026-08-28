@@ -182,7 +182,7 @@ a live tick for all of them takes well under a millisecond.
 
 ## Legal
 
-**Copyright © 2026 Bill Zhao ([@billzhao1030](https://github.com/billzhao1030)).**
+**Copyright © 2026 Xunyi Zhao ([@billzhao1030](https://github.com/billzhao1030)).**
 Released under the [MIT License](LICENSE).
 
 > **Parody disclaimer.** Every company, brand, product and person in this game is **fictional**.

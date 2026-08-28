@@ -122,11 +122,14 @@ export default {
       </div>
     </div>`;
 
-    $('#ab-reset').onclick = async () => {
+    const rb = $('#ab-reset');
+    rb.onclick = async () => {
       const ok = await confirmBox(t('about.resetSave'), t('about.resetDesc'), t('about.resetSave'));
       if (!ok) return;
+      const old = rb.textContent;
+      rb.disabled = true; rb.textContent = t('common.loading');
       try { await api.reset(); toast(t('toast.success'), 'ok'); await app.refresh(true); }
-      catch (e) { toast(e.message, 'err'); }
+      catch (e) { toast(e.message, 'err', t('toast.failed')); rb.disabled = false; rb.textContent = old; }
     };
     $('#ab-del').onclick = () => {
       modal({
@@ -136,14 +139,19 @@ export default {
         footer: `<button class="btn btn-ghost" data-close>${t('common.cancel')}</button><button class="btn btn-danger" id="del-ok">${t('about.delAcc')}</button>`,
         onMount: (el, close) => {
           el.querySelector('[data-close]').onclick = close;
-          el.querySelector('#del-ok').onclick = async () => {
+          const ok = el.querySelector('#del-ok');
+          ok.onclick = async () => {
+            ok.disabled = true; ok.textContent = t('common.loading');
             try {
               await fetch('/api/account/delete', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('be_token') },
                 body: JSON.stringify({ password: el.querySelector('#del-pw').value }),
               }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error); });
               setToken(null); location.reload();
-            } catch (e) { toast(e.message, 'err'); }
+            } catch (e) {
+              toast(e.message, 'err', t('toast.failed'));
+              ok.disabled = false; ok.textContent = t('about.delAcc');
+            }
           };
         }
       });

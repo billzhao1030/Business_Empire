@@ -11,5 +11,7 @@
     "reset": "node -e \"import('node:fs').then(f=>['game.db','game.db-wal','game.db-shm'].forEach(x=>{try{f.rmSync('data/'+x)}catch{}}))\""
   },
   "engines": { "node": ">=22.5" },
+  "author": "Xunyi Zhao <billzhao1030@gmail.com> (https://github.com/billzhao1030)",
+  "repository": { "type": "git", "url": "https://github.com/billzhao1030/Business_Empire.git" },
   "license": "MIT"
 }

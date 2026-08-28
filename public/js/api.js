@@ -2,12 +2,21 @@ const KEY = 'be_token';
 export let token = localStorage.getItem(KEY) || null;
 export function setToken(t) { token = t; t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY); }
 
+const OFFLINE_MSG = () => (localStorage.getItem('be_lang') || 'zh') === 'zh'
+  ? '连接不上游戏服务，请确认它还在运行（双击桌面图标即可重启）'
+  : 'Cannot reach the game server — make sure it is still running (double-click the desktop icon to restart it)';
+
 async function req(path, { method = 'GET', body } = {}) {
-  const res = await fetch(path, {
+  let res;
+  try {
+    res = await fetch(path, {
     method,
-    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    const e = new Error(OFFLINE_MSG()); e.offline = true; throw e;
+  }
   let data;
   try { data = await res.json(); } catch { data = {}; }
   if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.status = res.status; throw e; }

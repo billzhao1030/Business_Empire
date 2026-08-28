@@ -120,12 +120,21 @@ export const app = {
       this.syncClock();
       this.paintTop();
       if (this.state.offline && !prevOffline) showOfflineReport(this.state.offline, this);
-      if (full || !this.viewObj?.patch) this.renderView();
-      else this.viewObj.patch(this);
+      if (full) this.renderView();
+      else if (this.viewObj?.patch) this.viewObj.patch(this);
+      else if (this.canRerender()) this.renderView();
     } catch (e) {
       if (e.status === 401) { setToken(null); location.reload(); }
       // 其它错误（服务重启、断网）静默忽略，下一次轮询会自动恢复
     }
+  },
+
+  // 有弹窗打开、或用户正在输入时，不要整页重绘——否则会把输入内容和交互一起冲掉
+  canRerender() {
+    if (document.querySelector('.modal-mask')) return false;
+    const a = document.activeElement;
+    if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return false;
+    return true;
   },
 
   paintTop() {

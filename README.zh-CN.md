@@ -319,3 +319,19 @@ meaningful from the first second.
 **Welcome back** report breaks down exactly where every dollar came from while you were away.
 **Change it:** `GAME_HOUR_MS=60000 node server.js`.
 **Reset:** the About page in-game, or delete `data/game.db*`.
+
+
+---
+
+## 版权与许可
+
+**Copyright © 2026 赵勋屹 (Xunyi Zhao) — [@billzhao1030](https://github.com/billzhao1030)**
+基于 [MIT License](LICENSE) 发布。
+
+> **谐音免责声明**：游戏中出现的所有公司、品牌、产品与人物均为**虚构**。
+> 诸如 *苹裹*、*微硬*、*英伟哒*、*特斯萝*、*伊隆·马斯特*、*杰夫·贝索夫* 等名称，
+> 是出于讽刺与娱乐目的创作的戏仿，与任何真实公司或个人**无关联、无背书、无赞助关系**，
+> 任何相似之处均属有意的评论性创作，而非声称存在关联。所有财务数据、价格序列与事件均为合成。
+>
+> **非投资建议**：这是一款游戏。其中任何内容都不构成投资建议；它的市场模型以娱乐性优先，
+> 不应被用来推断真实市场。
