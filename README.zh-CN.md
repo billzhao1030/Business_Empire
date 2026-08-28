@@ -325,7 +325,7 @@ meaningful from the first second.
 
 ## 版权与许可
 
-**Copyright © 2026 赵勋屹 (Xunyi Zhao) — [@billzhao1030](https://github.com/billzhao1030)**
+**Copyright © 2026 Xunyi Zhao — [@billzhao1030](https://github.com/billzhao1030)**
 基于 [MIT License](LICENSE) 发布。
 
 > **谐音免责声明**：游戏中出现的所有公司、品牌、产品与人物均为**虚构**。
