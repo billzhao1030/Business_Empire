@@ -1,16 +1,16 @@
-# 存档与运行时数据 / save files & runtime data
-data/*.db
-data/*.db-wal
-data/*.db-shm
-data/*.log
-data/.probe
 
-# 生成的中间产物 / generated intermediates
-build/icon.iconset/
-build/*.icns
-
-# 系统 / OS
 .DS_Store
-node_modules/
 *.log
+# 生成的中间产物 / generated intermediates
+# 系统 / OS
+# 存档与运行时数据 / save files & runtime data
+build/*.icns
+build/icon.iconset/
 data-dev/
+data-test*/
+data/.probe
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.log
+node_modules/
