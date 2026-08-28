@@ -151,18 +151,34 @@ export function getState(uid) {
       bankrupt: !!p.bankrupt, peak: p.peak_networth, playedHours: hour - p.created_hour, monthProfit: p.month_profit,
     },
     netWorth: nw, title: S.titleOf(nw.total), offline,
-    job: { current: job ? { id: job.id, zh: job.zh, en: job.en, emoji: job.emoji, wage: job.wage } : null,
-      exp: p.job_exp, hours: p.job_hours, income: p.job_income, working: !!job && (!job.car || carOwned),
-      carOwned, list: jobs, hustlePay: S.hustlePay(p, nw.total),
-      hustleReady: Date.now() - p.last_hustle >= S.HUSTLE_COOLDOWN_MS,
-      hustleWaitMs: Math.max(0, S.HUSTLE_COOLDOWN_MS - (Date.now() - p.last_hustle)),
-      hustles: p.hustles, cooldownMs: S.HUSTLE_COOLDOWN_MS,
-      workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
-      onShift: (hour % 24) >= S.WORK_START && (hour % 24) < S.WORK_END,
-      otUsed: p.ot_day === Math.floor(hour / 24) ? p.ot_hours : 0,
-      otMax: S.OVERTIME_MAX_HOURS, otMult: S.OVERTIME_MULT,
-      nextDayInHours: 24 - (hour % 24),
-      dailyWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + S.OVERTIME_MAX_HOURS * S.OVERTIME_MULT) },
+    job: (() => {
+      const hod = hour % 24, phase = S.dayPhase(hod), day = Math.floor(hour / 24);
+      const otUsed = p.ot_day === day ? p.ot_hours : 0;
+      const busy = p.ot_pending > 0 && hour < p.ot_until;
+      let block = null;
+      if (!job) block = 'nojob';
+      else if (job.car && !carOwned) block = 'needcar';
+      else if (phase === 'sleep') block = 'sleep';
+      else if (phase === 'shift') block = 'shift';
+      else if (busy) block = 'busy';
+      else if (otUsed >= S.OVERTIME_MAX_HOURS) block = 'cap';
+      else if (p.stamina < S.ST_MIN_FOR_OT) block = 'tired';
+      return {
+        current: job ? { id: job.id, zh: job.zh, en: job.en, emoji: job.emoji, wage: job.wage } : null,
+        exp: p.job_exp, hours: p.job_hours, income: p.job_income,
+        working: !!job && (!job.car || carOwned), carOwned, list: jobs,
+        stamina: p.stamina, staminaMax: S.STAMINA_MAX, efficiency: S.efficiency(p.stamina),
+        phase, hod, wakeHour: S.WAKE_HOUR, sleepHour: S.SLEEP_HOUR,
+        workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
+        otUsed, otMax: S.OVERTIME_MAX_HOURS, otMult: S.OVERTIME_MULT,
+        otPay: S.overtimePay(p), otBlock: block, canOvertime: !block,
+        otBusy: busy, otPending: p.ot_pending, otUntil: p.ot_until,
+        otRemainMs: busy ? Math.max(0, (p.ot_until - hour - M.hourProgress()) * M.MS_PER_GAME_HOUR) : 0,
+        hustles: p.hustles, nextDayInHours: 24 - hod,
+        dailyWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + S.OVERTIME_MAX_HOURS * S.OVERTIME_MULT),
+        sustainableWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + 3 * S.OVERTIME_MULT),
+      };
+    })(),
     macro: M.regimeState(),
     prosperity: M.cityProsperity(),
     businesses, holdings, items, loans, deposits,
@@ -560,33 +576,37 @@ export function takeJob(uid, { jobId }) {
   return { ok: true };
 }
 
+// 接一单加班：占用一个真实的游戏工时，期间不能再接
 export function hustle(uid) {
   S.advancePlayer(uid);
   const p = P(uid);
-  const now = Date.now(), hour = curHour(), day = Math.floor(hour / 24);
-  if (now - p.last_hustle < S.HUSTLE_COOLDOWN_MS) {
-    const w = Math.ceil((S.HUSTLE_COOLDOWN_MS - (now - p.last_hustle)) / 1000);
-    throw new Err(`还需等待 ${w} 秒 / Wait ${w}s`);
-  }
+  const hour = curHour(), hod = hour % 24, day = Math.floor(hour / 24);
   const j = S.jobOf(p);
   if (!j) throw new Err('先找一份工作 / Take a job first');
   if (j.car && !S.hasCar(uid)) throw new Err('这份工作需要一辆车 / This job requires a vehicle');
 
-  let used = p.ot_day === day ? p.ot_hours : 0;
-  if (used >= S.OVERTIME_MAX_HOURS)
-    throw new Err(`今天的加班时长已用完（${S.OVERTIME_MAX_HOURS} 小时），等下一个游戏日 / Daily overtime limit (${S.OVERTIME_MAX_HOURS}h) reached — wait for the next in-game day`);
+  const phase = S.dayPhase(hod);
+  if (phase === 'sleep')
+    throw new Err(`现在是休息时间（${S.SLEEP_HOUR}:00–${S.WAKE_HOUR}:00），该睡觉了 / It is rest time (${S.SLEEP_HOUR}:00–${S.WAKE_HOUR}:00)`);
+  if (phase === 'shift')
+    throw new Err(`你正在上正常班（${S.WORK_START}:00–${S.WORK_END}:00），下班后才能加班 / You are on your regular shift (${S.WORK_START}:00–${S.WORK_END}:00)`);
+  if (p.ot_pending > 0 && hour < p.ot_until)
+    throw new Err('这一单加班还没干完 / Your current overtime hour is not finished yet');
 
-  const pay = S.hustlePay(p);            // 一个工时的加班费
-  used += 1;
-  p.cash += pay;
-  db.prepare(`UPDATE players SET cash=?, job_exp=job_exp+1, job_hours=job_hours+1, job_income=job_income+?,
-              last_hustle=?, hustles=hustles+1, ot_hours=?, ot_day=? WHERE user_id=?`)
-    .run(p.cash, pay, now, used, day, uid);
-  if (used === S.OVERTIME_MAX_HOURS)
-    ledger(uid, 'job', 0, L('led.otFull', { job: { zh: j.zh, en: j.en }, h: S.OVERTIME_MAX_HOURS }), j.emoji);
-  else if (p.hustles % 12 === 0)
-    ledger(uid, 'job', pay, L('led.hustle', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
-  return { ok: true, pay, exp: p.job_exp + 1, cash: p.cash, otUsed: used, otMax: S.OVERTIME_MAX_HOURS };
+  const used = p.ot_day === day ? p.ot_hours : 0;
+  if (used >= S.OVERTIME_MAX_HOURS)
+    throw new Err(`今天已加班 ${S.OVERTIME_MAX_HOURS} 小时，到上限了 / Daily overtime limit (${S.OVERTIME_MAX_HOURS}h) reached`);
+  if (p.stamina < S.ST_MIN_FOR_OT)
+    throw new Err(`体力只剩 ${Math.round(p.stamina)}，太累了干不动，先睡一觉 / Too exhausted (stamina ${Math.round(p.stamina)}) — get some sleep first`);
+
+  const pay = S.overtimePay(p);              // 报酬按接单时的体力锁定
+  const stamina = Math.max(0, p.stamina + S.ST_OVERTIME);
+  db.prepare(`UPDATE players SET stamina=?, ot_pending=?, ot_until=?, ot_hours=?, ot_day=?,
+              hustles=hustles+1, last_hustle=? WHERE user_id=?`)
+    .run(stamina, pay, hour + 1, used + 1, day, Date.now(), uid);
+  ledger(uid, 'job', 0, L('led.otStart', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
+  return { ok: true, pay, otUsed: used + 1, otMax: S.OVERTIME_MAX_HOURS,
+           until: hour + 1, stamina, cash: p.cash };
 }
 
 // ── 富豪榜：财富与游戏内公司股价实时联动 ────────────────────

@@ -25,9 +25,13 @@
 
 You wake up with **nothing**. no savings, no company, no car — just a job handing out flyers for $18 an hour.
 
-Twelve in-game hours a day you work your shift. Six more you can work overtime, because a day is
-still 24 hours and you still have to sleep. That first $120 buys a street stall, and the stall keeps
-earning while you're asleep. The stall buys a pancake cart. The cart buys a bubble tea shop.
+Eight in-game hours a day you work your shift. After 17:00 you can pick up overtime — but each
+overtime hour genuinely *takes an hour*: the money only lands once it has elapsed, you cannot start
+a second one until the first is done, and it burns stamina you only get back by sleeping. A day is
+still 24 hours and you are still a person.
+
+Your last paycheck buys a $120 street stall, and the stall keeps earning while you're asleep. The
+stall buys a pancake cart. The cart buys a bubble tea shop.
 
 Somewhere around your fourth store you stop caring about your salary. You start caring about
 **where the money is parked** — 200 listed companies whose prices move on a six-factor stochastic
@@ -47,6 +51,7 @@ abstract: it was that share price, and you just bought it.
 |---|---|
 | **📈 A market that behaves like a market** | Prices are not random walks with a cap. Each hourly log-return is the sum of a market factor scaled by β, a slow-rotating sector momentum, idiosyncratic noise, mean reversion toward a growing intrinsic value, GARCH-style volatility clustering, and Poisson jumps with news shocks. Bubbles inflate and deflate. Sectors rotate. Calm periods and panics both emerge on their own. |
 | **🌍 A macro economy that moves everything** | Seven regimes — Boom, Expansion, Steady, Inflation, Slowdown, Recession, Crisis — re-rolled every in-game month. The regime moves equity drift, volatility, the **central bank policy rate** (which sets your savings, loan and mortgage rates), and the footfall at every store you own. Ten world events can rewrite the board outright. |
+| **⏳ Labour that respects the clock and your body** | The day splits into sleep (23:00–07:00), an eight-hour shift (09:00–17:00) and free hours. Overtime occupies a real in-game hour and pays on completion — no click-spamming. Stamina drains as you work and recovers only in sleep; below 60 your output degrades, below 15 you cannot work overtime at all. Four overtime hours a day is sustainable, six burns you out. Wage income is capped by both time and biology; businesses are the only thing that scales. |
 | **🏬 Businesses with real operating decisions** | Six levers per store: location, **pricing strategy** (discount builds long-run traffic, premium harvests and churns customers), **staffing** (understaffing loses orders *and* customers), expansion, marketing and refurbishment. Get it wrong and you watch demand bleed out over the next in-game month. |
 | **🏛️ Ownership that has consequences** | Every company has a tradable-stake cap. Max it out and you can tender for the rest at a 20–65% premium. A wholly-owned subsidiary remits its profit to you monthly — and if it's loss-making, you cover the losses. |
 | **👋 Offline earnings, properly accounted** | Close the tab for three days and come back to a **Welcome Back** report: how long you were gone in real *and* in-game time, what your net worth did, exactly which sources the money came from, where it went, and how much of the change was valuation rather than cash. The numbers reconcile to the cent. |
@@ -119,14 +124,14 @@ sparkline is meaningful from the first second.
 ### The ladder
 
 ```
-$0  →  overtime shifts  →  $120 street stall  →  $900 scooter (unlocks driving jobs, $18→$130/hr)
+$144 last paycheck  →  $120 street stall  →  $900 scooter (unlocks driving jobs, $18→$130/hr)
     →  a portfolio of stores  →  equities & district units  →  leverage & mortgaged property
     →  50% of a company  →  100% of a company  →  the top of the rich list
 ```
 
 ### Systems at a glance
 
-- **12 jobs** ($18 → $3,200 per work-hour). Regular shift 08:00–20:00, up to 6 overtime hours at 1.6× pay. Wage income is hard-capped by the clock; business income is not.
+- **12 jobs** ($18 → $3,200 per work-hour). Regular shift 09:00–17:00, up to 6 overtime hours at 1.6× pay, gated by a stamina system. The in-game clock and your current day-phase are pinned to the top of the interface at all times.
 - **36 business formats** from a $120 street stall to a $5 B commercial spaceport, across 6 cities.
 - **243 tradable instruments**: 200 stocks in 54 sectors, 12 commercial districts, 8 commodities, 23 cryptocurrencies — plus 14 non-tradable indices (broad market, 10 regional housing markets, watches, fine art, classic cars).
 - **94 purchasable assets**: 21 cars (a car unlocks the driving jobs), 53 properties across 10 regions with independent live housing indices, yachts, jets, watches, fine art. Prestige from luxury lifts revenue at *every* store, up to +60%.

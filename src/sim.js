@@ -56,16 +56,34 @@ export function nextJob(p) {
   const cur = JOBS.findIndex(j => j.id === p.job_id);
   return JOBS[cur + 1] || null;
 }
-// 加班：一次接单 = 一个工时，按加班费倍率结算。每个游戏日有上限，符合「一天就 24 小时」的常识
-export const OVERTIME_MAX_HOURS = 6;      // 每游戏日最多加班 6 小时
-export const OVERTIME_MULT = 1.6;         // 加班费倍率
-export function hustlePay(p) {
+// 一次加班 = 一个游戏工时：接单后必须等这个工时在游戏里真正过完，才能接下一单
+export function overtimePay(p) {
   const j = jobOf(p);
-  return j ? j.wage * OVERTIME_MULT : 0;
+  return j ? j.wage * OVERTIME_MULT * efficiency(p.stamina) : 0;
 }
-export const HUSTLE_COOLDOWN_MS = 5_000;
-export const WORK_START = 8, WORK_END = 20;   // 正常班：每个游戏日 12 小时
+export const HUSTLE_COOLDOWN_MS = 0;
+// ── 作息与体力 ──────────────────────────────────────────────
+export const WAKE_HOUR = 7, SLEEP_HOUR = 23;      // 07:00 起床，23:00 睡觉
+export const WORK_START = 9, WORK_END = 17;       // 正常班 09:00–17:00，共 8 小时
 export const WORK_HOURS_PER_DAY = WORK_END - WORK_START;
+export const OVERTIME_MAX_HOURS = 6;              // 每游戏日最多加班 6 小时
+export const OVERTIME_MULT = 1.6;                 // 加班费倍率
+export const STAMINA_MAX = 100;
+export const ST_SLEEP = 11, ST_SHIFT = -5, ST_OVERTIME = -9, ST_AWAKE = -1.5;
+export const ST_MIN_FOR_OT = 15;                  // 体力低于此值无法加班
+
+export function dayPhase(hod) {
+  if (hod >= SLEEP_HOUR || hod < WAKE_HOUR) return 'sleep';
+  if (hod < WORK_START) return 'morning';
+  if (hod < WORK_END) return 'shift';
+  return 'evening';
+}
+// 疲劳会直接压低工作效率
+export function efficiency(stamina) {
+  if (stamina >= 60) return 1;
+  if (stamina >= 25) return 0.75 + 0.25 * (stamina - 25) / 35;
+  return 0.40 + 0.35 * Math.max(0, stamina) / 25;
+}
 
 // ── 定价策略 ────────────────────────────────────────────────
 export const PRICE_TIERS = [
@@ -135,10 +153,12 @@ export function ensurePlayer(userId, nickname) {
   const p = db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
   if (p) return p;
   const h = Number(db.prepare("SELECT value FROM meta WHERE key='market_hour'").get()?.value || 0);
-  db.prepare(`INSERT INTO players(user_id,nickname,cash,bank,last_hour,created_hour,peak_networth)
-              VALUES(?,?,?,?,?,?,?)`).run(userId, nickname, START_CASH, 0, h, h, START_CASH);
+  // 上一份工作结清的最后一笔工资：一天的班，刚好够摆个小摊
+  const seed = JOBS[0].wage * WORK_HOURS_PER_DAY;
+  db.prepare(`INSERT INTO players(user_id,nickname,cash,bank,last_hour,created_hour,peak_networth,stamina)
+              VALUES(?,?,?,?,?,?,?,?)`).run(userId, nickname, seed, 0, h, h, seed, STAMINA_MAX);
   db.prepare('INSERT INTO ledger(user_id,hour,kind,amount,detail,icon) VALUES(?,?,?,?,?,?)')
-    .run(userId, h, 'start', 0, L('led.start'), '🧳');
+    .run(userId, h, 'start', seed, L('led.start', { amt: seed }), '🧳');
   return db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
 }
 
@@ -211,11 +231,25 @@ export function advancePlayer(userId) {
   let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0;
 
   for (let h = from + 1; h <= target; h++) {
-    // 打工收入（白手起家的第一桶金）：只在工作时段结算
+    // ── 作息：体力随睡眠恢复、随清醒与工作消耗 ──
     const hod = h % DAY_HOURS;
-    if (working && hod >= WORK_START && hod < WORK_END) {
-      p.cash += job.wage; p.job_exp += 1; p.job_hours += 1; p.job_income += job.wage; dayJob += job.wage;
+    const phase = dayPhase(hod);
+    p.stamina += phase === 'sleep' ? ST_SLEEP : ST_AWAKE;
+
+    // ── 正常班（09:00–17:00，共 8 小时）──
+    if (working && phase === 'shift') {
+      const eff = efficiency(p.stamina);
+      const pay = job.wage * eff;
+      p.cash += pay; p.job_exp += 1; p.job_hours += 1; p.job_income += pay; dayJob += pay;
+      p.stamina += ST_SHIFT;
     }
+    // ── 加班结算：接单时已锁定报酬，这一工时在游戏里真正过完才到账 ──
+    if (p.ot_pending > 0 && h >= p.ot_until) {
+      p.cash += p.ot_pending; p.job_income += p.ot_pending; dayJob += p.ot_pending;
+      p.job_exp += 1; p.job_hours += 1;
+      p.ot_pending = 0;
+    }
+    p.stamina = clamp(p.stamina, 0, STAMINA_MAX);
 
     for (const b of biz) {
       const city = CITY[b.city] || CITIES[1];
@@ -365,10 +399,10 @@ export function advancePlayer(userId) {
   try {
     db.prepare(`UPDATE players SET cash=?,bank=?,credit_score=?,last_hour=?,prestige=?,month_profit=?,
                 total_tax=?,total_dividend=?,missed_pay=?,peak_networth=?,bankrupt=?,
-                job_exp=?,job_hours=?,job_income=? WHERE user_id=?`)
+                job_exp=?,job_hours=?,job_income=?,stamina=?,ot_pending=? WHERE user_id=?`)
       .run(p.cash, p.bank, p.credit_score, p.last_hour, p.prestige, p.month_profit,
            p.total_tax, p.total_dividend, p.missed_pay, p.peak_networth, p.bankrupt,
-           p.job_exp, p.job_hours, p.job_income, userId);
+           p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending, userId);
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);

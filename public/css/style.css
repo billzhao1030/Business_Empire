@@ -117,14 +117,6 @@ button{cursor:pointer;border:none;background:none}
 .nav-item .badge{margin-left:auto;background:var(--panel3);color:var(--dim);font-size:10.5px;padding:1px 7px;border-radius:20px;font-family:var(--mono)}
 .nav-item.small{padding:8px 12px;font-size:12.5px}
 .side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
-.clock-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;text-align:center}
-.clock-date{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.3px}
-.clock-ring{position:relative;width:56px;height:56px;margin:8px auto 6px}
-.clock-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
-.ring-bg{fill:none;stroke:var(--line);stroke-width:2.6}
-.ring-fg{fill:none;stroke:var(--gold);stroke-width:2.6;stroke-linecap:round;stroke-dasharray:97.4;transition:stroke-dashoffset .4s linear}
-.clock-ring span{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:17px;font-weight:700;color:var(--gold)}
-.clock-hint{font-size:10px;color:var(--dim2)}
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
 .topbar{height:62px;flex-shrink:0;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel) 88%,transparent);
   backdrop-filter:blur(12px);display:flex;align-items:center;gap:22px;padding:0 22px}
@@ -388,3 +380,40 @@ button{cursor:pointer;border:none;background:none}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px;margin-top:8px}
 .kv dt{color:var(--dim2);font-weight:600}
 .kv dd{font-family:var(--mono)}
+
+/* ══ 顶部常驻游戏时钟 ══ */
+.tb-clock{display:flex;flex-direction:column;gap:4px;padding:7px 14px;border-radius:12px;
+  background:linear-gradient(135deg,var(--panel2),var(--panel));border:1px solid var(--line);min-width:172px}
+.tc-main{display:flex;align-items:baseline;gap:9px}
+.tc-date{font-size:11.5px;color:var(--dim)}
+.tc-time{font-size:19px;font-weight:800;letter-spacing:-.5px;color:var(--gold);line-height:1}
+.tc-bar{height:3px;background:var(--bg2);border-radius:3px;overflow:hidden}
+.tc-bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--orange));
+  border-radius:3px;transition:width .25s linear}
+.tc-phase{font-size:10.5px;font-weight:700;letter-spacing:.3px;color:var(--dim2);white-space:nowrap}
+.tc-phase.shift{color:var(--blue)} .tc-phase.evening{color:var(--gold)}
+.tc-phase.sleep{color:var(--purple)} .tc-phase.morning{color:var(--cyan)}
+@media(max-width:1100px){.tb-clock{min-width:0;padding:6px 10px}.tc-phase{display:none}}
+
+/* ══ 体力条 ══ */
+.stamina{display:flex;align-items:center;gap:9px}
+.stamina .sbar{flex:1;height:9px;border-radius:6px;background:var(--bg2);border:1px solid var(--line);overflow:hidden}
+.stamina .sbar>i{display:block;height:100%;border-radius:6px;transition:width .4s}
+.st-good{background:linear-gradient(90deg,var(--up),var(--cyan))}
+.st-mid{background:linear-gradient(90deg,var(--gold),var(--orange))}
+.st-low{background:linear-gradient(90deg,var(--down),var(--orange))}
+
+/* ══ 一天的时间轴 ══ */
+.daybar{display:flex;height:22px;border-radius:8px;overflow:hidden;border:1px solid var(--line);font-size:9.5px;font-weight:700}
+.daybar>div{display:flex;align-items:center;justify-content:center;color:var(--dim2);position:relative}
+.daybar .dseg-sleep{background:rgba(167,139,250,.18)}
+.daybar .dseg-shift{background:rgba(86,160,255,.20);color:var(--blue)}
+.daybar .dseg-free{background:rgba(255,196,77,.16);color:var(--gold)}
+.daybar .now{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--txt);box-shadow:0 0 8px var(--txt)}
+
+/* ══ 紧凑筛选下拉 ══ */
+.selbox{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--line);
+  border-radius:10px;padding:5px 10px}
+.selbox select{background:none;border:none;outline:none;font-size:12.5px;font-weight:600;color:var(--txt);
+  max-width:190px;cursor:pointer}
+.selbox select option{background:var(--panel);color:var(--txt)}

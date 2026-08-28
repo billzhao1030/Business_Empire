@@ -38,19 +38,25 @@ export default {
 
     ${showHustle ? `<div class="grid" style="grid-template-columns:1fr 1.6fr;margin-bottom:16px">
       <div class="hustle-card">
-        <div style="display:flex;align-items:center;gap:11px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:10px">
           <div class="ico" style="font-size:20px">${s.job.current ? s.job.current.emoji : '🧳'}</div>
           <div><div class="dim2" style="font-size:10.5px;font-weight:700">${t('career.current')}</div>
             <div style="font-weight:800;font-size:15px">${s.job.current ? esc(nm({ zh: s.job.current.zh, en: s.job.current.en })) : t('career.resting')}</div></div>
           <div style="margin-left:auto;text-align:right"><b class="mono gold" style="font-size:15px">${money(s.job.current ? s.job.current.wage : 0)}</b>
-            <div class="dim2" style="font-size:10px">${t('common.perHour')} · ${s.job.onShift ? t('career.onShift') : t('career.offShift')}</div></div>
+            <div class="tc-phase ${s.job.phase}" style="font-size:10px">${t('phase.' + s.job.phase)}</div></div>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-          <span class="dim2">${t('career.otToday')}</span>
-          <b class="mono ${s.job.otUsed < s.job.otMax ? 'gold' : 'dim2'}">${s.job.otUsed} / ${s.job.otMax}</b></div>
-        <div class="bar thin" style="margin-bottom:10px"><i style="width:${s.job.otUsed / s.job.otMax * 100}%;background:var(--gold)"></i></div>
-        <button class="hustle-btn" id="d-hustle" ${s.job.otUsed >= s.job.otMax ? 'disabled' : ''}>
-          <span id="d-hb-label">${s.job.otUsed < s.job.otMax ? `💪 ${t('career.hustleBtn')} · +${money(s.job.hustlePay)}` : `😴 ${t('career.otFull')}`}</span>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="dim2" style="font-size:10.5px;font-weight:700">${t('career.stamina')}</span>
+          <div class="bar thin" style="flex:1"><i style="width:${s.job.stamina}%;background:${s.job.stamina >= 60 ? 'var(--up)' : s.job.stamina >= 25 ? 'var(--gold)' : 'var(--down)'}"></i></div>
+          <b class="mono" style="font-size:11px">${Math.round(s.job.stamina)}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:9px">
+          <span class="dim2">${t('career.otToday')} <b class="mono">${s.job.otUsed}/${s.job.otMax}</b></span>
+          <span class="dim2">${t('career.efficiency')} <b class="mono">${pctPlain(s.job.efficiency, 0)}</b></span>
+        </div>
+        <button class="hustle-btn" id="d-hustle" ${s.job.canOvertime ? '' : 'disabled'}>
+          <span id="d-hb-label">${s.job.canOvertime ? `💪 ${t('career.otStart')} · +${money(s.job.otPay)}`
+            : s.job.otBusy ? `⏳ ${t('career.otWorking')}` : `🚫 ${t('career.otBlock.' + s.job.otBlock)}`}</span>
           <span class="cd" id="d-hb-cd" style="width:0%"></span></button>
         <div class="dim2" style="font-size:11px;margin-top:9px;line-height:1.6">${t('career.startHint')}</div>
       </div>
@@ -148,44 +154,18 @@ export default {
     $('#go-ledger').onclick = () => app.go('ledger');
     $('#d-go-career') && ($('#d-go-career').onclick = () => app.go('career'));
     const hb = $('#d-hustle');
-    if (hb) {
-      let cooling = false;
-      const fire = async () => {
-        if (cooling) return;
-        hb.disabled = true; cooling = true;
-        try {
-          const r = await api.hustle();
-          app.state.job.otUsed = r.otUsed;
-          const pop = document.createElement('div');
-          pop.className = 'coin-pop'; pop.textContent = '+' + money(r.pay);
-          pop.style.left = '50%'; pop.style.top = '40%';
-          hb.parentElement.appendChild(pop);
-          setTimeout(() => pop.remove(), 900);
-          hb.classList.add('pulse'); setTimeout(() => hb.classList.remove('pulse'), 340);
-          app.state.player.cash = r.cash;
-          const c = document.getElementById('d-cash'); if (c) c.textContent = money(r.cash);
-          const tb = document.getElementById('tb-cash'); if (tb) tb.textContent = money(r.cash);
-          let left = app.state.job.cooldownMs;
-          const cd = $('#d-hb-cd'), lb = $('#d-hb-label');
-          const iv = setInterval(() => {
-            left -= 100;
-            if (left <= 0) { clearInterval(iv); cooling = false; cd.style.width = '0%';
-              const jj = app.state.job;
-              if (jj.otUsed >= jj.otMax) { hb.disabled = true; lb.innerHTML = `😴 ${t('career.otFull')}`; }
-              else { hb.disabled = false; lb.innerHTML = `💪 ${t('career.hustleBtn')} · +${money(jj.hustlePay)}`; }
-              return; }
-            cd.style.width = (left / app.state.job.cooldownMs * 100) + '%';
-            lb.textContent = `${t('career.cooling')} ${(left / 1000).toFixed(1)}s`;
-          }, 100);
-        } catch (e) { toast(e.message, 'err'); hb.disabled = false; cooling = false; }
-      };
-      hb.onclick = fire;
-    }
-
-    chart = new PriceChart($('#nw-chart'), { height: 230 });
-    chart.setData((s.nwHistory || []).map(p => ({ hour: p.hour, price: p.value })));
-    donut($('#nw-donut'), segs, 132);
-    this.loadSparks();
+    if (hb) hb.onclick = async () => {
+      hb.disabled = true;
+      try {
+        const r = await api.hustle();
+        const pop = document.createElement('div');
+        pop.className = 'coin-pop'; pop.textContent = '⏳ ' + money(r.pay);
+        pop.style.left = '50%'; pop.style.top = '40%';
+        hb.parentElement.appendChild(pop);
+        setTimeout(() => pop.remove(), 900);
+        await app.refresh(true);
+      } catch (e) { toast(e.message.split(' / ')[0], 'err'); hb.disabled = false; }
+    };
   },
 
   async loadSparks() {

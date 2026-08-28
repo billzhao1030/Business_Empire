@@ -118,16 +118,19 @@ export default {
 
   paint(root, app) {
     if (kind === 'overview') return this.paintOverview(root, app);
-    const sectors = [...new Set(assets.filter(a => kind === 'index' || a.kind === kind).map(a => a.sector))];
+    const sectors = [...new Set(assets.filter(a => kind === 'index' || a.kind === kind).map(a => a.sector))]
+      .sort((x, y) => this.secName(x, app).localeCompare(this.secName(y, app)));
     root.innerHTML = `
     <div class="card" style="margin-bottom:14px">
       <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:13px 18px">
         ${this.kindBar()}
         <div class="searchbox"><span class="dim2">🔍</span><input id="mk-search" placeholder="${t('mkt.searchPh')}" value="${esc(search)}"></div>
-        <div class="chips" style="flex:1">
-          <button class="chip ${!sectorF ? 'active' : ''}" data-sec="">${t('mkt.all')}</button>
-          ${sectors.map(s => `<button class="chip ${sectorF === s ? 'active' : ''}" data-sec="${esc(s)}">${esc(this.secName(s, app))}</button>`).join('')}
-        </div>
+        <div class="selbox"><span class="dim2" style="font-size:11px">${t('common.sector')}</span>
+          <select id="mk-sector">
+            <option value="">${t('mkt.all')} (${assets.filter(a => kind === 'index' ? a.kind === 'index' : a.kind === kind).length})</option>
+            ${sectors.map(x => `<option value="${esc(x)}" ${sectorF === x ? 'selected' : ''}>${esc(this.secName(x, app))} (${assets.filter(a => a.sector === x).length})</option>`).join('')}
+          </select></div>
+        <div style="margin-left:auto" class="dim2" id="mk-count"></div>
       </div>
     </div>
     <div class="card">
@@ -150,7 +153,8 @@ export default {
       sortKey = kind === 'index' ? 'symbol' : 'marketCap';
       await this.load(app); this.paint(root, app);
     });
-    $$('[data-sec]').forEach(b => b.onclick = () => { sectorF = b.dataset.sec; this.rows(app); $$('[data-sec]').forEach(x => x.classList.toggle('active', x === b)); });
+    const sel = $('#mk-sector');
+    if (sel) sel.onchange = () => { sectorF = sel.value; this.rows(app); };
     $('#mk-search').oninput = e => { search = e.target.value; this.rows(app); };
     $$('#mk-table th.sortable').forEach(th => th.onclick = () => {
       const k = th.dataset.s;
@@ -203,6 +207,8 @@ export default {
         : `<td class="r mono ${cls(a.change)}">${pct(a.change)}</td>`}
       </tr>`;
     }).join('');
+    const cnt = $('#mk-count');
+    if (cnt) cnt.textContent = `${l.length} / ${assets.filter(a => kind === 'index' ? a.kind === 'index' : a.kind === kind).length}`;
     lastPrices = Object.fromEntries(assets.map(a => [a.symbol, a.price]));
     $$('#mk-body canvas[data-sp]').forEach(c => { const d = sparks[c.dataset.sp]; if (d) sparkline(c, d); });
     $$('#mk-body tr').forEach(tr => tr.onclick = () => this.openDetail(tr.dataset.sym, app));

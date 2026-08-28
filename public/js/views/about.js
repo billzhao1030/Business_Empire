@@ -31,7 +31,8 @@ export default {
           `<b>${mins} real minutes</b> = <b>1 in-game hour</b>. One game day is ${mins * 24} minutes; one game month is ${(mins * 720 / 60).toFixed(0)} real hours; one game year is ${(mins * 8640 / 1440).toFixed(1)} days.<br><b>Everything accrues offline</b> — stores trade, interest compounds, loans are debited and prices move. It is all settled when you come back.`)}</p>`)}
 
         ${S('🧭', L('白手起家的路线', 'The path from zero'), `<ol style="padding-left:20px;color:var(--dim);line-height:2;font-size:13px">
-          <li>${L('去<b>生涯</b>页点「接一单加班」——每单 = 干 1 个工时、按 1.6 倍加班费结算，每个游戏日最多 6 小时', 'On the <b>Career</b> page, work overtime — each click is one extra hour at 1.6× pay, capped at 6 hours per in-game day')}</li>
+          <li>${L('开局有 $144（上一份工作的最后一笔工资），够直接摆个 <b>$120 街头小摊</b>', 'You start with $144 — the final paycheck from your last job — enough for a <b>$120 street stall</b>')}</li>
+          <li>${L('下班后（17:00 之后）去<b>生涯</b>页接加班：每单实打实占用 <b>1 个游戏工时</b>，干完才到账', 'After 17:00, take overtime on the <b>Career</b> page: each one genuinely occupies <b>one in-game work hour</b> and pays out when it finishes')}</li>
           <li>${L('$120 开一个<b>街头小摊</b>，它会 24 小时不停地替你赚钱', 'Open a <b>Street Stall</b> for $120 — it earns around the clock')}</li>
           <li>${L('攒到 $900 买一辆<b>二手电动车</b>，解锁网约车司机，时薪从 $18 跳到 $130', 'Buy a <b>$900 e-scooter</b> to unlock Rideshare Driver — wages jump from $18 to $130/hr')}</li>
           <li>${L('用店铺利润滚出更多店铺，同时开始<b>炒股</b>和买<b>商圈份额</b>', 'Compound store profits into more stores, then start <b>trading</b> and buying <b>district units</b>')}</li>
@@ -76,8 +77,8 @@ export default {
           <li><b>${L('翻新', 'Refurbishment')}</b> — ${L('店铺状况随时间衰减，状况差会同时压低营收、抬高成本', 'condition decays over time; a run-down store earns less and costs more')}</li>
         </ul>
         <p style="margin-top:8px">${L(
-          '至于打工：正常班每个游戏日 8:00–20:00 共 12 小时自动结算，另外最多可以加班 6 小时（1.6 倍工资）。一天就 24 小时，剩下的时间留给睡觉——所以打工收入是有硬上限的，真正能无限放大的是生意。',
-          'On employment: the regular shift runs 08:00–20:00 (12 hours, paid automatically), plus up to 6 overtime hours at 1.6× pay. A day is still 24 hours and you do need to sleep — wage income is hard-capped, while businesses scale without limit.')}</p>
+          '至于打工：一天被切成三段——<b>23:00–07:00 睡觉</b>（恢复体力）、<b>09:00–17:00 正常班</b>（8 小时自动结算）、其余时间可以加班。每接一单加班就真的占用 1 个游戏工时，这一小时过完钱才到账，期间不能再接第二单。加班还会掉<b>体力</b>，体力低了工作效率直接下降，低于 15 就干不动了。每天加 4 小时以内可持续，加满 6 小时会把自己熬垮。所以打工收入被时间和身体双重封顶，真正能无限放大的是生意。',
+          'On employment: the day splits three ways — <b>23:00–07:00 sleep</b> (restores stamina), <b>09:00–17:00 regular shift</b> (8 hours, paid automatically), and the rest is available for overtime. Each overtime shift genuinely occupies one in-game work hour: the money lands when the hour is done, and you cannot start another until then. Overtime also burns <b>stamina</b>, which directly cuts your output when it runs low and blocks overtime entirely below 15. Up to 4 hours a day is sustainable; maxing 6 burns you out. Wage income is capped by both the clock and your body — businesses are the only thing that scales.')}</p>
         <p style="margin-top:8px">${L('另外，店铺所在城市的<b>商圈繁荣度</b>会直接乘在营收上——去「行情 → 商圈」可以投资它。', 'On top of that, the <b>district prosperity</b> of the host city multiplies store revenue directly — you can invest in it under Markets → Districts.')}</p>`)}
 
         ${S('🏦', L('银行、信用与房贷', 'Bank, credit & mortgages'), `<p>${L(

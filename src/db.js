@@ -216,6 +216,9 @@ addColumn('players','last_seen_hour', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','last_seen_nw',   'REAL    NOT NULL DEFAULT 0');
 addColumn('players','ot_hours',       'REAL    NOT NULL DEFAULT 0');
 addColumn('players','ot_day',         'INTEGER NOT NULL DEFAULT -1');
+addColumn('players','stamina',        'REAL    NOT NULL DEFAULT 100');
+addColumn('players','ot_until',       'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','ot_pending',     'REAL    NOT NULL DEFAULT 0');
 
 export function getMeta(key, def = null) {
   const row = db.prepare('SELECT value FROM meta WHERE key=?').get(key);

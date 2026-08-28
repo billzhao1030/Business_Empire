@@ -100,12 +100,17 @@ export const app = {
 
   paintClock() {
     const { hour, frac } = this.liveHour();
-    const d = gDate(hour);
-    $('#side-date').textContent = d.slice(0, 10);
-    $('#side-hour').textContent = String(hour % 24).padStart(2, '0');
-    $('#ring').style.strokeDashoffset = String(97.4 * (1 - frac));
-    const hint = $('.clock-hint');
-    if (hint) hint.textContent = lang === 'zh' ? '1 分钟 = 1 小时' : '1 min = 1 hour';
+    const d = gDate(hour), hod = hour % 24;
+    const dt = $('#tc-date'), tm = $('#tc-time'), pr = $('#tc-prog'), ph = $('#tc-phase');
+    if (!dt) return;
+    dt.textContent = d.slice(0, 10);
+    tm.textContent = String(hod).padStart(2, '0') + ':' + String(Math.floor(frac * 60)).padStart(2, '0');
+    pr.style.width = (frac * 100) + '%';
+    const j = this.state?.job;
+    const phase = hod >= (j?.sleepHour ?? 23) || hod < (j?.wakeHour ?? 7) ? 'sleep'
+      : hod < (j?.workStart ?? 9) ? 'morning' : hod < (j?.workEnd ?? 17) ? 'shift' : 'evening';
+    ph.className = 'tc-phase ' + phase;
+    ph.textContent = t('phase.' + phase);
   },
 
   async refresh(full = false) {

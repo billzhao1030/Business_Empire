@@ -1,17 +1,37 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, durText } from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast } from '../util.js';
 
-let cooldownTimer = null;
+let timer = null;
+
+const stClass = s => s >= 60 ? 'st-good' : s >= 25 ? 'st-mid' : 'st-low';
+
+function dayBar(j) {
+  // 24 小时作息条
+  const segs = [];
+  for (let h = 0; h < 24; h++) {
+    const kind = (h >= j.sleepHour || h < j.wakeHour) ? 'sleep'
+      : (h >= j.workStart && h < j.workEnd) ? 'shift' : 'free';
+    if (segs.length && segs[segs.length - 1].kind === kind) segs[segs.length - 1].n++;
+    else segs.push({ kind, n: 1, from: h });
+  }
+  const label = { sleep: lang === 'zh' ? '睡眠' : 'Sleep', shift: lang === 'zh' ? '正常班' : 'Shift', free: lang === 'zh' ? '可加班' : 'Overtime' };
+  return `<div class="daybar" style="position:relative">
+    ${segs.map(sg => `<div class="dseg-${sg.kind}" style="flex:${sg.n}">${sg.n >= 4 ? label[sg.kind] : ''}</div>`).join('')}
+    <div class="now" style="left:${(j.hod / 24) * 100}%"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--dim2);margin-top:3px">
+    <span>00:00</span><span>${String(j.workStart).padStart(2, '0')}:00</span>
+    <span>${String(j.workEnd).padStart(2, '0')}:00</span><span>${String(j.sleepHour).padStart(2, '0')}:00</span><span>24:00</span></div>`;
+}
 
 export default {
   render(root, app) {
-    const s = app.state, j = s.job;
-    const cur = j.current;
-    const otLeft = j.otMax - j.otUsed;
-    const next = s.job.list.find(x => !x.unlocked);
-    const expToNext = next ? next.exp - j.exp : 0;
+    clearInterval(timer);
+    const s = app.state, j = s.job, cur = j.current;
+    const next = j.list.find(x => !x.unlocked);
     const prog = next ? Math.min(1, j.exp / next.exp) : 1;
+    const minutesPerHour = s.now.realMsPerHour / 60000;
 
     root.innerHTML = `
     <div class="grid" style="grid-template-columns:1.15fr 1fr;margin-bottom:16px">
@@ -22,27 +42,32 @@ export default {
             <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.5px">${t('career.current')}</div>
             <div style="font-size:19px;font-weight:800">${cur ? esc(nm({ zh: cur.zh, en: cur.en })) : t('career.resting')}</div>
             ${cur ? `<div class="dim" style="font-size:12px;margin-top:2px">${t('career.wage')} <b class="gold mono">${money(cur.wage)}</b>${t('common.perHour')}
-              · ${t('career.dailyWage')} <b class="mono">${money(j.dailyWage)}</b>
-              <span class="tag ${j.onShift ? 'g' : ''}">${j.onShift ? t('career.onShift') : t('career.offShift')}</span></div>` : ''}
+              · ${t('career.sustainable')} <b class="mono">${money(j.sustainableWage)}</b></div>` : ''}
           </div>
+          <div class="tc-phase ${j.phase}" style="font-size:12px;font-weight:700">${t('phase.' + j.phase)}</div>
         </div>
-        ${!j.working && cur ? `<div class="summary" style="border-color:var(--down);color:var(--down);margin-bottom:12px;font-size:12px">${t('career.needCar')} — ${t('career.carHint')}</div>` : ''}
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px">
-          <span class="dim">${t('career.otToday')}</span>
-          <b class="mono ${otLeft > 0 ? 'gold' : 'dim2'}">${j.otUsed} / ${j.otMax} ${t('common.hour')}</b></div>
-        <div class="bar" style="margin-bottom:11px"><i style="width:${j.otUsed / j.otMax * 100}%;background:linear-gradient(90deg,var(--gold),var(--orange))"></i></div>
-        <button class="hustle-btn" id="hustle-btn" ${cur && otLeft > 0 ? '' : 'disabled'}>
-          <span id="hb-label">${otLeft > 0 ? `💪 ${t('career.hustleBtn')} · +${money(j.hustlePay)}` : `😴 ${t('career.otFull')} · ${t('career.nextDay')} ${j.nextDayInHours}h`}</span>
-          <span class="cd" id="hb-cd" style="width:0%"></span>
+
+        <div style="margin-bottom:12px">${dayBar(j)}</div>
+
+        <div class="stamina" style="margin-bottom:6px">
+          <span class="dim2" style="font-size:11px;font-weight:700;width:44px">${t('career.stamina')}</span>
+          <div class="sbar"><i class="${stClass(j.stamina)}" style="width:${j.stamina}%"></i></div>
+          <b class="mono" style="font-size:12px;width:38px;text-align:right">${Math.round(j.stamina)}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:12px">
+          <span class="dim2">${t('career.efficiency')} <b class="${j.efficiency >= 0.95 ? 'up' : j.efficiency >= 0.75 ? 'gold' : 'down'}">${pctPlain(j.efficiency, 0)}</b></span>
+          <span class="dim2">${t('career.otToday')} <b class="mono">${j.otUsed} / ${j.otMax}</b></span>
+        </div>
+
+        <button class="hustle-btn" id="ot-btn" ${j.canOvertime ? '' : 'disabled'}>
+          <span id="ot-label">${j.canOvertime ? `💪 ${t('career.otStart')} · +${money(j.otPay)}`
+            : j.otBusy ? `⏳ ${t('career.otWorking')}` : `🚫 ${t('career.otBlock.' + j.otBlock)}`}</span>
+          <span class="cd" id="ot-cd" style="width:0%"></span>
         </button>
+
         <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:11px">${t('career.hint', { m: j.otMult, n: j.otMax })}</div>
-        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:6px">🕘 ${t('career.shiftHint', { a: j.workStart, b: j.workEnd, h: j.workHours })}</div>
-        <div class="mini-grid" style="margin-top:14px">
-          <div class="mini"><label>${t('career.exp')}</label><b>${int(j.exp)}</b></div>
-          <div class="mini"><label>${t('career.hours')}</label><b>${int(j.hours)}</b></div>
-          <div class="mini"><label>${t('career.otPay')}</label><b class="gold">${money(j.hustlePay)}</b></div>
-          <div class="mini"><label>${t('career.income')}</label><b class="gold">${money(j.income)}</b></div>
-        </div>
+        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:5px">🕘 ${t('career.scheduleHint', { a: j.workStart, b: j.workEnd, h: j.workHours, m: minutesPerHour })}</div>
+        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:5px">🔋 ${t('career.staminaHint', { s: j.sleepHour, w: j.wakeHour, min: 15 })}</div>
       </div>
 
       <div class="card"><div class="card-b">
@@ -50,13 +75,16 @@ export default {
           <span class="dim">${t('career.expToNext')}${next ? ` · ${esc(nm({ zh: next.zh, en: next.en }))}` : ''}</span>
           <b class="mono">${next ? `${int(j.exp)} / ${int(next.exp)}` : 'MAX'}</b></div>
         <div class="bar"><i style="width:${prog * 100}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></i></div>
-        ${s.netWorth.total < 3000 ? `<div class="summary" style="margin-top:14px;font-size:12.5px;line-height:1.7">${t('career.startHint')}</div>` : ''}
         <div class="mini-grid" style="margin-top:14px">
+          <div class="mini"><label>${t('career.exp')}</label><b>${int(j.exp)}</b></div>
+          <div class="mini"><label>${t('career.hours')}</label><b>${int(j.hours)}</b></div>
+          <div class="mini"><label>${t('career.income')}</label><b class="gold">${money(j.income)}</b></div>
           <div class="mini"><label>${t('common.cash')}</label><b class="${s.player.cash < 0 ? 'down' : ''}">${money(s.player.cash)}</b></div>
           <div class="mini"><label>${t('common.netWorth')}</label><b>${money(s.netWorth.total)}</b></div>
           <div class="mini"><label>${t('rich.rank')}</label><b id="cr-rank">—</b></div>
         </div>
-        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:12px">${t('career.carHint')}</div>
+        <div class="summary" style="margin-top:14px;font-size:12px;line-height:1.7">${t('career.sustainHint', { n: j.otMax })}</div>
+        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:10px">${t('career.carHint')}</div>
       </div></div>
     </div>
 
@@ -78,35 +106,29 @@ export default {
                 : x.blocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needCar')}</div>` : ''}
             </div>
             <div class="jw"><b class="mono gold" style="font-size:14px">${money(x.wage)}</b>
-              <div class="dim2" style="font-size:10px">${t('common.perHour')} · ${money(x.wage * (j.workHours + j.otMax * j.otMult))}/${t('common.day')}</div></div>
+              <div class="dim2" style="font-size:10px">${t('common.perHour')} · ${money(x.wage * j.workHours)}/${t('common.day')}</div></div>
           </button>`;
         }).join('')}
         </div>
       </div>
     </div>`;
 
-    const btn = $('#hustle-btn');
-    if (btn) {
-      btn.onclick = async () => {
-        btn.disabled = true;
-        try {
-          const r = await api.hustle();
-          app.state.job.otUsed = r.otUsed;
-          const pop = document.createElement('div');
-          pop.className = 'coin-pop';
-          pop.textContent = '+' + money(r.pay);
-          pop.style.left = '50%'; pop.style.top = '50%';
-          btn.parentElement.appendChild(pop);
-          setTimeout(() => pop.remove(), 900);
-          btn.classList.add('pulse');
-          setTimeout(() => btn.classList.remove('pulse'), 340);
-          app.state.player.cash = r.cash;
-          $('#tb-cash').textContent = money(r.cash);
-          this.startCooldown(app.state.job.cooldownMs, app);
-        } catch (e) { toast(e.message, 'err'); btn.disabled = false; }
-      };
-      if (!j.hustleReady) this.startCooldown(j.hustleWaitMs, app);
-    }
+    const btn = $('#ot-btn');
+    if (btn) btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        const r = await api.hustle();
+        const pop = document.createElement('div');
+        pop.className = 'coin-pop';
+        pop.textContent = '⏳ ' + money(r.pay);
+        pop.style.left = '50%'; pop.style.top = '50%';
+        btn.parentElement.appendChild(pop);
+        setTimeout(() => pop.remove(), 900);
+        await app.refresh(true);
+      } catch (e) { toast(e.message.split(' / ')[0], 'err'); btn.disabled = false; }
+    };
+    if (j.otBusy) this.countdown(app, j.otRemainMs);
+
     $('#quit-job') && ($('#quit-job').onclick = () => app.act(() => api.takeJob(''), t('toast.success')).catch(() => {}));
     $$('[data-job]').forEach(b => b.onclick = () => app.act(() => api.takeJob(b.dataset.job), t('toast.success')).catch(() => {}));
     api.richlist().then(r => {
@@ -115,41 +137,34 @@ export default {
     }).catch(() => {});
   },
 
-  startCooldown(ms, app) {
-    clearInterval(cooldownTimer);
-    const btn = $('#hustle-btn'), cd = $('#hb-cd'), label = $('#hb-label');
-    if (!btn) return;
-    const total = app.state.job.cooldownMs;
+  countdown(app, ms) {
+    clearInterval(timer);
+    const total = app.state.now.realMsPerHour;
     let left = ms;
-    btn.disabled = true;
-    const tick = () => {
-      left -= 100;
-      if (left <= 0) {
-        clearInterval(cooldownTimer);
-        btn.disabled = false;
-        if (cd) cd.style.width = '0%';
-        const jj = app.state.job;
-        if (jj.otUsed >= jj.otMax) { btn.disabled = true; if (label) label.innerHTML = `😴 ${t('career.otFull')}`; return; }
-        if (label) label.innerHTML = `💪 ${t('career.hustleBtn')} · +${money(jj.hustlePay)}`;
-        return;
-      }
-      if (cd) cd.style.width = (left / total * 100) + '%';
-      if (label) label.textContent = `${t('career.cooling')} ${(left / 1000).toFixed(1)}s`;
-    };
-    tick();
-    cooldownTimer = setInterval(tick, 100);
+    timer = setInterval(() => {
+      left -= 200;
+      const btn = $('#ot-btn'), cd = $('#ot-cd'), lb = $('#ot-label');
+      if (!btn) return clearInterval(timer);
+      if (left <= 0) { clearInterval(timer); app.refresh(true); return; }
+      cd.style.width = (left / total * 100) + '%';
+      const m = Math.floor(left / 60000), sec = Math.floor((left % 60000) / 1000);
+      lb.textContent = `⏳ ${t('career.otWorking')} · ${t('career.otDone')} ${m}:${String(sec).padStart(2, '0')}`;
+    }, 200);
   },
 
   patch(app) {
-    const el = $('#cr-rank');
-    if (!el) return;
+    if (!$('#ot-btn')) return;
     const j = app.state.job;
-    const lbl = $('#hb-label'), btn = $('#hustle-btn');
-    if (btn && !btn.disabled && lbl) lbl.innerHTML = `💪 ${t('career.hustleBtn')} · +${money(j.hustlePay)}`;
-    const mini = $$('.mini b');
-    if (mini[0]) mini[0].textContent = int(j.exp);
-    if (mini[1]) mini[1].textContent = int(j.hours);
-    if (mini[2]) mini[2].textContent = int(j.hustles);
-    if (mini[3]) mini[3].textContent = money(j.income);
+    const el = $('.stamina .sbar > i');
+    if (el) { el.style.width = j.stamina + '%'; el.className = stClass(j.stamina); }
+    const num = $('.stamina b');
+    if (num) num.textContent = Math.round(j.stamina);
+    const btn = $('#ot-btn'), lb = $('#ot-label');
+    if (btn && !j.otBusy) {
+      btn.disabled = !j.canOvertime;
+      lb.innerHTML = j.canOvertime ? `💪 ${t('career.otStart')} · +${money(j.otPay)}`
+        : `🚫 ${t('career.otBlock.' + j.otBlock)}`;
+      const cd = $('#ot-cd'); if (cd) cd.style.width = '0%';
+    }
   },
 };

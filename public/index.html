@@ -54,11 +54,6 @@
       <button class="nav-item" data-view="about"><span class="ni">📖</span><span class="nt">关于</span></button>
     </nav>
     <div class="side-foot">
-      <div class="clock-card">
-        <div class="clock-date" id="side-date">----</div>
-        <div class="clock-ring"><svg viewBox="0 0 36 36"><circle class="ring-bg" cx="18" cy="18" r="15.5"></circle><circle class="ring-fg" id="ring" cx="18" cy="18" r="15.5"></circle></svg><span id="side-hour">00</span></div>
-        <div class="clock-hint">1 分钟 = 1 小时</div>
-      </div>
       <button class="nav-item small" id="btn-logout"><span class="ni">🚪</span><span class="nt">退出</span></button>
     </div>
   </aside>
@@ -68,6 +63,14 @@
       <div class="tb-left">
         <div class="tb-title" id="view-title">总览</div>
         <div class="tb-crumb" id="view-sub"></div>
+      </div>
+      <div class="tb-clock" id="tb-clock">
+        <div class="tc-main">
+          <span class="tc-date mono" id="tc-date">-------</span>
+          <span class="tc-time mono" id="tc-time">--:--</span>
+        </div>
+        <div class="tc-bar"><i id="tc-prog"></i></div>
+        <div class="tc-phase" id="tc-phase">—</div>
       </div>
       <div class="tb-stats">
         <div class="tbs"><label>净资产</label><b id="tb-nw" class="mono">--</b></div>
