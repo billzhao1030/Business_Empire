@@ -46,13 +46,15 @@ export default {
         <div class="ico lg">${b.emoji}</div>
         <div style="min-width:0;flex:1">
           <div class="biz-name">${esc(b.name)} <span class="tag">Lv.${b.level}</span>${b.marketing ? ` <span class="tag b">📣${b.marketing}</span>` : ''}</div>
-          <div class="biz-meta">${esc(nm(b.type))} · ${esc(nm(b.city))} · ${t('biz.lifetime')} <b class="${cls(b.lifetime)}">${money(b.lifetime)}</b></div>
+          <div class="biz-meta">${esc(nm(b.type))} · ${esc(nm(b.city))} ·
+            <span class="tag ${b.openNow ? 'g' : ''}">${b.allDay ? '🌃 24h' : `${String(b.hours[0]).padStart(2, '0')}:00–${String(b.hours[1]).padStart(2, '0')}:00`}
+              ${b.openNow ? t('biz.openNow') : t('biz.closedNow')}</span></div>
         </div>
         <div class="biz-pl"><div class="n ${cls(b.netPerHour)}">${money(b.netPerHour)}</div><div class="l">${t('biz.net')}</div></div>
       </div>
       <div class="biz-body">
         <div class="biz-stats" style="grid-template-columns:repeat(5,1fr)">
-          <div class="bs"><label>${t('biz.revenue')}</label><b class="up">${money(b.revPerHour)}</b></div>
+          <div class="bs"><label>${t('biz.dailyNet')}</label><b class="${cls(b.dailyNet)}">${money(b.dailyNet)}</b></div>
           <div class="bs"><label>${t('biz.opcost')}</label><b class="down">${money(b.costPerHour)}</b></div>
           <div class="bs"><label>${t('biz.staff')}</label><b>${b.staff}<span class="dim2" style="font-size:10px"> / ${b.recStaff}</span></b></div>
           <div class="bs"><label>${t('biz.demand')}</label><b>${b.demand.toFixed(2)}<span class="dim2" style="font-size:10px"> → ${b.demandTarget.toFixed(2)}</span></b></div>
@@ -75,6 +77,7 @@ export default {
               data-act="price" data-arg="${x.v}" title="${esc(nm({ zh: x.descZh, en: x.descEn }))}">${x.v < 0 ? '↓'.repeat(-x.v) : x.v > 0 ? '↑'.repeat(x.v) : '='}</button>`).join('')}
           </div>
           <div class="dim2" style="font-size:10.5px;margin-top:5px;line-height:1.5">${esc(nm({ zh: tier.descZh, en: tier.descEn }))}</div>
+          <div class="dim2" style="font-size:10.5px;margin-top:6px">🕐 ${t('biz.hours')} <b>${b.openHrs}h</b> · ${t('biz.revenue')} ${money(b.revPerHour)}${t('common.perHour')} · ${t('biz.opcost')} ${money(b.idleCost)}${t('common.perHour')}（${lang === 'zh' ? '关门也要付' : 'even when closed'}）</div>
         </div>
 
         <div style="display:flex;gap:8px;align-items:center;margin-top:11px;flex-wrap:wrap">
@@ -92,6 +95,8 @@ export default {
         <button class="btn btn-sm" data-act="marketing" ${b.marketingCost == null ? 'disabled' : ''}>📣 ${t('biz.doMarketing')} ${b.marketingCost != null ? money(b.marketingCost) : 'MAX'}</button>
         <button class="btn btn-sm" data-act="repair" ${b.repairCost <= 0 ? 'disabled' : ''}>🧹 ${t('biz.repair')} ${money(b.repairCost)}</button>
         <button class="btn btn-sm btn-ghost" data-act="rename">✏️</button>
+        ${b.allDayCost ? `<button class="btn btn-sm" data-act="allday">🌃 ${t('biz.goAllDay')} ${money(b.allDayCost)}
+          <span style="opacity:.7;font-weight:400">+${money(b.allDayGain)}/${t('common.day')}</span></button>` : ''}
         <button class="btn btn-sm btn-danger" data-act="sell" style="margin-left:auto">${t('biz.sellBiz')} ${money(b.sellValue)}</button>
       </div>
     </div>`;
@@ -144,7 +149,7 @@ export default {
           const afford = s.player.cash >= c;
           return `<button class="opt ${x.id === pickType ? 'active' : ''}" data-type="${x.id}" ${afford ? '' : 'style="opacity:.45"'}>
             <div class="t">${x.emoji} ${esc(nm({ zh: x.name, en: x.en }))}</div>
-            <div class="s">${money(c)} · ${t('biz.net')} ${money((x.rev - x.opc) * city.revMult)}${t('common.perHour')}</div></button>`;
+            <div class="s">${money(c)} · ${x.hours[0]}:00–${x.hours[1]}:00 (${x.openHours}h)</div></button>`;
         }).join('')}
       </div>
       <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;margin-bottom:7px">${t('biz.chooseCity')}</div>
@@ -156,11 +161,12 @@ export default {
       <label class="field"><span>${t('biz.nameIt')}</span><input id="nb-name" placeholder="${esc(nm({ zh: city.name + def.name, en: def.en + ' · ' + city.en }))}" maxlength="24"></label>
       <div class="summary">
         <div><span>${t('biz.costLabel')}</span><span class="mono">${moneyFull(cost)}</span></div>
+        <div><span>${t('biz.hours')}</span><span class="mono">${def.hours[0]}:00–${def.hours[1]}:00 · ${def.openHours}h</span></div>
         <div><span>${t('biz.revenue')}</span><span class="mono up">${money(rev)}${t('common.perHour')}</span></div>
-        <div><span>${t('biz.opcost')}</span><span class="mono down">${money(opc)}${t('common.perHour')}</span></div>
-        <div><span>${t('biz.payback')}</span><span class="mono">${durText(cost / Math.max(1, net))}</span></div>
-        <div class="tot"><span>${t('biz.net')}</span><span class="mono ${cls(net)}">${money(net)}${t('common.perHour')}</span></div>
+        <div><span>${t('biz.payback')}</span><span class="mono">${durText(def.pay)}</span></div>
+        <div class="tot"><span>${t('biz.dailyNet')}</span><span class="mono up">${money(cost / def.pay * 24)}</span></div>
       </div>
+      <p class="dim2" style="font-size:11px;margin-top:8px;line-height:1.6">🕐 ${t('biz.hoursHint')}</p>
       <p class="dim2" style="font-size:11.5px;margin-top:10px;line-height:1.6">${esc(nm({ zh: def.desc, en: def.descEn }))}</p>`;
       box.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { pickType = b.dataset.type; render(el); });
       box.querySelectorAll('[data-city]').forEach(b => b.onclick = () => { pickCity = b.dataset.city; render(el); });

@@ -3,49 +3,60 @@
 // ── 实业 ────────────────────────────────────────────────────
 // 实业：cost = 开店成本，pay = 目标回本周期（游戏小时），rev/opc 由下方自动推算
 const BIZ_RAW = [
-  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',50,55,'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
-  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',200,65,'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
-  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',500,75,'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
-  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',1_200,85,'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
-  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',3_000,95,'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
-  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',6_000,110,'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
-  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',12_000,140,'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
-  ['coffeecart','流动咖啡车','Coffee Cart','☕','餐饮','Food & Bev',32_000,165,'一台意式咖啡机 + 一辆小推车，写字楼下的早高峰就是印钞机。','One espresso machine, one cart. The morning rush is a money printer.'],
-  ['milktea','奶茶店','Bubble Tea Shop','🧋','餐饮','Food & Bev',58_000,195,'年轻人的快乐水。翻台率高，毛利惊人。','Liquid happiness for the young. High turnover, stunning margins.'],
-  ['bakery','面包烘焙坊','Bakery','🥐','餐饮','Food & Bev',95_000,225,'凌晨四点开工，香味就是最好的广告。','Up at 4am. The smell is the only advertising you need.'],
-  ['carwash','洗车行','Car Wash','🚿','服务','Services',150_000,255,'现金流稳定，几乎不受经济周期影响。','Steady cash flow, almost immune to the business cycle.'],
-  ['barber','理发沙龙','Hair Salon','💈','服务','Services',210_000,285,'手艺活儿，办卡预付款让你提前收到钱。','A craft business — prepaid memberships put cash in your pocket early.'],
-  ['convenience','便利店','Convenience Store','🏪','零售','Retail',330_000,320,'24 小时营业，社区的水电煤。','Open 24/7 — the utility of the neighbourhood.'],
-  ['netcafe','电竞网咖','Esports Cafe','🖥️','娱乐','Entertainment',490_000,355,'显卡就是生产力，通宵包夜利润最高。','GPUs are productivity. The overnight package is where the margin is.'],
-  ['fastfood','快餐店','Fast Food Outlet','🍔','餐饮','Food & Bev',760_000,390,'标准化出餐，可复制性极强的现金牛。','Standardised kitchen, endlessly replicable cash cow.'],
-  ['gym','健身房','Fitness Gym','🏋️','服务','Services',1_150_000,425,'卖的是年卡，赚的是不来的人。','You sell annual passes; you profit from the people who never show up.'],
-  ['autoshop','汽车修理厂','Auto Repair Shop','🔧','服务','Services',1_800_000,460,'配件加价率是行业公开的秘密。','The markup on parts is the industry open secret.'],
-  ['clothing','服装精品店','Fashion Boutique','👗','零售','Retail',2_700_000,495,'时尚生意，压货是最大的敌人。','Fashion moves fast — dead stock is the enemy.'],
-  ['pharmacy','连锁药房','Pharmacy Chain','💊','零售','Retail',4_000_000,530,'牌照壁垒高，抗周期能力一流。','Licensing moat, recession-proof demand.'],
-  ['supermarket','大型超市','Supermarket','🛒','零售','Retail',6_000_000,565,'薄利多销，靠账期和规模挣钱。','Thin margins, huge volume — you earn on scale and payment terms.'],
-  ['restaurant','高级餐厅','Fine Dining','🍽️','餐饮','Food & Bev',9_000_000,600,'米其林指南来的那天，你的排队会到街尾。','The day the Michelin inspector arrives, the queue reaches the corner.'],
-  ['bar','夜店酒吧','Nightclub & Bar','🍸','娱乐','Entertainment',13_500_000,635,'夜里十点后才开始营业，酒水毛利 80%。','Opens at 10pm. Drinks carry an 80% gross margin.'],
-  ['cinema','连锁影院','Cinema Chain','🎬','娱乐','Entertainment',20_000_000,670,'票房分账 + 爆米花暴利，档期决定一切。','Box-office splits plus popcorn margins.'],
-  ['phonestore','数码旗舰店','Electronics Flagship','📱','零售','Retail',30_000_000,705,'新机发布日门口能排三百米。','On launch day the queue runs 300 metres.'],
-  ['hotel','精品酒店','Boutique Hotel','🏨','地产','Property',45_000_000,740,'重资产、高入住率，旺季一房难求。','Asset-heavy, occupancy-driven.'],
-  ['dealership','4S 汽车城','Car Dealership','🚗','零售','Retail',68_000_000,775,'卖车不赚钱，金融和售后才是利润中心。','Cars barely break even — financing and servicing are the profit centres.'],
-  ['logistics','物流快运公司','Logistics Company','🚚','工业','Industrial',100_000_000,810,'电商时代的血管，规模即护城河。','The arteries of e-commerce. Scale is the moat.'],
-  ['clinic','私立医院','Private Hospital','🏥','服务','Services',150_000_000,845,'高端医疗，客单价极高，口碑极难建立。','Premium healthcare: enormous ticket size, slow reputation building.'],
-  ['software','软件公司','Software Company','💻','科技','Technology',230_000_000,880,'边际成本趋近于零的生意，人才就是资产。','Near-zero marginal cost. The talent is the balance sheet.'],
-  ['tvstation','卫星电视台','TV Network','📺','传媒','Media',350_000_000,915,'掌握话语权。广告位按秒计价。','You own the narrative. Ad slots are priced by the second.'],
-  ['resort','海岛度假村','Island Resort','🏝️','地产','Property',550_000_000,950,'把风景变成现金流，一价全包利润惊人。','Turning scenery into cash flow.'],
-  ['factory','汽车制造厂','Auto Factory','🏭','工业','Industrial',850_000_000,985,'重工业帝国的基石，产能利用率决定生死。','The bedrock of an industrial empire.'],
-  ['airline','航空公司','Airline','✈️','工业','Industrial',1_300_000_000,1020,'烧钱的浪漫。油价一涨，全年白干。','Romantic and ruinous. One fuel spike wipes out the year.'],
-  ['chipfab','芯片晶圆厂','Semiconductor Fab','🔬','科技','Technology',2_000_000_000,1055,'现代工业的皇冠。一台光刻机就是一栋楼的钱。','The crown of modern industry.'],
-  ['privbank','私人银行','Private Bank','🏦','金融','Finance',3_200_000_000,1090,'当你有钱到需要一家自己的银行时。','For when you are rich enough to need your own bank.'],
-  ['spaceport','商业航天基地','Commercial Spaceport','🚀','科技','Technology',5_000_000_000,1130,'终极浪漫：把火箭和卫星做成一门生意。','The ultimate flex: turning rockets into a business.'],
+  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',50,55,[8,20],'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
+  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',200,65,[8,18],'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
+  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',500,75,[10,20],'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
+  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',1_200,85,[6,11],'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
+  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',3_000,95,[8,17],'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
+  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',6_000,110,[18,2],'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
+  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',12_000,140,[6,20],'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
+  ['coffeecart','流动咖啡车','Coffee Cart','☕','餐饮','Food & Bev',32_000,165,[7,15],'一台意式咖啡机 + 一辆小推车，写字楼下的早高峰就是印钞机。','One espresso machine, one cart. The morning rush is a money printer.'],
+  ['milktea','奶茶店','Bubble Tea Shop','🧋','餐饮','Food & Bev',58_000,195,[10,22],'年轻人的快乐水。翻台率高，毛利惊人。','Liquid happiness for the young. High turnover, stunning margins.'],
+  ['bakery','面包烘焙坊','Bakery','🥐','餐饮','Food & Bev',95_000,225,[6,20],'凌晨四点开工，香味就是最好的广告。','Up at 4am. The smell is the only advertising you need.'],
+  ['carwash','洗车行','Car Wash','🚿','服务','Services',150_000,255,[8,19],'现金流稳定，几乎不受经济周期影响。','Steady cash flow, almost immune to the business cycle.'],
+  ['barber','理发沙龙','Hair Salon','💈','服务','Services',210_000,285,[9,20],'手艺活儿，办卡预付款让你提前收到钱。','A craft business — prepaid memberships put cash in your pocket early.'],
+  ['convenience','便利店','Convenience Store','🏪','零售','Retail',330_000,320,[0,24],'24 小时营业，社区的水电煤。','Open 24/7 — the utility of the neighbourhood.'],
+  ['netcafe','电竞网咖','Esports Cafe','🖥️','娱乐','Entertainment',490_000,355,[0,24],'显卡就是生产力，通宵包夜利润最高。','GPUs are productivity. The overnight package is where the margin is.'],
+  ['fastfood','快餐店','Fast Food Outlet','🍔','餐饮','Food & Bev',760_000,390,[7,23],'标准化出餐，可复制性极强的现金牛。','Standardised kitchen, endlessly replicable cash cow.'],
+  ['gym','健身房','Fitness Gym','🏋️','服务','Services',1_150_000,425,[6,23],'卖的是年卡，赚的是不来的人。','You sell annual passes; you profit from the people who never show up.'],
+  ['autoshop','汽车修理厂','Auto Repair Shop','🔧','服务','Services',1_800_000,460,[8,18],'配件加价率是行业公开的秘密。','The markup on parts is the industry open secret.'],
+  ['clothing','服装精品店','Fashion Boutique','👗','零售','Retail',2_700_000,495,[10,22],'时尚生意，压货是最大的敌人。','Fashion moves fast — dead stock is the enemy.'],
+  ['pharmacy','连锁药房','Pharmacy Chain','💊','零售','Retail',4_000_000,530,[8,22],'牌照壁垒高，抗周期能力一流。','Licensing moat, recession-proof demand.'],
+  ['supermarket','大型超市','Supermarket','🛒','零售','Retail',6_000_000,565,[8,22],'薄利多销，靠账期和规模挣钱。','Thin margins, huge volume — you earn on scale and payment terms.'],
+  ['restaurant','高级餐厅','Fine Dining','🍽️','餐饮','Food & Bev',9_000_000,600,[11,23],'米其林指南来的那天，你的排队会到街尾。','The day the Michelin inspector arrives, the queue reaches the corner.'],
+  ['bar','夜店酒吧','Nightclub & Bar','🍸','娱乐','Entertainment',13_500_000,635,[20,4],'夜里十点后才开始营业，酒水毛利 80%。','Opens at 10pm. Drinks carry an 80% gross margin.'],
+  ['cinema','连锁影院','Cinema Chain','🎬','娱乐','Entertainment',20_000_000,670,[10,24],'票房分账 + 爆米花暴利，档期决定一切。','Box-office splits plus popcorn margins.'],
+  ['phonestore','数码旗舰店','Electronics Flagship','📱','零售','Retail',30_000_000,705,[10,22],'新机发布日门口能排三百米。','On launch day the queue runs 300 metres.'],
+  ['hotel','精品酒店','Boutique Hotel','🏨','地产','Property',45_000_000,740,[0,24],'重资产、高入住率，旺季一房难求。','Asset-heavy, occupancy-driven.'],
+  ['dealership','4S 汽车城','Car Dealership','🚗','零售','Retail',68_000_000,775,[9,19],'卖车不赚钱，金融和售后才是利润中心。','Cars barely break even — financing and servicing are the profit centres.'],
+  ['logistics','物流快运公司','Logistics Company','🚚','工业','Industrial',100_000_000,810,[0,24],'电商时代的血管，规模即护城河。','The arteries of e-commerce. Scale is the moat.'],
+  ['clinic','私立医院','Private Hospital','🏥','服务','Services',150_000_000,845,[0,24],'高端医疗，客单价极高，口碑极难建立。','Premium healthcare: enormous ticket size, slow reputation building.'],
+  ['software','软件公司','Software Company','💻','科技','Technology',230_000_000,880,[9,21],'边际成本趋近于零的生意，人才就是资产。','Near-zero marginal cost. The talent is the balance sheet.'],
+  ['tvstation','卫星电视台','TV Network','📺','传媒','Media',350_000_000,915,[0,24],'掌握话语权。广告位按秒计价。','You own the narrative. Ad slots are priced by the second.'],
+  ['resort','海岛度假村','Island Resort','🏝️','地产','Property',550_000_000,950,[0,24],'把风景变成现金流，一价全包利润惊人。','Turning scenery into cash flow.'],
+  ['factory','汽车制造厂','Auto Factory','🏭','工业','Industrial',850_000_000,985,[0,24],'重工业帝国的基石，产能利用率决定生死。','The bedrock of an industrial empire.'],
+  ['airline','航空公司','Airline','✈️','工业','Industrial',1_300_000_000,1020,[0,24],'烧钱的浪漫。油价一涨，全年白干。','Romantic and ruinous. One fuel spike wipes out the year.'],
+  ['chipfab','芯片晶圆厂','Semiconductor Fab','🔬','科技','Technology',2_000_000_000,1055,[0,24],'现代工业的皇冠。一台光刻机就是一栋楼的钱。','The crown of modern industry.'],
+  ['privbank','私人银行','Private Bank','🏦','金融','Finance',3_200_000_000,1090,[9,17],'当你有钱到需要一家自己的银行时。','For when you are rich enough to need your own bank.'],
+  ['spaceport','商业航天基地','Commercial Spaceport','🚀','科技','Technology',5_000_000_000,1130,[0,24],'终极浪漫：把火箭和卫星做成一门生意。','The ultimate flex: turning rockets into a business.'],
 ];
 
 // 由「回本周期」反推每小时营收与运营成本（含人工/固定/变动三部分后的真实净利）
-export const BIZ_TYPES = BIZ_RAW.map(([id,name,en,emoji,cat,catEn,cost,pay,desc,descEn]) => {
-  const net = cost / pay;
-  const rev = net / 0.5275;          // 净利 = rev - (0.35+0.20)*opc - 2*0.25*opc，opc = 0.45*rev
-  return { id, name, en, emoji, cat, catEn, cost, pay, rev, opc: rev * 0.45, desc, descEn };
+// 成本结构：固定成本（房租，24 小时都在烧）+ 变动成本 + 工资（只在营业时段）
+export const COST_FIXED = 0.15, COST_VAR = 0.25, COST_WAGE = 0.25;
+
+export function openHours(h) { return h[1] > h[0] ? h[1] - h[0] : 24 - h[0] + h[1]; }
+export function isOpenAt(h, hod) {
+  return h[1] > h[0] ? (hod >= h[0] && hod < h[1]) : (hod >= h[0] || hod < h[1]);
+}
+
+export const BIZ_TYPES = BIZ_RAW.map(([id,name,en,emoji,cat,catEn,cost,pay,hours,desc,descEn]) => {
+  // 目标：按 pay 回本。日净利 = H*(rev - 0.75*opc) - 24*0.15*opc，其中 opc = 0.45*rev
+  const H = openHours(hours);
+  const dailyNet = cost / pay * 24;
+  const rev = dailyNet / (H * (1 - 0.75 * 0.45) - 24 * 0.15 * 0.45);
+  return { id, name, en, emoji, cat, catEn, cost, pay, hours, openHours: H,
+           rev, opc: rev * 0.45, desc, descEn };
 });
 
 export const CITIES = [
@@ -72,6 +83,8 @@ export const REGIONS = [
 ];
 
 const PROP_TIERS = [
+  { id:'room',  name:'单间出租屋', en:'Studio Room', emoji:'🚪', base:32_000,     prestige:1,   upkeep:0.0018, rent:0.0048, desc:'十几平米，厨卫共用，但它是你的。', descEn:'Fifteen square metres, shared bathroom — but it is yours.' },
+  { id:'old',   name:'老式两居',  en:'Old Two-Bed',  emoji:'🏚️', base:88_000,     prestige:3,   upkeep:0.0020, rent:0.0045, desc:'楼梯房、没电梯，胜在便宜又好租。', descEn:'Walk-up, no lift — cheap and easy to let.' },
   { id:'apt',   name:'公寓',     en:'Apartment',    emoji:'🏢', base:180_000,    prestige:4,   upkeep:0.0020, rent:0.0042, desc:'紧凑实用，最容易出租。', descEn:'Compact, practical, easiest to rent out.' },
   { id:'house', name:'独栋住宅', en:'Detached House',emoji:'🏡', base:620_000,    prestige:11,  upkeep:0.0020, rent:0.0040, desc:'带院子和车库，家庭首选。', descEn:'Yard and garage — the family choice.' },
   { id:'villa', name:'豪华别墅', en:'Luxury Villa', emoji:'🏘️', base:2_600_000,  prestige:28,  upkeep:0.0024, rent:0.0037, desc:'泳池、影音室、24 小时安保。', descEn:'Pool, screening room, round-the-clock security.' },
@@ -304,4 +317,46 @@ export const RIVALS = [
   { id:'armstr', zh:'布莱恩·阿姆斯壮',en:'Brian Armstrng',   emoji:'🔐', symbol:'CONB', stake:0.18, other:2e9,   bio:{zh:'把加密货币带进了合规世界。',en:'Brought crypto into the regulated world.'} },
   { id:'karpp',  zh:'亚历克·卡普',    en:'Alex Karpp',       emoji:'🛰️', symbol:'PLTR', stake:0.06, other:3e9,   bio:{zh:'为政府和军队做数据分析，争议不断。',en:'Data analytics for governments and armies — endlessly controversial.'} },
   { id:'altmann',zh:'萨姆·奥特曼',    en:'Sam Altmann',      emoji:'🧠', symbol:null,   stake:0,    other:28e9,  bio:{zh:'人工智能时代最有影响力的人，股份却不多。',en:'The most influential figure of the AI era — with surprisingly little equity.'} },
+];
+
+// ── 疾病：压力与疲劳的代价 ──────────────────────────────────
+// days = 自愈天数，treatDays = 就医后天数，cost = 医疗费（按净资产比例，有下限）
+export const ILLNESSES = [
+  { id:'cold',    emoji:'🤧', zh:'重感冒',      en:'Bad Cold',           days:3,  treatDays:1, base:120,    nwRate:0.0004, minStress:40,
+    descZh:'连着熬夜加班，扛不住了。', descEn:'Too many late shifts in a row.' },
+  { id:'gastric', emoji:'🍜', zh:'急性胃炎',    en:'Acute Gastritis',    days:4,  treatDays:2, base:600,    nwRate:0.0012, minStress:55,
+    descZh:'三餐不定时，胃先罢工了。', descEn:'Skipped meals; your stomach quit first.' },
+  { id:'insomnia',emoji:'😵', zh:'焦虑性失眠',  en:'Anxiety Insomnia',   days:5,  treatDays:2, base:1_500,  nwRate:0.0020, minStress:65,
+    descZh:'躺下就开始算账，越算越睡不着。', descEn:'You lie down and start doing sums. Then you stop sleeping.' },
+  { id:'burnout', emoji:'🫠', zh:'过劳性衰竭',  en:'Burnout',            days:7,  treatDays:3, base:5_000,  nwRate:0.0045, minStress:75,
+    descZh:'身体先于意志停机了。', descEn:'Your body shut down before your will did.' },
+  { id:'cardiac', emoji:'💔', zh:'心脏警报',    en:'Cardiac Scare',      days:10, treatDays:4, base:25_000, nwRate:0.0090, minStress:85,
+    descZh:'医生说：再这样下去，下次就不是警报了。', descEn:'The doctor said: next time it will not be a warning.' },
+];
+
+// ── 旅游：花钱买回精神状态 ──────────────────────────────────
+// days = 行程天数，relief = 压力削减，stamina = 体力恢复，prestige = 声望
+export const TRIPS = [
+  { id:'weekend', emoji:'🏕️', zh:'周边周末游',   en:'Weekend Getaway',      cost:600,       days:2,  relief:22, stamina:35,  prestige:0,   flight:false,
+    descZh:'开车两小时，住一晚民宿，够回一口气。', descEn:'Two hours out, one night in a guesthouse. Just enough air.' },
+  { id:'beach',   emoji:'🏖️', zh:'海边度假',     en:'Beach Holiday',        cost:2_800,     days:4,  relief:38, stamina:60,  prestige:2,   flight:true,
+    descZh:'什么都不干，就是躺着。', descEn:'Doing nothing, professionally.' },
+  { id:'europe',  emoji:'🗼', zh:'欧洲深度游',   en:'Grand European Tour',  cost:14_000,    days:7,  relief:55, stamina:80,  prestige:8,   flight:true,
+    descZh:'博物馆、火车、咖啡馆，和很多脚酸。', descEn:'Museums, trains, cafés and very sore feet.' },
+  { id:'safari',  emoji:'🦁', zh:'非洲野生动物营',en:'Safari Expedition',   cost:48_000,    days:9,  relief:68, stamina:90,  prestige:18,  flight:true,
+    descZh:'在没有信号的地方待九天，手机变成了砖头。', descEn:'Nine days without signal; the phone becomes a brick.' },
+  { id:'cruise',  emoji:'🛳️', zh:'环球邮轮',     en:'Round-the-World Cruise',cost:180_000,  days:14, relief:82, stamina:100, prestige:35,  flight:true,
+    descZh:'两周不看行情，回来发现世界还在转。', descEn:'Two weeks without a chart. The world kept turning anyway.' },
+  { id:'island',  emoji:'🏝️', zh:'私人岛屿假期', en:'Private Island Retreat',cost:900_000,  days:10, relief:95, stamina:100, prestige:80,  flight:true,
+    descZh:'整座岛只有你和五名员工。', descEn:'The whole island, you, and five staff.' },
+  { id:'space',   emoji:'🚀', zh:'亚轨道太空飞行',en:'Suborbital Spaceflight',cost:6_000_000,days:5, relief:100,stamina:100, prestige:260, flight:true,
+    descZh:'十一分钟的失重，和一辈子的谈资。', descEn:'Eleven minutes of weightlessness and a lifetime of dinner-party material.' },
+];
+
+// 机票舱位：花更多钱换更好的恢复与声望
+export const FLIGHT_CLASSES = [
+  { id:'economy',  zh:'经济舱',   en:'Economy',       mult:1.0, relief:1.0,  prestige:1.0 },
+  { id:'business', zh:'商务舱',   en:'Business',      mult:2.6, relief:1.15, prestige:1.6 },
+  { id:'first',    zh:'头等舱',   en:'First Class',   mult:5.5, relief:1.28, prestige:2.4 },
+  { id:'private',  zh:'私人飞机', en:'Private Jet',   mult:0,   relief:1.40, prestige:3.2, needJet:true },
 ];

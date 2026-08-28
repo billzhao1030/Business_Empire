@@ -6,10 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.join(__dirname, '..');
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.BE_DATA_DIR
+  ? path.resolve(process.env.BE_DATA_DIR)
+  : path.join(ROOT, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-export const db = new DatabaseSync(path.join(DATA_DIR, 'game.db'));
+export const DB_PATH = path.join(DATA_DIR, 'game.db');
+export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA synchronous = NORMAL');
 db.exec('PRAGMA foreign_keys = ON');
@@ -219,6 +222,17 @@ addColumn('players','ot_day',         'INTEGER NOT NULL DEFAULT -1');
 addColumn('players','stamina',        'REAL    NOT NULL DEFAULT 100');
 addColumn('players','ot_until',       'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','ot_pending',     'REAL    NOT NULL DEFAULT 0');
+addColumn('players','stress',         'REAL    NOT NULL DEFAULT 0');
+addColumn('players','sick_until',     'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','sick_id',        "TEXT    NOT NULL DEFAULT ''");
+addColumn('players','sick_treated',   'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','trip_until',     'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','trip_id',        "TEXT    NOT NULL DEFAULT ''");
+addColumn('players','med_spent',      'REAL    NOT NULL DEFAULT 0');
+addColumn('players','trip_spent',     'REAL    NOT NULL DEFAULT 0');
+addColumn('players','trips',          'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','trip_relief',    'REAL    NOT NULL DEFAULT 1');
+addColumn('businesses','all_day',     'INTEGER NOT NULL DEFAULT 0');
 
 export function getMeta(key, def = null) {
   const row = db.prepare('SELECT value FROM meta WHERE key=?').get(key);

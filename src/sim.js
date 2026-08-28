@@ -1,7 +1,8 @@
 // 玩家经济引擎：实业经营、银行利息、股息、税收、贷款/房贷、房产指数、随机事件
 import { db } from './db.js';
 import * as M from './market.js';
-import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS } from './catalog-content.js';
+import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
+         ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours, COST_FIXED, COST_VAR, COST_WAGE } from './catalog-content.js';
 
 const { YEAR_HOURS, MONTH_HOURS, DAY_HOURS } = M;
 
@@ -79,6 +80,40 @@ export const ST_NIGHT = -20;                      // 熬夜加班的体力代价
 export const NIGHT_MULT = 2.2;                    // 夜班津贴
 export const ST_MIN_FOR_OT = 15;                  // 体力低于此值无法加班
 
+// ── 精神压力 ────────────────────────────────────────────────
+export const STRESS_MAX = 100;
+export const STRESS_OT = 1.6, STRESS_NIGHT = 3.4;   // 加班 / 熬夜带来的压力
+export const STRESS_SLEEP = -1.4;                   // 睡眠缓解（每日约 -11）
+export const STRESS_DEBT_K = 75;                    // 负债率系数（超出 35% 的部分）
+export const STRESS_BURDEN_K = 42;                  // 月供占收入比系数
+export const LEV_SAFE = 0.35, BURDEN_SAFE = 0.35;   // 安全线以内不产生压力
+export const STRESS_MAX_FOR_OT = 78;                // 压力过高时干不动加班
+export const SICK_FLOOR = 55;                       // 低于此压力不会生病
+export { ILLNESSES, TRIPS, FLIGHT_CLASSES };
+export const ILL = Object.fromEntries(ILLNESSES.map(i => [i.id, i]));
+export const TRIP = Object.fromEntries(TRIPS.map(t => [t.id, t]));
+
+// 压力对产出的折损：50 以下无感，往上线性衰减到 0.7
+export function stressFactor(stress) {
+  return stress <= 50 ? 1 : Math.max(0.7, 1 - (stress - 50) / 167);
+}
+// 每小时生病概率
+export function sickChance(stress) {
+  return stress <= SICK_FLOOR ? 0 : Math.min(0.012, (stress - SICK_FLOOR) * 0.00028);
+}
+export function pickIllness(stress) {
+  const pool = ILLNESSES.filter(i => stress >= i.minStress);
+  return pool.length ? pool[Math.floor(Math.random() * Math.min(pool.length, 1 + Math.floor((stress - SICK_FLOOR) / 12)))] : ILLNESSES[0];
+}
+export function medicalCost(ill, netWorth) {
+  return Math.max(ill.base, Math.abs(netWorth) * ill.nwRate);
+}
+export function tripCost(trip, cls) {
+  const c = FLIGHT_CLASSES.find(x => x.id === cls) || FLIGHT_CLASSES[0];
+  if (!trip.flight) return trip.cost;
+  return Math.round(trip.cost * (c.mult || 0) * 0.45 + trip.cost * 0.55);   // 机票 + 地面开销
+}
+
 export function dayPhase(hod) {
   if (hod >= SLEEP_HOUR || hod < WAKE_HOUR) return 'sleep';
   if (hod < WORK_START) return 'morning';
@@ -103,6 +138,13 @@ export const PRICE_TIERS = [
 export const STAFF_CAP_RATIO = 0.55;
 export const WAGE_RATIO = 0.25;
 
+export function bizHours(b) {
+  const def = BIZ[b.type_id];
+  return b.all_day ? [0, 24] : def.hours;
+}
+export function bizOpenNow(b, hod) { return isOpenAt(bizHours(b), hod); }
+
+// 返回「营业时段内」的每小时数据；固定成本另计（24 小时都在烧）
 export function bizRates(b, pb = 0, prosp = 1) {
   const def = BIZ[b.type_id], city = CITY[b.city] || CITIES[1];
   if (!def) return { rev: 0, cost: 0, net: 0, potential: 0, capacity: 0, util: 1, recStaff: 0 };
@@ -123,14 +165,24 @@ export function bizRates(b, pb = 0, prosp = 1) {
   const util = potential > 0 ? Math.min(1, capacity / potential) : 1;
   const recStaff = Math.max(1, Math.ceil(potential / Math.max(capPerStaff, 1e-9)));
 
-  const wage = def.opc * city.revMult * WAGE_RATIO;
-  const wages = staff * wage;
-  const fixed = def.opc * city.revMult * lvC * 0.35 * (1 + 0.06 * b.marketing);
-  const varc = def.opc * city.revMult * lvC * 0.20 * (baseRev > 0 ? rev / (baseRev * lvR * priceMult) : 0);
-  const cost = (fixed + varc) * (1 + 0.15 * (1 - b.condition)) + wages;
+  const wage = def.opc * city.revMult * COST_WAGE;
+  const wages = staff * wage;                                        // 只在营业时段发生
+  const fixed = def.opc * city.revMult * lvC * COST_FIXED * (1 + 0.06 * b.marketing);   // 24 小时都在烧
+  const varc = def.opc * city.revMult * lvC * COST_VAR * (baseRev > 0 ? rev / (baseRev * lvR * priceMult) : 0);
+  const openCost = (varc * (1 + 0.15 * (1 - b.condition))) + wages;  // 营业时才有
+  const idleCost = fixed * (1 + 0.15 * (1 - b.condition));           // 关门也要付
+  const hrs = openHours(bizHours(b));
+  const dailyNet = hrs * (rev - openCost) - 24 * idleCost;
 
-  return { rev, cost, net: rev - cost, def, city, potential, capacity, util, recStaff,
-           wage, wages, fixed, varc, capPerStaff, priceMult, volumeMult, tier };
+  // 改成 24 小时营业能多赚多少（用于给升级定价，保持与全局回本周期一致）
+  const extraHrs = 24 - hrs;
+  const allDayGainPerHour = extraHrs > 0 ? extraHrs * Math.max(0, rev - openCost) / 24 : 0;
+  const allDayCost = extraHrs > 0 ? Math.round(allDayGainPerHour * def.pay) : null;
+
+  return { rev, cost: openCost + idleCost, net: rev - openCost - idleCost, def, city,
+           potential, capacity, util, recStaff, wage, wages, fixed: idleCost, varc,
+           openCost, idleCost, hours: bizHours(b), openHrs: hrs, dailyNet, dailyRev: hrs * rev,
+           allDayGainPerHour, allDayCost, capPerStaff, priceMult, volumeMult, tier };
 }
 export function demandTarget(b) {
   const tier = b.price_tier || 0;
@@ -236,6 +288,9 @@ export function advancePlayer(userId) {
   const working = !!job && (!job.car || carOwned);
   const sRate = savingsRate(), oRate = overdraftRate();
   let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0;
+  // 实业的日净利估算（用于衡量月供负担）
+  let dayIncomeRate = 0;
+  for (const b of biz) dayIncomeRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
 
   for (let h = from + 1; h <= target; h++) {
     // ── 作息：体力随睡眠恢复、随清醒与工作消耗 ──
@@ -243,9 +298,28 @@ export function advancePlayer(userId) {
     const phase = dayPhase(hod);
     p.stamina += phase === 'sleep' ? ST_SLEEP : ST_AWAKE;
 
+    // ── 生病 / 旅游：这两种状态下没法上班 ──
+    const sick = p.sick_until > h;
+    const traveling = p.trip_until > h;
+    if (sick && p.sick_until === h + 1) { /* 下一小时康复 */ }
+    if (p.sick_until && h >= p.sick_until && p.sick_id) {
+      ledger.push([h, 'health', 0, L('led.recovered', { ill: illName(p.sick_id) }), '💚']);
+      p.sick_id = ''; p.sick_treated = 0;
+      p.stress = clamp(p.stress - 8, 0, STRESS_MAX);
+    }
+    if (p.trip_until && h >= p.trip_until && p.trip_id) {
+      const tp = TRIP[p.trip_id];
+      if (tp) {
+        p.stress = clamp(p.stress - tp.relief * (p.trip_relief || 1), 0, STRESS_MAX);
+        p.stamina = clamp(p.stamina + tp.stamina, 0, STAMINA_MAX);
+        ledger.push([h, 'trip', 0, L('led.tripBack', { trip: { zh: tp.zh, en: tp.en }, relief: Math.round(tp.relief * (p.trip_relief || 1)) }), tp.emoji]);
+      }
+      p.trip_id = ''; p.trip_relief = 1;
+    }
+
     // ── 正常班（09:00–17:00，共 8 小时）──
-    if (working && phase === 'shift') {
-      const eff = efficiency(p.stamina);
+    if (working && phase === 'shift' && !sick && !traveling) {
+      const eff = efficiency(p.stamina) * stressFactor(p.stress);
       const pay = job.wage * eff;
       p.cash += pay; p.job_exp += 1; p.job_hours += 1; p.job_income += pay; dayJob += pay;
       p.stamina += ST_SHIFT;
@@ -258,6 +332,33 @@ export function advancePlayer(userId) {
     }
     p.stamina = clamp(p.stamina, 0, STAMINA_MAX);
 
+    // ── 精神压力：负债、加班、透支推高；睡眠、旅游、低负债缓解 ──
+    let dStress = phase === 'sleep' ? STRESS_SLEEP : 0;
+    if (traveling) dStress -= 1.2;                       // 旅途中持续放松
+    const debtNow = loans.reduce((a, l) => a + (l.status === 'active' ? l.balance : 0), 0);
+    if (debtNow > 0) {
+      const nwNow = Math.max(1, quickNetWorth(p, biz, items, holdings, assetsById, loans, deposits) + debtNow);
+      const lev = debtNow / nwNow;                       // 负债率：欠得越多越焦虑
+      if (lev > LEV_SAFE) dStress += (lev - LEV_SAFE) * STRESS_DEBT_K / 24;
+      // 月供压力：还款额占收入的比重才是真正压垮人的东西
+      const monthlyPay = loans.reduce((a, l) => a + (l.status === 'active' ? l.payment : 0), 0);
+      const monthlyIncome = Math.max(1, (dayIncomeRate + (working ? job.wage * WORK_HOURS_PER_DAY : 0)) * 30);
+      const burden = monthlyPay / monthlyIncome;
+      if (burden > BURDEN_SAFE) dStress += Math.min(2.5, (burden - BURDEN_SAFE) * STRESS_BURDEN_K / 24);
+    }
+    if (p.cash < 0) dStress += 0.35;                     // 透支的焦虑
+    if (pb > 0.10) dStress -= pb * 1.2;                  // 房子、车、艺术品带来的生活质量
+    if (p.stamina < 25) dStress += 0.25;
+    if (sick) dStress += p.sick_treated ? 0.1 : 0.45;    // 硬扛比就医更煎熬
+    p.stress = clamp(p.stress + dStress, 0, STRESS_MAX);
+
+    // ── 生病判定 ──
+    if (!sick && !traveling && Math.random() < sickChance(p.stress)) {
+      const ill = pickIllness(p.stress);
+      p.sick_id = ill.id; p.sick_until = h + ill.days * DAY_HOURS; p.sick_treated = 0;
+      ledger.push([h, 'health', 0, L('led.fellIll', { ill: { zh: ill.zh, en: ill.en }, days: ill.days }), ill.emoji]);
+    }
+
     for (const b of biz) {
       const city = CITY[b.city] || CITIES[1];
       const pr = prosp[b.city] || 1;
@@ -268,10 +369,15 @@ export function advancePlayer(userId) {
       if (b.auto_staff) { const rec = bizRates(b, pb, pr).recStaff; if (rec !== b.staff) b.staff = rec; }
       const r = bizRates(b, pb, pr);
       b.understaffed = r.util;
-      b.month_revenue += r.rev; b.month_cost += r.cost;
-      b.lifetime_profit += r.net;
-      dayRev += r.rev; dayCost += r.cost;
-      p.cash += r.net; p.month_profit += r.net;
+      // 只有营业时段才有营收与人工；房租之类的固定成本 24 小时都在烧
+      const open = bizOpenNow(b, hod);
+      const absent = sick || traveling ? 0.92 : 1;       // 老板不在，生意打点折
+      const rev = open ? r.rev * absent : 0;
+      const cost = (open ? r.openCost : 0) + r.idleCost;
+      b.month_revenue += rev; b.month_cost += cost;
+      b.lifetime_profit += (rev - cost);
+      dayRev += rev; dayCost += cost;
+      p.cash += (rev - cost); p.month_profit += (rev - cost);
       if (b.auto_repair && b.condition < 0.72) {
         const rc = r.def.cost * r.city.costMult * 0.22 * (1 - b.condition);
         if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
@@ -410,10 +516,12 @@ export function advancePlayer(userId) {
   try {
     db.prepare(`UPDATE players SET cash=?,bank=?,credit_score=?,last_hour=?,prestige=?,month_profit=?,
                 total_tax=?,total_dividend=?,missed_pay=?,peak_networth=?,bankrupt=?,
-                job_exp=?,job_hours=?,job_income=?,stamina=?,ot_pending=? WHERE user_id=?`)
+                job_exp=?,job_hours=?,job_income=?,stamina=?,ot_pending=?,
+                stress=?,sick_until=?,sick_id=?,sick_treated=?,trip_until=?,trip_id=? WHERE user_id=?`)
       .run(p.cash, p.bank, p.credit_score, p.last_hour, p.prestige, p.month_profit,
            p.total_tax, p.total_dividend, p.missed_pay, p.peak_networth, p.bankrupt,
-           p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending, userId);
+           p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending,
+           p.stress, p.sick_until, p.sick_id, p.sick_treated, p.trip_until, p.trip_id, userId);
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);
@@ -444,6 +552,8 @@ function quickNetWorth(p, biz, items, holdings, assetsById, loans, deposits) {
   for (const l of loans) if (l.status === 'active') v -= l.balance;
   return v;
 }
+
+function illName(id) { const i = ILL[id]; return i ? { zh: i.zh, en: i.en } : { zh: id, en: id }; }
 
 export function fmt(n) {
   const a = Math.abs(n), sign = n < 0 ? '-' : '';
