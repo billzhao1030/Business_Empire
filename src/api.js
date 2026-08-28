@@ -1,0 +1,703 @@
+// 业务 API：状态、行情、交易、收购、实业、银行、房产与奢侈品
+import { db } from './db.js';
+import * as M from './market.js';
+import * as S from './sim.js';
+import * as A from './auth.js';
+import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS } from './catalog-content.js';
+
+const { RATES, L } = S;
+class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
+const num = (v, min = -Infinity, max = Infinity) => {
+  const n = Number(v);
+  if (!isFinite(n)) throw new Err('数值无效 / Invalid number');
+  if (n < min || n > max) throw new Err('数值超出允许范围 / Value out of range');
+  return n;
+};
+const money = v => Math.round(num(v, 0.01, 1e18) * 100) / 100;
+const NM = d => ({ zh: d?.name || '', en: d?.en || d?.name || '' });
+
+function ledger(uid, kind, amount, detail, icon) {
+  db.prepare('INSERT INTO ledger(user_id,hour,kind,amount,detail,icon) VALUES(?,?,?,?,?,?)')
+    .run(uid, curHour(), kind, Math.round(amount * 100) / 100, detail, icon);
+}
+const P = uid => db.prepare('SELECT * FROM players WHERE user_id=?').get(uid);
+const savePlayer = p => db.prepare('UPDATE players SET cash=?,bank=?,credit_score=?,prestige=?,realized_pnl=? WHERE user_id=?')
+  .run(p.cash, p.bank, p.credit_score, p.prestige, p.realized_pnl, p.user_id);
+function curHour() { return Number(db.prepare("SELECT value FROM meta WHERE key='market_hour'").get()?.value || 0); }
+
+// ── 离线收益报告 ────────────────────────────────────────────
+const OFFLINE_MIN_MS = 10 * 60 * 1000;   // 离开超过 10 分钟才弹报告
+
+function buildOfflineReport(uid, p, hour, nwNow) {
+  const now = Date.now();
+  const awayMs = p.last_seen_ms ? now - p.last_seen_ms : 0;
+  let report = null;
+
+  if (p.last_seen_ms && awayMs >= OFFLINE_MIN_MS && hour > p.last_seen_hour) {
+    const rows = db.prepare(`SELECT kind, SUM(amount) amt, COUNT(*) n FROM ledger
+                             WHERE user_id=? AND hour > ? AND hour <= ? AND kind != 'start'
+                             GROUP BY kind`).all(uid, p.last_seen_hour, hour);
+    const sum = rows.reduce((a, r) => a + r.amt, 0);
+    const nwDelta = nwNow - p.last_seen_nw;
+    const highlights = db.prepare(`SELECT * FROM ledger WHERE user_id=? AND hour > ? AND hour <= ?
+                                   AND kind IN ('event','deposit','dividend','loan')
+                                   ORDER BY CASE kind WHEN 'event' THEN 0 WHEN 'deposit' THEN 1
+                                                      WHEN 'dividend' THEN 2 ELSE 3 END,
+                                            ABS(amount) DESC LIMIT 5`).all(uid, p.last_seen_hour, hour);
+    report = {
+      awayMs, awayRealHours: awayMs / 3.6e6, awayRealDays: awayMs / 8.64e7,
+      gameHours: hour - p.last_seen_hour,
+      fromHour: p.last_seen_hour, toHour: hour,
+      fromDate: M.gameDate(p.last_seen_hour).text, toDate: M.gameDate(hour).text,
+      nwBefore: p.last_seen_nw, nwAfter: nwNow, nwDelta,
+      income: rows.filter(r => r.amt > 0).sort((a, b) => b.amt - a.amt),
+      expense: rows.filter(r => r.amt < 0).sort((a, b) => a.amt - b.amt),
+      totalIn: rows.filter(r => r.amt > 0).reduce((a, r) => a + r.amt, 0),
+      totalOut: rows.filter(r => r.amt < 0).reduce((a, r) => a + r.amt, 0),
+      cashFlow: sum,
+      valuation: nwDelta - sum,        // 资产估值变动（股票/房产/店铺折旧）
+      highlights,
+    };
+  }
+  db.prepare('UPDATE players SET last_seen_ms=?, last_seen_hour=?, last_seen_nw=? WHERE user_id=?')
+    .run(now, hour, nwNow, uid);
+  return report;
+}
+
+// ── 状态 ────────────────────────────────────────────────────
+export function getState(uid) {
+  S.advancePlayer(uid);
+  const p = P(uid);
+  const hour = curHour();
+  const nw = S.computeNetWorth(uid);
+  const offline = buildOfflineReport(uid, p, hour, nw.total);
+  const live = new Map(M.allAssets().map(a => [a.id, a]));
+  const pbonus = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+
+  const businesses = db.prepare('SELECT * FROM businesses WHERE user_id=? ORDER BY id').all(uid).map(b => {
+    const r = S.bizRates(b, pbonus), def = S.BIZ[b.type_id], city = S.CITY[b.city];
+    return {
+      id: b.id, typeId: b.type_id, name: b.name, emoji: def?.emoji, type: NM(def), cat: def?.cat, catEn: def?.catEn,
+      city: NM(city), cityId: b.city, level: b.level, marketing: b.marketing,
+      demand: b.demand, condition: b.condition, invested: b.invested, lifetime: b.lifetime_profit,
+      revPerHour: r.rev, costPerHour: r.cost, netPerHour: r.net,
+      potential: r.potential, capacity: r.capacity, util: r.util, recStaff: r.recStaff,
+      staff: b.staff, wage: r.wage, wages: r.wages, fixedCost: r.fixed, varCost: r.varc,
+      priceTier: b.price_tier, autoStaff: !!b.auto_staff, autoRepair: !!b.auto_repair,
+      demandTarget: S.demandTarget(b), monthRevenue: b.month_revenue, monthCost: b.month_cost,
+      upgradeCost: b.level < S.MAX_LEVEL ? S.upgradeCost(def, city, b.level) : null,
+      marketingCost: b.marketing < S.MAX_MARKETING ? S.marketingCost(def, city, b.marketing) : null,
+      repairCost: Math.round(def.cost * city.costMult * 0.22 * (1 - b.condition)),
+      sellValue: Math.round(b.invested * 0.65 * (0.6 + 0.4 * b.condition)),
+    };
+  });
+
+  const holdings = db.prepare('SELECT * FROM holdings WHERE user_id=? AND qty>0').all(uid).map(h => {
+    const a = live.get(h.asset_id);
+    const value = h.qty * a.price;
+    const stake = h.qty / a.shares;
+    return {
+      id: a.id, symbol: a.symbol, name: a.name, zh: a.zh, kind: a.kind, sector: a.sector, unit: a.unit,
+      qty: h.qty, cost: h.cost, avg: h.qty > 0 ? h.cost / h.qty : 0, price: a.price, value,
+      pnl: value - h.cost, pnlPct: h.cost > 0 ? (value - h.cost) / h.cost : 0,
+      stake, maxStake: a.max_stake, divYield: a.div_yield, eps: a.eps,
+      monthlyDividend: stake >= 0.9995 ? a.eps * h.qty / 12 : h.qty * a.price * a.div_yield / 12 * (stake >= 0.5 ? 1.4 : 1) * (1 - RATES.divTax),
+      change: (a.price - a.prev_close) / a.prev_close,
+    };
+  }).sort((x, y) => y.value - x.value);
+
+  const items = db.prepare('SELECT * FROM items WHERE user_id=? ORDER BY id').all(uid).map(it => {
+    const d = S.ITEM[it.type_id];
+    const value = S.itemValue(it);
+    const loan = it.loan_id ? db.prepare("SELECT * FROM loans WHERE id=? AND status='active'").get(it.loan_id) : null;
+    const region = d?.region ? S.REGION[d.region] : null;
+    return { id: it.id, typeId: it.type_id, item: NM(d), emoji: d?.emoji, cat: d?.cat,
+      catName: { zh: ITEM_CATS[d?.cat]?.name, en: ITEM_CATS[d?.cat]?.en },
+      region: region ? NM(region) : null, regionFlag: region?.flag, indexSym: d?.index || null,
+      value, paid: it.paid, gain: value - it.paid, rented: !!it.rented, canRent: !!d?.rent,
+      prestige: d?.prestige, upkeep: value * (d?.upkeep || 0), rent: it.rented ? value * (d?.rent || 0) : value * (d?.rent || 0),
+      resale: value * (['estate', 'art', 'watch'].includes(d?.cat) ? 0.95 : 0.85),
+      mortgage: loan ? { id: loan.id, balance: loan.balance, payment: loan.payment, rate: loan.rate, monthsLeft: loan.months_left } : null };
+  });
+
+  const loans = db.prepare("SELECT * FROM loans WHERE user_id=? AND status='active' ORDER BY id").all(uid).map(l => ({
+    id: l.id, kind: l.kind, itemId: l.item_id, principal: l.principal, balance: l.balance, rate: l.rate,
+    termMonths: l.term_months, monthsLeft: l.months_left, payment: l.payment,
+    nextDueIn: l.next_due - hour, paid: l.paid_total,
+    itemName: l.item_id ? NM(S.ITEM[db.prepare('SELECT type_id FROM items WHERE id=?').get(l.item_id)?.type_id]) : null,
+  }));
+  const deposits = db.prepare("SELECT * FROM deposits WHERE user_id=? AND status='active' ORDER BY id").all(uid).map(d => ({
+    id: d.id, amount: d.amount, rate: d.rate, termMonths: d.term_months, matureIn: d.mature_hour - hour,
+    interest: d.amount * d.rate * (d.term_months / 12),
+    progress: Math.min(1, (hour - d.start_hour) / Math.max(1, d.mature_hour - d.start_hour)),
+  }));
+
+  const carOwned = S.hasCar(uid);
+  const job = S.jobOf(p);
+  const nwTmp = nw.total;
+  const jobs = JOBS.map(j => ({ id: j.id, zh: j.zh, en: j.en, emoji: j.emoji, wage: j.wage, exp: j.exp,
+    car: !!j.car, descZh: j.descZh, descEn: j.descEn,
+    unlocked: p.job_exp >= j.exp, blocked: !!j.car && !carOwned, current: p.job_id === j.id }));
+  const prestige = S.prestigeOf(uid) + p.prestige;
+  const personalDebt = loans.filter(l => l.kind !== 'mortgage').reduce((s, l) => s + l.balance, 0);
+  const creditLimit = Math.max(0, Math.max(100_000, nw.total * 0.6 + Math.max(0, nw.bizNetPerHour) * M.YEAR_HOURS * 0.5) - personalDebt);
+
+  return {
+    now: { hour, date: M.gameDate(hour), progress: M.hourProgress(), realMsPerHour: M.MS_PER_GAME_HOUR },
+    player: {
+      nickname: p.nickname, cash: p.cash, bank: p.bank, creditScore: p.credit_score,
+      prestige, prestigeBonus: S.prestigeBonus(prestige), totalTax: p.total_tax,
+      totalDividend: p.total_dividend, realizedPnl: p.realized_pnl, missedPay: p.missed_pay,
+      bankrupt: !!p.bankrupt, peak: p.peak_networth, playedHours: hour - p.created_hour, monthProfit: p.month_profit,
+    },
+    netWorth: nw, title: S.titleOf(nw.total), offline,
+    job: { current: job ? { id: job.id, zh: job.zh, en: job.en, emoji: job.emoji, wage: job.wage } : null,
+      exp: p.job_exp, hours: p.job_hours, income: p.job_income, working: !!job && (!job.car || carOwned),
+      carOwned, list: jobs, hustlePay: S.hustlePay(p, nw.total),
+      hustleReady: Date.now() - p.last_hustle >= S.HUSTLE_COOLDOWN_MS,
+      hustleWaitMs: Math.max(0, S.HUSTLE_COOLDOWN_MS - (Date.now() - p.last_hustle)),
+      hustles: p.hustles, cooldownMs: S.HUSTLE_COOLDOWN_MS,
+      workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
+      onShift: (hour % 24) >= S.WORK_START && (hour % 24) < S.WORK_END,
+      otUsed: p.ot_day === Math.floor(hour / 24) ? p.ot_hours : 0,
+      otMax: S.OVERTIME_MAX_HOURS, otMult: S.OVERTIME_MULT,
+      nextDayInHours: 24 - (hour % 24),
+      dailyWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + S.OVERTIME_MAX_HOURS * S.OVERTIME_MULT) },
+    macro: M.regimeState(),
+    prosperity: M.cityProsperity(),
+    businesses, holdings, items, loans, deposits,
+    bank: { savingsRate: S.savingsRate(), overdraftRate: S.overdraftRate(), fixedRates: S.fixedRates(),
+      policyRate: M.policyRate(),
+      loanRate: S.loanRate(p.credit_score), mortgageRate: S.mortgageRate(p.credit_score),
+      creditLimit, totalDebt: nw.debt, mortgageDebt: nw.mortgage },
+    tax: { corp: RATES.corpTax, div: RATES.divTax, capGain: RATES.capGainTax, property: RATES.propertyTax },
+    fees: { commission: RATES.commission, minCommission: RATES.minCommission, spread: RATES.spread },
+    ledger: db.prepare('SELECT * FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 80').all(uid),
+    nwHistory: db.prepare('SELECT hour,value FROM networth WHERE user_id=? ORDER BY hour DESC LIMIT 220').all(uid).reverse(),
+    news: M.latestNews(15),
+    index: M.marketIndex(),
+    indices: M.allAssets().filter(a => a.kind === 'index').map(a => ({
+      symbol: a.symbol, name: a.name, zh: a.zh, sector: a.sector, price: a.price,
+      change: (a.price - a.prev_close) / a.prev_close, desc: a.desc })),
+  };
+}
+
+// ── 行情 ────────────────────────────────────────────────────
+export function getMarket(uid, kind) {
+  M.advanceMarket();
+  const held = new Map(db.prepare('SELECT asset_id,qty,cost FROM holdings WHERE user_id=? AND qty>0').all(uid).map(h => [h.asset_id, h]));
+  return M.allAssets().filter(a => kind ? a.kind === kind : a.kind !== 'index').map(a => {
+    const h = held.get(a.id);
+    return {
+      id: a.id, symbol: a.symbol, name: a.name, zh: a.zh, kind: a.kind, sector: a.sector, unit: a.unit,
+      price: a.price, prevClose: a.prev_close, change: (a.price - a.prev_close) / a.prev_close,
+      dayHigh: a.day_high, dayLow: a.day_low, divYield: a.div_yield, maxStake: a.max_stake,
+      shares: a.shares, marketCap: a.price * a.shares, pe: a.eps > 0 ? a.price / a.eps : null,
+      qty: h ? h.qty : 0, stake: h ? h.qty / a.shares : 0, avg: h && h.qty ? h.cost / h.qty : 0,
+      hourChange: Math.expm1(a.last_ret),
+    };
+  });
+}
+export function getSparks() { M.advanceMarket(); return M.sparklines(); }
+
+export function getAsset(uid, symbol, points = 240) {
+  M.advanceMarket();
+  const a = M.assetBySymbol(symbol);
+  if (!a) throw new Err('资产不存在 / Asset not found', 404);
+  const h = db.prepare('SELECT * FROM holdings WHERE user_id=? AND asset_id=?').get(uid, a.id);
+  const base = getMarket(uid, a.kind).find(x => x.id === a.id) || {};
+  const stake = h ? h.qty / a.shares : 0;
+  return {
+    ...base, kind: a.kind, symbol: a.symbol, name: a.name, zh: a.zh, unit: a.unit, sector: a.sector,
+    price: a.price, desc: a.desc, fair: a.fair, sigma: a.sigma * a.vol_state, beta: a.beta, eps: a.eps,
+    history: M.history(a.id, points),
+    news: db.prepare("SELECT * FROM news WHERE (scope='asset' AND target=?) OR (scope='sector' AND target=?) ORDER BY id DESC LIMIT 10").all(a.symbol, a.sector),
+    holding: h ? { qty: h.qty, cost: h.cost, avg: h.qty ? h.cost / h.qty : 0 } : null,
+    annualProfit: a.kind === 'stock' ? a.eps * a.shares : null,
+    takeover: a.kind === 'stock' && a.max_stake < 1 ? {
+      eligible: stake >= a.max_stake - 1e-9,
+      remaining: a.shares - (h?.qty || 0),
+      premium: 1.20 + 0.5 * (1 - stake),
+      cost: (a.shares - (h?.qty || 0)) * a.price * (1.20 + 0.5 * (1 - stake)),
+    } : null,
+  };
+}
+
+// ── 交易 ────────────────────────────────────────────────────
+export function trade(uid, { symbol, side, qty }) {
+  S.advancePlayer(uid);
+  const a = M.assetBySymbol(String(symbol || ''));
+  if (!a) throw new Err('资产不存在 / Asset not found', 404);
+  if (a.kind === 'index') throw new Err('指数不可直接交易 / Indices are not tradable');
+  let q = (a.kind === 'stock' || a.kind === 'district') ? Math.floor(num(qty, 1e-8, 1e15)) : Math.round(num(qty, 1e-8, 1e15) * 1e6) / 1e6;
+  if (q <= 0) throw new Err('数量必须大于 0 / Quantity must be positive');
+  const p = P(uid);
+  const h = db.prepare('SELECT * FROM holdings WHERE user_id=? AND asset_id=?').get(uid, a.id) || { qty: 0, cost: 0 };
+  const nm = { zh: a.zh, en: a.name };
+
+  if (side === 'buy') {
+    const cap = a.shares * a.max_stake;
+    if (h.qty + q > cap + 1e-6) throw new Err(`超出持股上限 ${(a.max_stake * 100).toFixed(1)}% / Exceeds the ${(a.max_stake * 100).toFixed(1)}% ownership cap`);
+    const px = a.price * (1 + RATES.spread);
+    const gross = q * px;
+    const fee = Math.max(RATES.minCommission, gross * RATES.commission);
+    const total = gross + fee;
+    if (p.cash < total) throw new Err(`现金不足，需要 ${S.fmt(total)} / Need ${S.fmt(total)} in cash`);
+    p.cash -= total;
+    db.prepare(`INSERT INTO holdings(user_id,asset_id,qty,cost) VALUES(?,?,?,?)
+                ON CONFLICT(user_id,asset_id) DO UPDATE SET qty=qty+excluded.qty, cost=cost+excluded.cost`)
+      .run(uid, a.id, q, total);
+    M.applyImpact(a.id, q);
+    savePlayer(p);
+    const stake = (h.qty + q) / a.shares;
+    ledger(uid, 'trade', -total, L('led.buy', { name: nm, sym: a.symbol, qty: q, unit: a.unit, px, fee }), '🛒');
+    if (stake >= 0.9995) ledger(uid, 'event', 0, L('led.fullOwn', { name: nm }), '🏛️');
+    else if (stake >= 0.5 && h.qty / a.shares < 0.5) ledger(uid, 'event', 0, L('led.control', { name: nm }), '👑');
+    return { ok: true, price: px, fee, total, qty: q, stake };
+  }
+  if (side === 'sell') {
+    if (h.qty < q - 1e-9) throw new Err(`持仓不足 / Insufficient position`);
+    const px = a.price * (1 - RATES.spread);
+    const gross = q * px;
+    const fee = Math.max(RATES.minCommission, gross * RATES.commission);
+    const basis = h.cost * (q / h.qty);
+    const gain = gross - fee - basis;
+    const tax = gain > 0 ? gain * RATES.capGainTax : 0;
+    const net = gross - fee - tax;
+    p.cash += net; p.realized_pnl += gain - tax;
+    const left = h.qty - q;
+    if (left <= 1e-9) db.prepare('DELETE FROM holdings WHERE user_id=? AND asset_id=?').run(uid, a.id);
+    else db.prepare('UPDATE holdings SET qty=?, cost=? WHERE user_id=? AND asset_id=?').run(left, h.cost - basis, uid, a.id);
+    M.applyImpact(a.id, -q);
+    savePlayer(p);
+    ledger(uid, 'trade', net, L('led.sell', { name: nm, sym: a.symbol, qty: q, unit: a.unit, px, gain, tax }), '💱');
+    return { ok: true, price: px, fee, tax, net, gain, qty: q };
+  }
+  throw new Err('未知交易方向 / Unknown side');
+}
+
+// ── 全面收购要约 ────────────────────────────────────────────
+export function takeover(uid, { symbol }) {
+  S.advancePlayer(uid);
+  const a = M.assetBySymbol(String(symbol || ''));
+  if (!a || a.kind !== 'stock') throw new Err('只能对上市公司发起收购 / Only listed companies can be acquired');
+  const h = db.prepare('SELECT * FROM holdings WHERE user_id=? AND asset_id=?').get(uid, a.id) || { qty: 0, cost: 0 };
+  const stake = h.qty / a.shares;
+  if (stake >= 0.9995) throw new Err('你已经全资拥有这家公司 / You already own it outright');
+  if (stake < a.max_stake - 1e-9)
+    throw new Err(`需先在二级市场买满 ${(a.max_stake * 100).toFixed(1)}% / Buy up to the ${(a.max_stake * 100).toFixed(1)}% cap first`);
+  const remaining = a.shares - h.qty;
+  const premium = 1.20 + 0.5 * (1 - stake);
+  const cost = remaining * a.price * premium;
+  const p = P(uid);
+  if (p.cash < cost) throw new Err(`收购要约需要现金 ${S.fmt(cost)} / Tender offer requires ${S.fmt(cost)} in cash`);
+  p.cash -= cost;
+  db.prepare(`INSERT INTO holdings(user_id,asset_id,qty,cost) VALUES(?,?,?,?)
+              ON CONFLICT(user_id,asset_id) DO UPDATE SET qty=?, cost=cost+?`)
+    .run(uid, a.id, a.shares, cost, a.shares, cost);
+  M.applyImpact(a.id, remaining * 0.35);
+  savePlayer(p);
+  ledger(uid, 'trade', -cost, L('led.takeover', { name: { zh: a.zh, en: a.name }, sym: a.symbol, cost, premium: premium - 1 }), '🏛️');
+  return { ok: true, cost, premium };
+}
+
+// ── 实业 ────────────────────────────────────────────────────
+export function bizBuy(uid, { typeId, cityId, name }) {
+  S.advancePlayer(uid);
+  const def = S.BIZ[typeId], city = S.CITY[cityId];
+  if (!def || !city) throw new Err('店铺类型或城市无效 / Invalid business or city');
+  const cost = Math.round(def.cost * city.costMult);
+  const p = P(uid);
+  if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
+  p.cash -= cost;
+  const nm = String(name || '').trim().slice(0, 24) || `${city.name}${def.name}`;
+  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff)
+              VALUES(?,?,?,?,?,?,?,?,?,1)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(), 0.9 + Math.random() * 0.2, 2);
+  savePlayer(p);
+  ledger(uid, 'biz', -cost, L('led.bizOpen', { name: nm, city: NM(city), type: NM(def), cost }), def.emoji);
+  return { ok: true, cost };
+}
+
+export function bizAction(uid, { id, action, name, arg }) {
+  S.advancePlayer(uid);
+  const b = db.prepare('SELECT * FROM businesses WHERE id=? AND user_id=?').get(num(id, 1), uid);
+  if (!b) throw new Err('店铺不存在 / Business not found', 404);
+  const def = S.BIZ[b.type_id], city = S.CITY[b.city], p = P(uid);
+
+  if (action === 'upgrade') {
+    if (b.level >= S.MAX_LEVEL) throw new Err('已达最高等级 / Max level reached');
+    const cost = S.upgradeCost(def, city, b.level);
+    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
+    p.cash -= cost;
+    db.prepare('UPDATE businesses SET level=level+1, invested=invested+? WHERE id=?').run(cost, b.id);
+    savePlayer(p);
+    ledger(uid, 'biz', -cost, L('led.bizUpgrade', { name: b.name, level: b.level + 1, cost }), '🏗️');
+    return { ok: true, cost, level: b.level + 1 };
+  }
+  if (action === 'marketing') {
+    if (b.marketing >= S.MAX_MARKETING) throw new Err('营销投入已达上限 / Marketing maxed out');
+    const cost = S.marketingCost(def, city, b.marketing);
+    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
+    p.cash -= cost;
+    db.prepare('UPDATE businesses SET marketing=marketing+1, invested=invested+? WHERE id=?').run(Math.round(cost * 0.4), b.id);
+    savePlayer(p);
+    ledger(uid, 'biz', -cost, L('led.bizMarketing', { name: b.name, level: b.marketing + 1, cost }), '📣');
+    return { ok: true, cost };
+  }
+  if (action === 'repair') {
+    const cost = Math.round(def.cost * city.costMult * 0.22 * (1 - b.condition));
+    if (cost <= 0) throw new Err('店铺状况良好 / Already in good condition');
+    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
+    p.cash -= cost;
+    db.prepare('UPDATE businesses SET condition=1 WHERE id=?').run(b.id);
+    savePlayer(p);
+    ledger(uid, 'biz', -cost, L('led.bizRepair', { name: b.name, cost }), '🧹');
+    return { ok: true, cost };
+  }
+  if (action === 'sell') {
+    const value = Math.round(b.invested * 0.65 * (0.6 + 0.4 * b.condition));
+    p.cash += value;
+    db.prepare('DELETE FROM businesses WHERE id=?').run(b.id);
+    savePlayer(p);
+    ledger(uid, 'biz', value, L('led.bizSell', { name: b.name, value }), '🤝');
+    return { ok: true, value };
+  }
+  if (action === 'price') {
+    const t = num(arg, -2, 2) | 0;
+    db.prepare('UPDATE businesses SET price_tier=? WHERE id=?').run(t, b.id);
+    const tier = S.PRICE_TIERS.find(x => x.v === t);
+    ledger(uid, 'biz', 0, L('led.bizPrice', { name: b.name, tier: { zh: tier.zh, en: tier.en } }), '🏷️');
+    return { ok: true };
+  }
+  if (action === 'staff') {
+    db.prepare('UPDATE businesses SET staff=?, auto_staff=0 WHERE id=?').run(num(arg, 0, 5000) | 0, b.id);
+    return { ok: true };
+  }
+  if (action === 'autostaff') {
+    const on = arg ? 1 : 0;
+    let staff = b.staff;
+    if (on) staff = S.bizRates(b, S.prestigeBonus(S.prestigeOf(uid) + p.prestige)).recStaff;
+    db.prepare('UPDATE businesses SET auto_staff=?, staff=? WHERE id=?').run(on, staff, b.id);
+    return { ok: true };
+  }
+  if (action === 'autorepair') {
+    db.prepare('UPDATE businesses SET auto_repair=? WHERE id=?').run(arg ? 1 : 0, b.id);
+    return { ok: true };
+  }
+  if (action === 'rename') {
+    const nm = String(name || '').trim().slice(0, 24);
+    if (!nm) throw new Err('名称不能为空 / Name required');
+    db.prepare('UPDATE businesses SET name=? WHERE id=?').run(nm, b.id);
+    return { ok: true };
+  }
+  throw new Err('未知操作 / Unknown action');
+}
+
+// ── 银行 ────────────────────────────────────────────────────
+export function bank(uid, { action, amount, months, id }) {
+  S.advancePlayer(uid);
+  const p = P(uid), hour = curHour();
+
+  if (action === 'deposit') {
+    const amt = money(amount);
+    if (p.cash < amt) throw new Err('现金不足 / Not enough cash');
+    p.cash -= amt; p.bank += amt; savePlayer(p);
+    ledger(uid, 'bank', 0, L('led.bankDeposit', { amt }), '🏦');
+    return { ok: true };
+  }
+  if (action === 'withdraw') {
+    const amt = money(amount);
+    if (p.bank < amt) throw new Err('活期余额不足 / Not enough in savings');
+    p.bank -= amt; p.cash += amt; savePlayer(p);
+    ledger(uid, 'bank', 0, L('led.bankWithdraw', { amt }), '🏦');
+    return { ok: true };
+  }
+  if (action === 'fixed') {
+    const amt = money(amount), m = num(months, 1, 24);
+    if (!RATES.fixed[m]) throw new Err('期限无效 / Invalid term');
+    if (amt < 1000) throw new Err('定期起存 $1,000 / Minimum $1,000');
+    if (p.bank < amt) throw new Err('活期余额不足 / Not enough in savings');
+    p.bank -= amt;
+    db.prepare('INSERT INTO deposits(user_id,amount,rate,term_months,start_hour,mature_hour) VALUES(?,?,?,?,?,?)')
+      .run(uid, amt, RATES.fixed[m], m, hour, hour + m * M.MONTH_HOURS);
+    savePlayer(p);
+    ledger(uid, 'bank', 0, L('led.fixedOpen', { amt, months: m, rate: RATES.fixed[m] }), '💰');
+    return { ok: true };
+  }
+  if (action === 'redeem') {
+    const d = db.prepare("SELECT * FROM deposits WHERE id=? AND user_id=? AND status='active'").get(num(id, 1), uid);
+    if (!d) throw new Err('存单不存在 / Deposit not found');
+    const prog = Math.min(1, (hour - d.start_hour) / Math.max(1, d.mature_hour - d.start_hour));
+    const gain = d.amount * d.rate * (d.term_months / 12) * 0.3 * prog;
+    p.bank += d.amount + gain;
+    db.prepare("UPDATE deposits SET status='early' WHERE id=?").run(d.id);
+    savePlayer(p);
+    ledger(uid, 'bank', gain, L('led.fixedRedeem', { amt: d.amount, gain }), '💸');
+    return { ok: true };
+  }
+  if (action === 'loan') {
+    const amt = money(amount), m = num(months, 1, 60);
+    if (p.credit_score < 350) throw new Err('信用分过低，银行拒绝放贷 / Credit score too low');
+    const nw = S.computeNetWorth(uid);
+    const debt = db.prepare("SELECT COALESCE(SUM(balance),0) s FROM loans WHERE user_id=? AND status='active' AND kind!='mortgage'").get(uid).s;
+    const limit = Math.max(0, Math.max(100_000, nw.total * 0.6 + Math.max(0, nw.bizNetPerHour) * M.YEAR_HOURS * 0.5) - debt);
+    if (amt > limit) throw new Err(`超出授信额度，最多 ${S.fmt(limit)} / Credit limit is ${S.fmt(limit)}`);
+    const rate = S.loanRate(p.credit_score), i = rate / 12;
+    const payment = amt * i / (1 - Math.pow(1 + i, -m));
+    db.prepare(`INSERT INTO loans(user_id,principal,balance,rate,term_months,months_left,payment,next_due,created_hour,kind)
+                VALUES(?,?,?,?,?,?,?,?,?,'personal')`).run(uid, amt, amt, rate, m, m, payment, hour + M.MONTH_HOURS, hour);
+    p.cash += amt; savePlayer(p);
+    ledger(uid, 'loan', amt, L('led.loanNew', { amt, rate, months: m, payment }), '🏦');
+    return { ok: true, rate, payment };
+  }
+  if (action === 'repay') {
+    const l = db.prepare("SELECT * FROM loans WHERE id=? AND user_id=? AND status='active'").get(num(id, 1), uid);
+    if (!l) throw new Err('贷款不存在 / Loan not found');
+    const amt = Math.min(money(amount), l.balance);
+    if (p.cash + p.bank < amt) throw new Err('现金与活期合计不足 / Insufficient funds');
+    S.payFrom(p, amt);
+    l.balance -= amt;
+    if (l.balance <= 1) {
+      db.prepare("UPDATE loans SET balance=0, status='closed', paid_total=paid_total+? WHERE id=?").run(amt, l.id);
+      if (l.item_id) db.prepare('UPDATE items SET loan_id=0 WHERE id=?').run(l.item_id);
+      p.credit_score = Math.min(850, p.credit_score + 12);
+      ledger(uid, 'loan', -amt, L('led.loanPayoff', { amt }), '✅');
+    } else {
+      db.prepare('UPDATE loans SET balance=?, paid_total=paid_total+? WHERE id=?').run(l.balance, amt, l.id);
+      ledger(uid, 'loan', -amt, L('led.loanRepay', { amt, left: l.balance }), '📉');
+    }
+    savePlayer(p);
+    return { ok: true };
+  }
+  throw new Err('未知银行操作 / Unknown bank action');
+}
+
+// ── 房产 / 奢侈品 ───────────────────────────────────────────
+export function itemBuy(uid, { typeId, downPct, months }) {
+  S.advancePlayer(uid);
+  const def = S.ITEM[typeId];
+  if (!def) throw new Err('物品不存在 / Item not found');
+  const p = P(uid), hour = curHour();
+  const price = S.itemListPrice(def);
+  const useMortgage = downPct != null && def.mortgage;
+  let loanId = 0, down = price;
+
+  if (useMortgage) {
+    const dp = Math.min(1, Math.max(S.MIN_DOWN, num(downPct, 0.05, 1)));
+    const m = num(months, 12, 480);
+    if (!S.MORTGAGE_TERMS.includes(m)) throw new Err('贷款期限无效 / Invalid mortgage term');
+    if (p.credit_score < 400) throw new Err('信用分不足，无法办理房贷 / Credit score too low for a mortgage');
+    down = price * dp;
+    const amt = price - down;
+    if (p.cash < down) throw new Err(`首付不足，需要 ${S.fmt(down)} / Down payment of ${S.fmt(down)} required`);
+    const rate = S.mortgageRate(p.credit_score), i = rate / 12;
+    const payment = amt * i / (1 - Math.pow(1 + i, -m));
+    const info = db.prepare(`INSERT INTO loans(user_id,principal,balance,rate,term_months,months_left,payment,next_due,created_hour,kind)
+                             VALUES(?,?,?,?,?,?,?,?,?,'mortgage')`).run(uid, amt, amt, rate, m, m, payment, hour + M.MONTH_HOURS, hour);
+    loanId = Number(info.lastInsertRowid);
+    p.cash -= down;
+    ledger(uid, 'loan', amt, L('led.mortgageNew', { item: NM(def), amt, rate, months: m, payment, down }), '🏦');
+  } else {
+    if (p.cash < price) throw new Err(`现金不足，需要 ${S.fmt(price)} / Need ${S.fmt(price)}`);
+    p.cash -= price;
+  }
+
+  const units = def.index ? price / M.indexLevel(def.index) : 0;
+  const info = db.prepare(`INSERT INTO items(user_id,type_id,value,paid,bought_hour,region,index_sym,units,loan_id)
+                           VALUES(?,?,?,?,?,?,?,?,?)`)
+    .run(uid, typeId, price, price, hour, def.region || '', def.index || '', units, loanId);
+  if (loanId) db.prepare('UPDATE loans SET item_id=? WHERE id=?').run(Number(info.lastInsertRowid), loanId);
+  savePlayer(p);
+  ledger(uid, 'item', -down, L('led.itemBuy', { item: NM(def), price, prestige: def.prestige, mortgage: !!loanId }), def.emoji);
+  return { ok: true, price };
+}
+
+export function itemAction(uid, { id, action }) {
+  S.advancePlayer(uid);
+  const it = db.prepare('SELECT * FROM items WHERE id=? AND user_id=?').get(num(id, 1), uid);
+  if (!it) throw new Err('物品不存在 / Item not found', 404);
+  const def = S.ITEM[it.type_id], p = P(uid);
+  const value = S.itemValue(it);
+
+  if (action === 'sell') {
+    const gross = value * (['estate', 'art', 'watch'].includes(def.cat) ? 0.95 : 0.85);
+    let payoff = 0;
+    if (it.loan_id) {
+      const l = db.prepare("SELECT * FROM loans WHERE id=? AND status='active'").get(it.loan_id);
+      if (l) {
+        payoff = l.balance;
+        db.prepare("UPDATE loans SET balance=0, status='closed', paid_total=paid_total+? WHERE id=?").run(payoff, l.id);
+      }
+    }
+    const net = gross - payoff;
+    if (net >= 0) p.cash += net; else S.payFrom(p, -net);
+    db.prepare('DELETE FROM items WHERE id=?').run(it.id);
+    savePlayer(p);
+    ledger(uid, 'item', net, L('led.itemSell', { item: NM(def), value: gross, delta: value - it.paid, payoff }), '🤝');
+    return { ok: true, value: gross, payoff };
+  }
+  if (action === 'rent') {
+    if (!def.rent) throw new Err('该资产不可出租 / Not rentable');
+    const on = it.rented ? 0 : 1;
+    db.prepare('UPDATE items SET rented=? WHERE id=?').run(on, it.id);
+    ledger(uid, 'item', 0, L('led.itemRent', { item: NM(def), on, rent: value * def.rent }), '🔑');
+    return { ok: true, rented: !!on };
+  }
+  throw new Err('未知操作 / Unknown action');
+}
+
+// ── 工作 / 零工 ─────────────────────────────────────────────
+export function takeJob(uid, { jobId }) {
+  S.advancePlayer(uid);
+  const p = P(uid);
+  if (jobId === '') { db.prepare("UPDATE players SET job_id='' WHERE user_id=?").run(uid); return { ok: true }; }
+  const j = S.JOB[jobId];
+  if (!j) throw new Err('职位不存在 / Job not found');
+  if (p.job_exp < j.exp) throw new Err(`工作经验不足，需要 ${Math.round(j.exp)} / Requires ${Math.round(j.exp)} experience`);
+  if (j.car && !S.hasCar(uid)) throw new Err('这份工作需要你先拥有一辆车 / This job requires your own vehicle');
+  db.prepare('UPDATE players SET job_id=? WHERE user_id=?').run(jobId, uid);
+  ledger(uid, 'job', 0, L('led.jobTake', { job: { zh: j.zh, en: j.en }, wage: j.wage }), j.emoji);
+  return { ok: true };
+}
+
+export function hustle(uid) {
+  S.advancePlayer(uid);
+  const p = P(uid);
+  const now = Date.now(), hour = curHour(), day = Math.floor(hour / 24);
+  if (now - p.last_hustle < S.HUSTLE_COOLDOWN_MS) {
+    const w = Math.ceil((S.HUSTLE_COOLDOWN_MS - (now - p.last_hustle)) / 1000);
+    throw new Err(`还需等待 ${w} 秒 / Wait ${w}s`);
+  }
+  const j = S.jobOf(p);
+  if (!j) throw new Err('先找一份工作 / Take a job first');
+  if (j.car && !S.hasCar(uid)) throw new Err('这份工作需要一辆车 / This job requires a vehicle');
+
+  let used = p.ot_day === day ? p.ot_hours : 0;
+  if (used >= S.OVERTIME_MAX_HOURS)
+    throw new Err(`今天的加班时长已用完（${S.OVERTIME_MAX_HOURS} 小时），等下一个游戏日 / Daily overtime limit (${S.OVERTIME_MAX_HOURS}h) reached — wait for the next in-game day`);
+
+  const pay = S.hustlePay(p);            // 一个工时的加班费
+  used += 1;
+  p.cash += pay;
+  db.prepare(`UPDATE players SET cash=?, job_exp=job_exp+1, job_hours=job_hours+1, job_income=job_income+?,
+              last_hustle=?, hustles=hustles+1, ot_hours=?, ot_day=? WHERE user_id=?`)
+    .run(p.cash, pay, now, used, day, uid);
+  if (used === S.OVERTIME_MAX_HOURS)
+    ledger(uid, 'job', 0, L('led.otFull', { job: { zh: j.zh, en: j.en }, h: S.OVERTIME_MAX_HOURS }), j.emoji);
+  else if (p.hustles % 12 === 0)
+    ledger(uid, 'job', pay, L('led.hustle', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
+  return { ok: true, pay, exp: p.job_exp + 1, cash: p.cash, otUsed: used, otMax: S.OVERTIME_MAX_HOURS };
+}
+
+// ── 富豪榜：财富与游戏内公司股价实时联动 ────────────────────
+export function richList(uid) {
+  const live = new Map(M.allAssets().map(a => [a.symbol, a]));
+  const mine = new Map(db.prepare('SELECT asset_id,qty FROM holdings WHERE user_id=? AND qty>0').all(uid)
+    .map(h => { const a = M.assetById(h.asset_id); return [a?.symbol, h.qty / (a?.shares || 1)]; }));
+  const list = RIVALS.map(r => {
+    const a = r.symbol ? live.get(r.symbol) : null;
+    const cap = a ? a.price * a.shares : 0;
+    const diluted = Math.max(0, 1 - (mine.get(r.symbol) || 0));   // 你买走的部分不再属于他
+    const equity = cap * r.stake * diluted;
+    return { id: r.id, zh: r.zh, en: r.en, emoji: r.emoji, bio: r.bio,
+      symbol: r.symbol, company: a ? { zh: a.zh, en: a.name } : null,
+      stake: r.stake, equity, other: r.other, value: equity + r.other, npc: true };
+  });
+  const me = S.computeNetWorth(uid);
+  const p = P(uid);
+  list.push({ id: 'me', zh: p.nickname, en: p.nickname, emoji: S.titleOf(me.total).icon, value: me.total, npc: false });
+  list.sort((a, b) => b.value - a.value);
+  return list.map((x, i) => ({ ...x, rank: i + 1 }));
+}
+
+// ── 账号管理 ───────────────────────────────────────────────
+export function deleteAccount(uid, { password }) {
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(uid);
+  if (!u) throw new Err('账号不存在 / Account not found', 404);
+  try { A.login(u.username, password); } catch { throw new Err('密码错误 / Wrong password', 403); }
+  db.exec('BEGIN');
+  try {
+    for (const t of ['holdings','businesses','items','loans','deposits','ledger','networth','players','sessions'])
+      db.prepare(`DELETE FROM ${t} WHERE user_id=?`).run(uid);
+    db.prepare('DELETE FROM users WHERE id=?').run(uid);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return { ok: true };
+}
+
+// ── 其它 ────────────────────────────────────────────────────
+export function catalog() {
+  const idx = Object.fromEntries(M.allAssets().filter(a => a.kind === 'index').map(a => [a.symbol, a.price]));
+  return {
+    biz: BIZ_TYPES, cities: CITIES, regions: REGIONS,
+    items: ITEM_TYPES.map(i => ({ ...i, listPrice: i.index ? i.price * (idx[i.index] || 100) / 100 : i.price })),
+    itemCats: ITEM_CATS, priceTiers: S.PRICE_TIERS, titles: S.TITLES, jobs: JOBS,
+    regimes: M.REGIMES, hustleCooldown: S.HUSTLE_COOLDOWN_MS,
+    maxLevel: S.MAX_LEVEL, maxMarketing: S.MAX_MARKETING,
+    mortgageTerms: S.MORTGAGE_TERMS, minDown: S.MIN_DOWN,
+    sectors: [...new Set(M.allAssets().filter(a => a.kind !== 'index').map(a => a.sector))]
+      .map(s => ({ zh: s, en: SECTOR_EN[s] || s })),
+  };
+}
+
+// ── 大盘概览：涨跌分布 / 板块表现 / 涨跌幅榜 ────────────────
+export function marketOverview(uid) {
+  M.advanceMarket();
+  const all = M.allAssets();
+  const stocks = all.filter(a => a.kind === 'stock');
+  const breadth = {};
+  for (const k of ['stock', 'commodity', 'crypto']) {
+    const l = all.filter(a => a.kind === k);
+    breadth[k] = {
+      up: l.filter(a => a.price > a.prev_close).length,
+      down: l.filter(a => a.price < a.prev_close).length,
+      flat: l.filter(a => a.price === a.prev_close).length,
+      total: l.length,
+      avg: l.reduce((s, a) => s + (a.price - a.prev_close) / a.prev_close, 0) / (l.length || 1),
+    };
+  }
+  const secMap = {};
+  for (const a of all) {
+    if (a.kind === 'index') continue;
+    const m = secMap[a.sector] || (secMap[a.sector] = { zh: a.sector, en: SECTOR_EN[a.sector] || a.sector, cap: 0, prev: 0, n: 0 });
+    m.cap += a.price * a.shares; m.prev += a.prev_close * a.shares; m.n++;
+  }
+  const sectors = Object.values(secMap).map(m => ({ ...m, change: m.prev ? (m.cap - m.prev) / m.prev : 0 }))
+    .sort((a, b) => b.change - a.change);
+  const rank = all.filter(a => a.kind !== 'index')
+    .map(a => ({ symbol: a.symbol, zh: a.zh, name: a.name, kind: a.kind, price: a.price,
+      change: (a.price - a.prev_close) / a.prev_close, cap: a.price * a.shares }));
+  rank.sort((a, b) => b.change - a.change);
+  const bex = M.assetBySymbol('BEXI');
+  return {
+    breadth, sectors,
+    gainers: rank.slice(0, 8), losers: rank.slice(-8).reverse(),
+    index: { ...M.marketIndex(), history: bex ? M.history(bex.id, 300) : [], desc: bex?.desc || '' },
+    macro: M.regimeState(),
+    news: M.latestNews(20),
+  };
+}
+
+export function leaderboard() {
+  return db.prepare(`
+    SELECT u.username, p.nickname, p.peak_networth,
+      (SELECT value FROM networth n WHERE n.user_id=u.id ORDER BY hour DESC LIMIT 1) cur
+    FROM users u JOIN players p ON p.user_id=u.id`).all()
+    .map(r => ({ name: r.nickname || r.username, value: r.cur ?? r.peak_networth ?? 0, peak: r.peak_networth }))
+    .sort((a, b) => b.value - a.value).slice(0, 20);
+}
+
+export function resetSave(uid) {
+  db.exec('BEGIN');
+  try {
+    for (const t of ['holdings', 'businesses', 'items', 'loans', 'deposits', 'ledger', 'networth'])
+      db.prepare(`DELETE FROM ${t} WHERE user_id=?`).run(uid);
+    db.prepare('DELETE FROM players WHERE user_id=?').run(uid);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  const u = db.prepare('SELECT username FROM users WHERE id=?').get(uid);
+  S.ensurePlayer(uid, u.username);
+  return { ok: true };
+}
+
+export { Err };

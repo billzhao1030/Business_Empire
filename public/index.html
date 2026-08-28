@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e17">
+<title>Business Empire · 商业帝国</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💼</text></svg>">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- ══ 登录 ══ -->
+<div id="auth" class="auth-screen">
+  <div class="auth-bg"></div>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-logo">💼</div>
+      <h1>BUSINESS EMPIRE</h1>
+      <p class="auth-sub">商 业 帝 国 · 从街边小店到跨国财阀</p>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-mode="login">登录</button>
+      <button class="auth-tab" data-mode="register">注册新存档</button>
+    </div>
+    <form id="auth-form" autocomplete="off">
+      <label class="field"><span>账号</span><input id="au-user" type="text" placeholder="用户名" maxlength="20" autocomplete="username"></label>
+      <label class="field"><span>密码</span><input id="au-pass" type="password" placeholder="至少 4 位" autocomplete="current-password"></label>
+      <label class="field hidden" id="nick-field"><span>公司名 / 昵称</span><input id="au-nick" type="text" placeholder="选填，将显示在排行榜" maxlength="16"></label>
+      <div id="auth-err" class="auth-err"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="auth-submit">进 入 市 场</button>
+    </form>
+    <div class="auth-foot">
+      <div><b>$0</b> 白手起家 · <b>200</b> 支股票 · <b>36</b> 类实业</div>
+      <div class="dim">现实 1 分钟 = 游戏 1 小时 · 存档保存在本地数据库 · 无广告</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 主应用 ══ -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-logo">💼</span><span class="brand-text">BUSINESS<em>EMPIRE</em></span></div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="dashboard"><span class="ni">📊</span><span class="nt">总览</span></button>
+      <button class="nav-item" data-view="career"><span class="ni">🧳</span><span class="nt">生涯</span></button>
+      <button class="nav-item" data-view="business"><span class="ni">🏬</span><span class="nt">实业</span><span class="badge" id="badge-biz"></span></button>
+      <button class="nav-item" data-view="market"><span class="ni">📈</span><span class="nt">行情</span></button>
+      <button class="nav-item" data-view="portfolio"><span class="ni">💼</span><span class="nt">持仓</span><span class="badge" id="badge-pf"></span></button>
+      <button class="nav-item" data-view="bank"><span class="ni">🏦</span><span class="nt">银行</span></button>
+      <button class="nav-item" data-view="luxury"><span class="ni">💎</span><span class="nt">资产</span></button>
+      <button class="nav-item" data-view="rank"><span class="ni">🏆</span><span class="nt">富豪榜</span></button>
+      <button class="nav-item" data-view="ledger"><span class="ni">🧾</span><span class="nt">账本</span></button>
+      <button class="nav-item" data-view="about"><span class="ni">📖</span><span class="nt">关于</span></button>
+    </nav>
+    <div class="side-foot">
+      <div class="clock-card">
+        <div class="clock-date" id="side-date">----</div>
+        <div class="clock-ring"><svg viewBox="0 0 36 36"><circle class="ring-bg" cx="18" cy="18" r="15.5"></circle><circle class="ring-fg" id="ring" cx="18" cy="18" r="15.5"></circle></svg><span id="side-hour">00</span></div>
+        <div class="clock-hint">1 分钟 = 1 小时</div>
+      </div>
+      <button class="nav-item small" id="btn-logout"><span class="ni">🚪</span><span class="nt">退出</span></button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="tb-left">
+        <div class="tb-title" id="view-title">总览</div>
+        <div class="tb-crumb" id="view-sub"></div>
+      </div>
+      <div class="tb-stats">
+        <div class="tbs"><label>净资产</label><b id="tb-nw" class="mono">--</b></div>
+        <div class="tbs"><label>现金</label><b id="tb-cash" class="mono">--</b></div>
+        <div class="tbs"><label>市场指数</label><b id="tb-idx" class="mono">--</b></div>
+        <div class="tbs"><label>信用分</label><b id="tb-credit" class="mono">--</b></div>
+      </div>
+      <div class="tb-right" style="display:flex;align-items:center;gap:12px">
+        <div class="theme-switch" id="theme-switch">
+          <button data-theme="neon" title="炫彩">🌈</button>
+          <button data-theme="midnight" title="深邃">🌙</button>
+          <button data-theme="daylight" title="明亮">☀️</button>
+        </div>
+        <div class="lang-switch" id="lang-switch">
+          <button data-lang="zh">中</button><button data-lang="en">EN</button>
+        </div>
+        <div class="title-chip" id="tb-title-chip">🧢 街头小贩</div>
+      </div>
+    </header>
+    <main id="view" class="view"></main>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

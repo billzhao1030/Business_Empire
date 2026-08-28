@@ -1,0 +1,15 @@
+{
+  "name": "business-empire",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Business Empire — 网页版商业帝国模拟经营游戏（零依赖 / zero dependencies）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:legacy": "node --experimental-sqlite server.js",
+    "reset": "node -e \"import('node:fs').then(f=>['game.db','game.db-wal','game.db-shm'].forEach(x=>{try{f.rmSync('data/'+x)}catch{}}))\""
+  },
+  "engines": { "node": ">=22.5" },
+  "license": "MIT"
+}
