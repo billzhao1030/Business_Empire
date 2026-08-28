@@ -174,6 +174,8 @@ zh:{
   toast:{success:'操作成功',failed:'操作失败',bought:'买入成功',sold:'卖出成功',
     opened:'开业大吉！',upgraded:'扩建完成',saved:'已保存',welcome:'欢迎回来'},
   time:{ago:'前',now:'刚刚',gh:'游戏小时'},
+  net:{lost:'与游戏服务失去连接——请确认服务还在运行（双击桌面图标即可重启）',
+    retry:'重试',jsError:'界面出错',newBuild:'检测到新版本，正在刷新…'},
 },
 en:{
   brand:'Business Empire', appName:'Business Empire',
@@ -349,6 +351,8 @@ en:{
   toast:{success:'Done',failed:'Failed',bought:'Order filled',sold:'Position sold',
     opened:'Now open for business!',upgraded:'Expansion complete',saved:'Saved',welcome:'Welcome back'},
   time:{ago:' ago',now:'just now',gh:'in-game hours'},
+  net:{lost:'Lost connection to the game server — check that it is still running (double-click the desktop icon to restart it)',
+    retry:'Retry',jsError:'Interface error',newBuild:'New build detected, reloading…'},
 }};
 
 // 人生事件文案

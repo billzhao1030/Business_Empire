@@ -14,6 +14,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT || 8020);
+const BUILD_ID = String(Date.now());   // 每次启动生成，用于识别前后端版本是否一致
+process.env.BE_BUILD = BUILD_ID;
 
 M.bootTime();
 M.initAssets();
@@ -61,8 +63,12 @@ function serveStatic(req, res, urlPath) {
       return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, b2) =>
         e2 ? send(res, 404, { error: 'not found' }) : send(res, 200, b2, { 'Content-Type': MIME['.html'] }));
     }
-    send(res, 200, buf, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache' });
+    const ext = path.extname(file);
+    // 前端代码一律不缓存，杜绝浏览器跑着旧版本 JS 的情况
+    const noStore = ['.html', '.js', '.css'].includes(ext);
+    send(res, 200, buf, { 'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': noStore ? 'no-store, must-revalidate' : 'no-cache',
+      'X-Build': BUILD_ID });
   });
 }
 
@@ -88,7 +94,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { token, user: { id: u.id, username: u.username } }, { 'Set-Cookie': authCookie(token) });
     }
     if (p === '/api/ping' || p === '/api/health')
-      return send(res, 200, { ok: true, name: 'business-empire', port: PORT,
+      return send(res, 200, { ok: true, name: 'business-empire', port: PORT, build: BUILD_ID,
         hour: M.currentGameHour(), date: M.gameDate(M.currentGameHour()) });
 
     // ── 需要登录 ──

@@ -110,6 +110,8 @@ export default {
               <dt>${L('昵称', 'Nickname')}</dt><dd>${esc(s.player.nickname)}</dd>
               <dt>${L('净资产', 'Net worth')}</dt><dd>${money(s.netWorth.total)}</dd>
               <dt>${L('存档位置', 'Save file')}</dt><dd style="font-size:11px">data/game.db</dd>
+              <dt>${L('访问地址', 'Origin')}</dt><dd style="font-size:11px">${esc(location.origin)}</dd>
+              <dt>${L('服务版本', 'Server build')}</dt><dd style="font-size:11px" id="ab-build">${esc(String(s.build || '-')).slice(-8)}</dd>
             </dl>
             <div style="border-top:1px solid var(--line);padding-top:14px">
               <div class="down" style="font-size:11px;font-weight:800;letter-spacing:.5px;margin-bottom:10px">⚠️ ${t('about.danger')}</div>
@@ -122,8 +124,15 @@ export default {
       </div>
     </div>`;
 
-    const rb = $('#ab-reset');
-    rb.onclick = async () => {
+    // 用事件委托绑在容器上：即使视图被重渲染，按钮也永远有效
+    root.onclick = async ev => {
+      const btn = ev.target.closest?.('#ab-reset, #ab-del');
+      if (!btn) return;
+      if (btn.id === 'ab-del') return doDelete();
+      await doReset(btn);
+    };
+
+    const doReset = async rb => {
       const ok = await confirmBox(t('about.resetSave'), t('about.resetDesc'), t('about.resetSave'));
       if (!ok) return;
       const old = rb.textContent;
@@ -131,7 +140,7 @@ export default {
       try { await api.reset(); toast(t('toast.success'), 'ok'); await app.refresh(true); }
       catch (e) { toast(e.message, 'err', t('toast.failed')); rb.disabled = false; rb.textContent = old; }
     };
-    $('#ab-del').onclick = () => {
+    const doDelete = () => {
       modal({
         title: t('about.delAcc'), icon: '⚠️',
         body: `<p class="dim" style="line-height:1.8;margin-bottom:14px">${t('about.delDesc')}</p>

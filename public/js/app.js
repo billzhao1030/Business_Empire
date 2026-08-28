@@ -113,6 +113,14 @@ export const app = {
     ph.textContent = t('phase.' + phase);
   },
 
+  netFails: 0,
+  setOnline(ok, msg) {
+    const bar = $('#offline-bar');
+    if (ok) { bar.classList.add('hidden'); this.netFails = 0; return; }
+    bar.classList.remove('hidden');
+    $('#offline-msg').textContent = msg || t('net.lost');
+  },
+
   async refresh(full = false) {
     try {
       const prevOffline = this.state?.offline;
@@ -123,9 +131,16 @@ export const app = {
       if (full) this.renderView();
       else if (this.viewObj?.patch) this.viewObj.patch(this);
       else if (this.canRerender()) this.renderView();
+      this.setOnline(true);
+      if (this.build && this.build !== this.state.build) {
+        this.build = this.state.build;
+        toast(t('net.newBuild'), 'warn');
+        setTimeout(() => location.reload(), 1500);
+      } else if (!this.build) this.build = this.state.build;
     } catch (e) {
-      if (e.status === 401) { setToken(null); location.reload(); }
-      // 其它错误（服务重启、断网）静默忽略，下一次轮询会自动恢复
+      if (e.status === 401) { setToken(null); location.reload(); return; }
+      this.netFails++;
+      if (this.netFails >= 2) this.setOnline(false, e.offline ? e.message : t('net.lost'));
     }
   },
 
@@ -220,5 +235,14 @@ onLangChange(() => {
   app.paintAuthTexts();
   if (app.state) { app.paintNav(); app.paintTop(); app.renderView(); }
 });
+// 任何未捕获的前端错误都要看得见，而不是「点了没反应」
+window.addEventListener('error', e => {
+  if (e.message && !/ResizeObserver/.test(e.message)) toast(e.message, 'err', t('net.jsError'));
+});
+window.addEventListener('unhandledrejection', e => {
+  const m = e.reason?.message || String(e.reason || '');
+  if (m) toast(m, 'err', t('net.jsError'));
+});
+$('#offline-retry').onclick = () => app.refresh(true);
 window.app = app;
 app.boot();

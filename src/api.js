@@ -143,6 +143,7 @@ export function getState(uid) {
   const creditLimit = Math.max(0, Math.max(100_000, nw.total * 0.6 + Math.max(0, nw.bizNetPerHour) * M.YEAR_HOURS * 0.5) - personalDebt);
 
   return {
+    build: process.env.BE_BUILD || '',
     now: { hour, date: M.gameDate(hour), progress: M.hourProgress(), realMsPerHour: M.MS_PER_GAME_HOUR },
     player: {
       nickname: p.nickname, cash: p.cash, bank: p.bank, creditScore: p.credit_score,
