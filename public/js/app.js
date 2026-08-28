@@ -32,7 +32,7 @@ export const app = {
     try {
       const ping = await (await fetch('/api/ping')).json();
       this.serverBuild = ping.build;
-      this.hourMinutes = 2;
+      this.hourMinutes = (ping.msPerHour || 60000) / 60000;
     } catch {}
     this.paintAuthTexts();
     if (token) {
@@ -64,7 +64,7 @@ export const app = {
     $('#auth-submit').textContent = t('auth.enter');
     const f = a.querySelector('.auth-foot');
     f.children[0].innerHTML = t('auth.foot1');
-    f.children[1].textContent = t('auth.foot2', { m: this.hourMinutes ?? 2 });
+    f.children[1].textContent = t('auth.foot2', { m: this.hourMinutes ?? 1 });
   },
 
   async enter() {
@@ -88,12 +88,24 @@ export const app = {
   },
 
   syncClock() {
-    this.clockBase = { hour: this.state.now.hour, progress: this.state.now.progress, at: Date.now() };
+    const base = { hour: this.state.now.hour, progress: this.state.now.progress, at: Date.now() };
+    // 服务端时间若落后于本地已显示的时间，保留本地值等它追上，避免视觉回退
+    const serverTotal = base.hour + base.progress;
+    if (this._lastTotal != null && serverTotal < this._lastTotal - 0.001) {
+      const drift = this._lastTotal - serverTotal;
+      if (drift > 2) { this._lastTotal = null; }      // 差得太多（换档/重置世界）则直接对齐
+    }
+    this.clockBase = base;
   },
   liveHour() {
-    const el = (Date.now() - this.clockBase.at) / 60000;
-    const p = this.clockBase.progress + el;
-    return { hour: this.clockBase.hour + Math.floor(p), frac: p % 1 };
+    // 速率必须取服务端下发的值——写死会导致本地跑偏，然后被轮询拉回去（表现为时间倒退）
+    const msPer = this.state?.now?.realMsPerHour || 60000;
+    const el = (Date.now() - this.clockBase.at) / msPer;
+    let total = this.clockBase.hour + this.clockBase.progress + el;
+    // 单调保护：任何情况下都不允许显示的时间往回走
+    if (this._lastTotal != null && total < this._lastTotal) total = this._lastTotal;
+    this._lastTotal = total;
+    return { hour: Math.floor(total), frac: total % 1 };
   },
 
   startLoops() {

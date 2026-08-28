@@ -102,7 +102,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { token, user: { id: u.id, username: u.username } }, { 'Set-Cookie': authCookie(token) });
     }
     if (p === '/api/ping' || p === '/api/health')
-      return send(res, 200, { ok: true, name: 'business-empire', port: PORT, build: BUILD_ID,
+      return send(res, 200, { ok: true, name: 'business-empire', port: PORT, build: BUILD_ID, msPerHour: M.MS_PER_GAME_HOUR,
         hour: M.currentGameHour(), date: M.gameDate(M.currentGameHour()) });
 
     // ── 需要登录 ──

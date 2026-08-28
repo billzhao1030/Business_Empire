@@ -104,7 +104,7 @@ On Node v22/v23 use `node --experimental-sqlite server.js`.
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `8020` | HTTP port |
-| `GAME_HOUR_MS` | `120000` | Real milliseconds per in-game hour. Changing it never corrupts a save — the clock re-anchors. |
+| `GAME_HOUR_MS` | `60000` | Real milliseconds per in-game hour. Changing it never corrupts a save — the clock re-anchors. |
 
 Save file: `data/game.db`. Delete `data/game.db*` to wipe everything, or use the in-game
 **About → Reset save / Delete account**.
@@ -114,8 +114,8 @@ Save file: `data/game.db`. Delete `data/game.db*` to wipe everything, or use the
 
 ## How it plays
 
-**Time:** 2 real minutes = 1 in-game hour. A game day is 48 minutes, a game month 24 real hours,
-a game year 12 days. **Everything accrues while you're away** — stores trade, interest compounds,
+**Time:** 1 real minute = 1 in-game hour. A game day is 24 minutes, a game month 12 real hours,
+a game year 6 days. **Everything accrues while you're away** — stores trade, interest compounds,
 loan payments are debited, prices move, property indices drift.
 
 **New saves are pre-seeded with 30 in-game days of price history**, so every chart, candle and

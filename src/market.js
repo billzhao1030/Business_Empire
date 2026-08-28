@@ -4,7 +4,7 @@ import { STOCKS, COMMODITIES, CRYPTOS, INDICES, DISTRICTS } from './catalog-asse
 import * as C from './catalog-content.js';
 
 // ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 2 分钟）──
-export const MS_PER_GAME_HOUR = Number(process.env.GAME_HOUR_MS || 120_000);
+export const MS_PER_GAME_HOUR = Number(process.env.GAME_HOUR_MS || 60_000);
 export const DAY_HOURS   = 24;
 export const MONTH_HOURS = 720;    // 30 天
 export const YEAR_HOURS  = 8640;   // 12 个月
@@ -16,7 +16,8 @@ const HISTORY_KEEP = 900;
 let pendingEvent = null;
 let sectorMom = {};          // 每个资产保留的历史小时数
 const MAX_DETAIL_TICKS = 600;      // 单次补算的最大精细步数
-export const WARMUP_HOURS = 720;   // 新开档时预热 30 个游戏日，让一开局就有完整历史行情
+export const START_HOD = 8;        // 世界起点落在早上 8:00
+export const WARMUP_HOURS = 720 + START_HOD;   // 预热 30 个游戏日，让一开局就有完整历史行情
 
 export function bootTime() {
   let t = getMeta('epoch_ms');
@@ -154,6 +155,27 @@ export function initAssets() {
   // 把世界起点前移，使「现在」正好等于预热结束的时刻
   setMeta('epoch_ms', String(Date.now() - WARMUP_HOURS * MS_PER_GAME_HOUR));
   setMeta('market_hour', String(WARMUP_HOURS));
+}
+
+// 把整个世界推倒重来：行情、历史、新闻、宏观周期、游戏时钟全部重置
+export function resetWorld() {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM prices; DELETE FROM news; DELETE FROM assets;');
+    for (const k of ['market_hour', 'mkt_trend', 'regime', 'regime_since', 'policy_rate', 'sector_mom', 'bex_base', 'epoch_ms'])
+      db.prepare('DELETE FROM meta WHERE key=?').run(k);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  cache = null;
+  sectorMom = {};
+  pendingEvent = null;
+  setMeta('epoch_ms', String(Date.now()));
+  setMeta('ms_per_hour', MS_PER_GAME_HOUR);
+  initAssets();
+  // 让所有玩家的时间基准对齐到新世界，避免旧存档卡在未来
+  const h = Number(getMeta('market_hour', '0'));
+  db.prepare('UPDATE players SET last_hour=?, created_hour=?, ot_day=-1, ot_hours=0, ot_pending=0, ot_until=0, last_seen_hour=?, last_seen_ms=0').run(h, h, h);
+  return h;
 }
 
 // 预热：逐小时模拟并落库历史（仅在新建存档时执行一次）

@@ -707,7 +707,7 @@ export function leaderboard() {
     .sort((a, b) => b.value - a.value).slice(0, 20);
 }
 
-export function resetSave(uid) {
+export function resetSave(uid, opts = {}) {
   const before = S.computeNetWorth(uid);
   const cleared = {
     cash: before?.cash || 0, netWorth: before?.total || 0,
@@ -724,10 +724,17 @@ export function resetSave(uid) {
     db.prepare('DELETE FROM players WHERE user_id=?').run(uid);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+  // 连同世界一起重开：行情、新闻、宏观周期与游戏时间全部回到起点（早上 8:00）
+  const others = db.prepare('SELECT COUNT(*) c FROM players WHERE user_id != ?').get(uid).c;
+  let worldReset = false;
+  if (opts.world !== false) { M.resetWorld(); worldReset = true; }
+
   const u = db.prepare('SELECT username FROM users WHERE id=?').get(uid);
   S.ensurePlayer(uid, u.username);
   const after = S.computeNetWorth(uid);
-  return { ok: true, cleared, now: { cash: after.cash, netWorth: after.total } };
+  const hour = curHour();
+  return { ok: true, cleared, worldReset, otherPlayers: others,
+    now: { cash: after.cash, netWorth: after.total, hour, date: M.gameDate(hour), hod: hour % 24 } };
 }
 
 export { Err };

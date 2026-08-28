@@ -70,7 +70,7 @@ node -v && node server.js     # 然后打开 http://localhost:8020
 | 需求 | 做法 |
 | --- | --- |
 | **换端口** | PowerShell：`$env:PORT=9000; node server.js`　CMD：`set PORT=9000 && node server.js`　macOS/Linux：`PORT=9000 node server.js` |
-| **改时间流速** | `GAME_HOUR_MS=60000 node server.js`（1 分钟 = 1 游戏小时，默认 120000 即 2 分钟）。改了不会丢档，游戏时钟会自动对齐。 |
+| **改时间流速** | `GAME_HOUR_MS=120000 node server.js`（2 分钟 = 1 游戏小时，默认 60000 即 1 分钟）。改了不会丢档，游戏时钟会自动对齐。 |
 | **手机 / 平板上玩** | 同一 WiFi 下访问 `http://电脑局域网IP:8020`（Windows 用 `ipconfig`，macOS 用 `ifconfig`），首次可能要在防火墙弹窗点"允许" |
 | **切换语言 / 主题** | 右上角 `🌈 🌙 ☀️` 换配色，`中 / EN` 换语言，随时生效 |
 | **重置存档 / 删除账号** | 游戏内 **关于** 页面底部（删除账号需输入密码） |
@@ -83,8 +83,8 @@ node -v && node server.js     # 然后打开 http://localhost:8020
 
 ### ⏱️ 时间
 
-**现实 2 分钟 = 游戏 1 小时**。一个游戏日 = 48 分钟，一个游戏月（30 天）= 24 小时现实时间，
-一个游戏年 = 12 天。
+**现实 1 分钟 = 游戏 1 小时**。一个游戏日 = 24 分钟，一个游戏月（30 天）= 12 小时现实时间，
+一个游戏年 = 6 天。
 
 **离线也会照常结算**：关掉网页去睡觉，回来时店铺的营业额、银行利息、贷款月供、
 股价波动、房价涨跌全部一次性补算。
@@ -98,7 +98,7 @@ node -v && node server.js     # 然后打开 http://localhost:8020
 你的初始资金是 **$0**。
 
 1. 开局身上 **$0**。上班时段（09:00–17:00）工资自动结算；非上班时段到**生涯**页接加班：
-   每单实打实占用 **1 个游戏工时**（现实 2 分钟），干完才到账，期间不能再接第二单
+   每单实打实占用 **1 个游戏工时**（现实 1 分钟），干完才到账，期间不能再接第二单
 2. 深夜（23:00–07:00）也能加班，有 **2.2× 夜班津贴**，但体力消耗极大——熬夜是有代价的
 3. 攒到 **$80** 开出第一个街头小摊，它会替你 24 小时不停地赚钱
 4. 攒到 **$900** 买一辆二手电动车 → 解锁「网约车司机」，时薪从 $18 跳到 $130
@@ -116,7 +116,7 @@ node -v && node server.js     # 然后打开 http://localhost:8020
 
 加班每天最多 6 小时。
 
-**加班是真的要花时间的**：接一单 = 占用 **1 个游戏工时**（现实 2 分钟），
+**加班是真的要花时间的**：接一单 = 占用 **1 个游戏工时**（现实 1 分钟），
 这一小时在游戏里真正过完钱才到账，期间**不能再接第二单**——不可能一分钟里连接两次。
 
 加班还会消耗**体力**（0–100）。体力低于 60 工作效率开始下降，低于 15 就干不动加班了。
@@ -317,9 +317,9 @@ Then open <http://localhost:8020>. Use the top-right controls to switch between
 **New saves are pre-seeded with 30 in-game days of price history**, so every chart is
 meaningful from the first second.
 
-**Time:** 2 real minutes = 1 in-game hour; everything accrues while you are offline, and a
+**Time:** 1 real minute = 1 in-game hour; everything accrues while you are offline, and a
 **Welcome back** report breaks down exactly where every dollar came from while you were away.
-**Change it:** `GAME_HOUR_MS=60000 node server.js`.
+**Change it:** `GAME_HOUR_MS=120000 node server.js`.
 **Reset:** the About page in-game, or delete `data/game.db*`.
 
 

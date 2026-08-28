@@ -32,7 +32,7 @@ export default {
 
         ${S('🧭', L('白手起家的路线', 'The path from zero'), `<ol style="padding-left:20px;color:var(--dim);line-height:2;font-size:13px">
           <li>${L('开局身上是 <b>$0</b>。上班时间工资自动结算，非上班时间可以去<b>生涯</b>页接加班', 'You start with <b>$0</b>. Wages accrue automatically during your shift; outside it you can take overtime on the <b>Career</b> page')}</li>
-          <li>${L('每单加班实打实占用 <b>1 个游戏工时</b>（现实 2 分钟），干完才到账。深夜加班有 2.2× 夜班津贴，但极耗体力', 'Each overtime hour genuinely occupies <b>one in-game work hour</b> (2 real minutes) and pays when it finishes. Night shifts pay a 2.2× premium but drain stamina fast')}</li>
+          <li>${L('每单加班实打实占用 <b>1 个游戏工时</b>（现实 1 分钟），干完才到账。深夜加班有 2.2× 夜班津贴，但极耗体力', 'Each overtime hour genuinely occupies <b>one in-game work hour</b> (1 real minute) and pays when it finishes. Night shifts pay a 2.2× premium but drain stamina fast')}</li>
           <li>${L('攒到 <b>$80</b> 开出第一个街头小摊，它会替你 24 小时不停地赚钱', 'At <b>$80</b> you can open your first street stall, which then earns around the clock')}</li>
           <li>${L('$120 开一个<b>街头小摊</b>，它会 24 小时不停地替你赚钱', 'Open a <b>Street Stall</b> for $120 — it earns around the clock')}</li>
           <li>${L('攒到 $900 买一辆<b>二手电动车</b>，解锁网约车司机，时薪从 $18 跳到 $130', 'Buy a <b>$900 e-scooter</b> to unlock Rideshare Driver — wages jump from $18 to $130/hr')}</li>
@@ -184,7 +184,8 @@ export default {
         const r = await app.guard(() => api.reset());
         const c = r.cleared || {};
         toast(t('career.resetDone', { biz: c.businesses ?? 0, hold: c.holdings ?? 0, items: c.items ?? 0,
-          loans: c.loans ?? 0, from: money(c.netWorth ?? 0), to: money(r.now?.netWorth ?? 0) }), 'ok', t('about.resetSave'));
+          loans: c.loans ?? 0, from: money(c.netWorth ?? 0), to: money(r.now?.netWorth ?? 0),
+          date: r.now?.date?.text || '' }), 'ok', t('about.resetSave'));
         await app.refresh(true);
       }
       catch (e) { toast(e.message, 'err', t('toast.failed')); rb.disabled = false; rb.textContent = old; }
