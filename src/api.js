@@ -3,7 +3,8 @@ import { db } from './db.js';
 import * as M from './market.js';
 import * as S from './sim.js';
 import * as A from './auth.js';
-import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS } from './catalog-content.js';
+import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
+         ILLNESSES, TRIPS, FLIGHT_CLASSES } from './catalog-content.js';
 
 const { RATES, L } = S;
 class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
@@ -89,6 +90,10 @@ export function getState(uid) {
       potential: r.potential, capacity: r.capacity, util: r.util, recStaff: r.recStaff,
       staff: b.staff, wage: r.wage, wages: r.wages, fixedCost: r.fixed, varCost: r.varc,
       priceTier: b.price_tier, autoStaff: !!b.auto_staff, autoRepair: !!b.auto_repair,
+      hours: r.hours, openHrs: r.openHrs, allDay: !!b.all_day, openNow: S.bizOpenNow(b, hour % 24),
+      dailyNet: r.dailyNet, dailyRev: r.dailyRev, idleCost: r.idleCost, openCost: r.openCost,
+      allDayCost: b.all_day ? null : r.allDayCost,
+      allDayGain: b.all_day ? 0 : r.allDayGainPerHour * 24,
       demandTarget: S.demandTarget(b), monthRevenue: b.month_revenue, monthCost: b.month_cost,
       upgradeCost: b.level < S.MAX_LEVEL ? S.upgradeCost(def, city, b.level) : null,
       marketingCost: b.marketing < S.MAX_MARKETING ? S.marketingCost(def, city, b.marketing) : null,
@@ -167,6 +172,9 @@ export function getState(uid) {
       else if (phase === 'shift') block = 'shift';
       else if (busy) block = 'busy';
       else if (otUsed >= S.OVERTIME_MAX_HOURS) block = 'cap';
+      else if (p.sick_until > hour) block = 'sick';
+      else if (p.trip_until > hour) block = 'travel';
+      else if (p.stress >= S.STRESS_MAX_FOR_OT) block = 'stressed';
       else if (p.stamina < S.ST_MIN_FOR_OT) block = 'tired';
       return {
         current: job ? { id: job.id, zh: job.zh, en: job.en, emoji: job.emoji, wage: job.wage } : null,
@@ -177,12 +185,33 @@ export function getState(uid) {
         workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
         otUsed, otMax: S.OVERTIME_MAX_HOURS, otMult: S.OVERTIME_MULT,
         night: phase === 'sleep', nightMult: S.NIGHT_MULT,
+        stress: p.stress, stressMax: S.STRESS_MAX, stressFactor: S.stressFactor(p.stress),
+        sickChance: S.sickChance(p.stress),
         otPay: S.overtimePay(p, phase === 'sleep'), otBlock: block, canOvertime: !block,
         otBusy: busy, otPending: p.ot_pending, otUntil: p.ot_until,
         otRemainMs: busy ? Math.max(0, (p.ot_until - hour - M.hourProgress()) * M.MS_PER_GAME_HOUR) : 0,
         hustles: p.hustles, nextDayInHours: 24 - hod,
         dailyWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + S.OVERTIME_MAX_HOURS * S.OVERTIME_MULT),
         sustainableWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + 3 * S.OVERTIME_MULT),
+      };
+    })(),
+    health: (() => {
+      const ill = p.sick_id ? S.ILL[p.sick_id] : null;
+      const trip = p.trip_id ? S.TRIP[p.trip_id] : null;
+      return {
+        stress: p.stress, stressMax: S.STRESS_MAX, factor: S.stressFactor(p.stress),
+        sickRiskPerDay: Math.min(1, S.sickChance(p.stress) * 24),
+        sick: ill ? { id: ill.id, zh: ill.zh, en: ill.en, emoji: ill.emoji,
+          descZh: ill.descZh, descEn: ill.descEn, treated: !!p.sick_treated,
+          untilHour: p.sick_until, hoursLeft: Math.max(0, p.sick_until - hour),
+          treatCost: S.medicalCost(ill, nw.total), treatDays: ill.treatDays } : null,
+        trip: trip ? { id: trip.id, zh: trip.zh, en: trip.en, emoji: trip.emoji,
+          untilHour: p.trip_until, hoursLeft: Math.max(0, p.trip_until - hour) } : null,
+        medSpent: p.med_spent, tripSpent: p.trip_spent, trips: p.trips,
+        trips_catalog: TRIPS.map(t => ({ ...t, price: { economy: S.tripCost(t, 'economy'),
+          business: S.tripCost(t, 'business'), first: S.tripCost(t, 'first'), private: S.tripCost(t, 'private') } })),
+        classes: FLIGHT_CLASSES,
+        hasJet: db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c > 0,
       };
     })(),
     macro: M.regimeState(),
@@ -384,6 +413,18 @@ export function bizAction(uid, { id, action, name, arg }) {
     savePlayer(p);
     ledger(uid, 'biz', value, L('led.bizSell', { name: b.name, value }), '🤝');
     return { ok: true, value };
+  }
+  if (action === 'allday') {
+    if (b.all_day) throw new Err('已经是 24 小时营业 / Already open 24/7');
+    const pbonus2 = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+    const cost = S.bizRates(b, pbonus2, 1).allDayCost;
+    if (!cost) throw new Err('该店铺已是全天营业 / Already open 24/7');
+    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
+    p.cash -= cost;
+    db.prepare('UPDATE businesses SET all_day=1, invested=invested+? WHERE id=?').run(cost, b.id);
+    savePlayer(p);
+    ledger(uid, 'biz', -cost, L('led.bizAllDay', { name: b.name, cost }), '🌃');
+    return { ok: true, cost };
   }
   if (action === 'price') {
     const t = num(arg, -2, 2) | 0;
@@ -592,6 +633,10 @@ export function hustle(uid) {
   if (!j) throw new Err('先找一份工作 / Take a job first');
   if (j.car && !S.hasCar(uid)) throw new Err('这份工作需要一辆车 / This job requires a vehicle');
 
+  if (p.sick_until > hour) throw new Err('你正在生病，先把身体养好 / You are ill — recover first');
+  if (p.trip_until > hour) throw new Err('你正在旅行中 / You are away on a trip');
+  if (p.stress >= S.STRESS_MAX_FOR_OT)
+    throw new Err(`精神压力已达 ${Math.round(p.stress)}，实在提不起劲——去旅游散散心吧 / Stress is at ${Math.round(p.stress)} — take a trip before you break`);
   const phase = S.dayPhase(hod);
   const night = phase === 'sleep';        // 熬夜加班：钱多，但体力代价极大
   if (phase === 'shift')
@@ -607,12 +652,54 @@ export function hustle(uid) {
 
   const pay = S.overtimePay(p, night);       // 报酬按接单时的体力锁定
   const stamina = Math.max(0, p.stamina + (night ? S.ST_NIGHT : S.ST_OVERTIME));
-  db.prepare(`UPDATE players SET stamina=?, ot_pending=?, ot_until=?, ot_hours=?, ot_day=?,
+  const stress = Math.min(S.STRESS_MAX, p.stress + (night ? S.STRESS_NIGHT : S.STRESS_OT));
+  db.prepare(`UPDATE players SET stamina=?, stress=?, ot_pending=?, ot_until=?, ot_hours=?, ot_day=?,
               hustles=hustles+1, last_hustle=? WHERE user_id=?`)
-    .run(stamina, pay, hour + 1, used + 1, day, Date.now(), uid);
+    .run(stamina, stress, pay, hour + 1, used + 1, day, Date.now(), uid);
   ledger(uid, 'job', 0, L(night ? 'led.otNight' : 'led.otStart', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
   return { ok: true, pay, night, otUsed: used + 1, otMax: S.OVERTIME_MAX_HOURS,
            until: hour + 1, stamina, cash: p.cash };
+}
+
+// ── 看病 ────────────────────────────────────────────────────
+export function treat(uid) {
+  S.advancePlayer(uid);
+  const p = P(uid), hour = curHour();
+  if (!p.sick_id || p.sick_until <= hour) throw new Err('你现在很健康 / You are not ill');
+  if (p.sick_treated) throw new Err('已经在治疗中了 / Already under treatment');
+  const ill = S.ILL[p.sick_id];
+  const nw = S.computeNetWorth(uid).total;
+  const cost = S.medicalCost(ill, nw);
+  if (p.cash + p.bank < cost) throw new Err(`医药费需要 ${S.fmt(cost)} / Treatment costs ${S.fmt(cost)}`);
+  S.payFrom(p, cost);
+  const until = Math.min(p.sick_until, hour + ill.treatDays * 24);
+  db.prepare('UPDATE players SET cash=?, bank=?, sick_until=?, sick_treated=1, med_spent=med_spent+? WHERE user_id=?')
+    .run(p.cash, p.bank, until, cost, uid);
+  ledger(uid, 'health', -cost, L('led.treated', { ill: { zh: ill.zh, en: ill.en }, cost, days: ill.treatDays }), '🏥');
+  return { ok: true, cost, until, days: ill.treatDays };
+}
+
+// ── 旅游 ────────────────────────────────────────────────────
+export function bookTrip(uid, { tripId, cls }) {
+  S.advancePlayer(uid);
+  const p = P(uid), hour = curHour();
+  const trip = S.TRIP[tripId];
+  if (!trip) throw new Err('线路不存在 / Trip not found');
+  if (p.sick_until > hour) throw new Err('生着病就别出门了 / Not while you are ill');
+  if (p.trip_until > hour) throw new Err('你已经在旅途中了 / You are already travelling');
+  const fc = FLIGHT_CLASSES.find(c => c.id === (cls || 'economy')) || FLIGHT_CLASSES[0];
+  if (fc.needJet && !db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c)
+    throw new Err('你还没有私人飞机 / You do not own a private jet');
+  const cost = S.tripCost(trip, fc.id);
+  if (p.cash < cost) throw new Err(`需要现金 ${S.fmt(cost)} / Needs ${S.fmt(cost)} in cash`);
+  p.cash -= cost;
+  const prestige = trip.prestige * fc.prestige;
+  db.prepare(`UPDATE players SET cash=?, prestige=prestige+?, trip_until=?, trip_id=?, trip_relief=?,
+              trip_spent=trip_spent+?, trips=trips+1 WHERE user_id=?`)
+    .run(p.cash, prestige, hour + trip.days * 24, trip.id, fc.relief, cost, uid);
+  ledger(uid, 'trip', -cost, L('led.tripGo', { trip: { zh: trip.zh, en: trip.en },
+    cls: { zh: fc.zh, en: fc.en }, cost, days: trip.days }), trip.emoji);
+  return { ok: true, cost, days: trip.days, until: hour + trip.days * 24 };
 }
 
 // ── 富豪榜：财富与游戏内公司股价实时联动 ────────────────────

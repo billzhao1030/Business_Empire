@@ -4,7 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db } from './db.js';
+import { db, DB_PATH } from './db.js';
 import * as A from './auth.js';
 import * as M from './market.js';
 import * as S from './sim.js';
@@ -72,7 +72,7 @@ function serveStatic(req, res, urlPath) {
   });
 }
 
-const ACCESS_LOG = path.join(ROOT, 'data', 'access.log');
+const ACCESS_LOG = path.join(path.dirname(DB_PATH), 'access.log');
 function logApi(req, p, code, extra = '') {
   if (p === '/api/state' || p === '/api/ping' || p === '/api/health' || p === '/api/sparks') return;  // 高频轮询不记
   const line = `${new Date().toISOString()} ${req.method} ${p} -> ${code}${extra ? ' ' + extra : ''}\n`;
@@ -133,6 +133,8 @@ const server = http.createServer(async (req, res) => {
       case '/api/reset':       return send(res, 200, API.resetSave(uid));
       case '/api/job':         return send(res, 200, API.takeJob(uid, body));
       case '/api/hustle':      return send(res, 200, API.hustle(uid));
+      case '/api/treat':       return send(res, 200, API.treat(uid));
+      case '/api/trip':        return send(res, 200, API.bookTrip(uid, body));
       case '/api/richlist':    return send(res, 200, { list: API.richList(uid) });
       case '/api/overview':    return send(res, 200, API.marketOverview(uid));
       case '/api/account/delete': {
@@ -151,7 +153,7 @@ const server = http.createServer(async (req, res) => {
 // 安全网：任何未捕获的异常都不许把服务打死——记下来，继续服务
 function logFatal(kind, err) {
   const msg = `\n[${new Date().toISOString()}] ${kind}: ${err && err.stack || err}\n`;
-  try { fs.appendFileSync(path.join(ROOT, 'data', 'error.log'), msg); } catch {}
+  try { fs.appendFileSync(path.join(path.dirname(DB_PATH), 'error.log'), msg); } catch {}
   console.error(msg);
 }
 process.on('uncaughtException', e => logFatal('uncaughtException', e));
@@ -168,6 +170,6 @@ server.listen(PORT, () => {
   const all = M.allAssets();
   const tradable = all.filter(a => a.kind !== 'index').length;
   console.log(`  📊  资产 / Assets: ${tradable} 个可交易标的 + ${all.length - tradable} 个指数`);
-  console.log(`  💾  存档 / Save: ${path.join(ROOT, 'data', 'game.db')}`);
+  console.log(`  💾  存档 / Save: ${DB_PATH}`);
   console.log('  ⏹  停止 / Stop: Ctrl + C\n');
 });

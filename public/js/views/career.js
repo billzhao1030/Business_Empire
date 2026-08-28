@@ -2,9 +2,11 @@ import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast } from '../util.js';
 
-let timer = null;
+let timer = null, flightCls = 'economy';
 
 const stClass = s => s >= 60 ? 'st-good' : s >= 25 ? 'st-mid' : 'st-low';
+const stressCls = v => v < 30 ? 'st-good' : v < 60 ? 'st-mid' : 'st-low';
+const stressLabel = v => t(v < 25 ? 'life.calm' : v < 50 ? 'life.mild' : v < 70 ? 'life.tense' : v < 88 ? 'life.heavy' : 'life.crisis');
 
 function dayBar(j) {
   // 24 小时作息条
@@ -28,7 +30,7 @@ function dayBar(j) {
 export default {
   render(root, app) {
     clearInterval(timer);
-    const s = app.state, j = s.job, cur = j.current;
+    const s = app.state, j = s.job, cur = j.current, hl = s.health;
     const next = j.list.find(x => !x.unlocked);
     const prog = next ? Math.min(1, j.exp / next.exp) : 1;
     const minutesPerHour = s.now.realMsPerHour / 60000;
@@ -72,6 +74,39 @@ export default {
       </div>
 
       <div class="card"><div class="card-b">
+        <!-- 精神压力 -->
+        <div class="stamina" style="margin-bottom:6px">
+          <span class="dim2" style="font-size:11px;font-weight:700;width:52px">${t('life.stress')}</span>
+          <div class="sbar"><i class="${stressCls(hl.stress)}" style="width:${hl.stress}%"></i></div>
+          <b class="mono" style="font-size:12px;width:38px;text-align:right">${Math.round(hl.stress)}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:12px">
+          <span class="tag ${hl.stress < 30 ? 'g' : hl.stress < 55 ? '' : hl.stress < 78 ? 'y' : 'r'}">${stressLabel(hl.stress)}</span>
+          <span class="dim2">${t('life.efficiency')} <b class="${hl.factor >= 0.99 ? 'up' : 'down'}">${pctPlain(hl.factor, 0)}</b>
+            · ${t('life.riskPerDay')} <b class="${hl.sickRiskPerDay > 0.1 ? 'down' : 'dim'}">${pctPlain(hl.sickRiskPerDay, 0)}</b></span>
+        </div>
+
+        <!-- 健康 / 旅行状态 -->
+        ${hl.sick ? `<div class="summary" style="border-color:var(--down);margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
+            <span style="font-size:20px">${hl.sick.emoji}</span>
+            <div style="flex:1"><b>${esc(nm({ zh: hl.sick.zh, en: hl.sick.en }))}</b>
+              <div class="dim2" style="font-size:11px">${esc(nm({ zh: hl.sick.descZh, en: hl.sick.descEn }))}</div></div>
+            <div class="mono down">${t('life.recoverIn')} ${(hl.sick.hoursLeft / 24).toFixed(1)}${t('common.day')}</div>
+          </div>
+          ${hl.sick.treated ? `<div class="dim2" style="font-size:11.5px">🏥 ${t('life.treated')}</div>`
+            : `<button class="btn btn-sm btn-primary btn-block" id="do-treat">🏥 ${t('life.treat')} · ${money(hl.sick.treatCost)}
+                 <span style="font-weight:400;opacity:.75">（${t('life.treatFast', { n: hl.sick.treatDays })}）</span></button>
+               <div class="dim2" style="font-size:11px;margin-top:6px">${t('life.untreated')}</div>`}
+        </div>` : hl.trip ? `<div class="summary" style="border-color:var(--cyan);margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-size:20px">${hl.trip.emoji}</span>
+            <div style="flex:1"><b>${esc(nm({ zh: hl.trip.zh, en: hl.trip.en }))}</b>
+              <div class="dim2" style="font-size:11px">${t('life.traveling')}</div></div>
+            <div class="mono" style="color:var(--cyan)">${t('life.tripBack')} ${(hl.trip.hoursLeft / 24).toFixed(1)}${t('common.day')}</div>
+          </div></div>`
+          : `<div class="summary" style="margin-bottom:12px;color:var(--up);font-size:12.5px">💚 ${t('life.healthy')}</div>`}
+
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
           <span class="dim">${t('career.expToNext')}${next ? ` · ${esc(nm({ zh: next.zh, en: next.en }))}` : ''}</span>
           <b class="mono">${next ? `${int(j.exp)} / ${int(next.exp)}` : 'MAX'}</b></div>
@@ -84,9 +119,45 @@ export default {
           <div class="mini"><label>${t('common.netWorth')}</label><b>${money(s.netWorth.total)}</b></div>
           <div class="mini"><label>${t('rich.rank')}</label><b id="cr-rank">—</b></div>
         </div>
-        <div class="summary" style="margin-top:14px;font-size:12px;line-height:1.7">${t('career.sustainHint', { n: j.otMax })}</div>
-        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:10px">${t('career.carHint')}</div>
+        <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:12px">🧠 ${t('life.stressHint')}</div>
       </div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>✈️ ${t('life.travel')}</h3>
+        <span class="sub">${t('life.travelHint')}</span>
+        <div class="right"><div class="segs" id="fclass">
+          ${hl.classes.map(c => `<button class="seg ${c.id === flightCls ? 'active' : ''} ${c.needJet && !hl.hasJet ? 'locked' : ''}"
+            data-cls="${c.id}" ${c.needJet && !hl.hasJet ? 'disabled title="' + t('life.needJet') + '"' : ''}>${esc(nm({ zh: c.zh, en: c.en }))}</button>`).join('')}
+        </div></div></div>
+      <div class="card-b">
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+        ${hl.trips_catalog.map(tp => {
+          const price = tp.price[flightCls] ?? tp.price.economy;
+          const cls = hl.classes.find(c => c.id === flightCls) || hl.classes[0];
+          const afford = s.player.cash >= price && !hl.sick && !hl.trip;
+          return `<div class="card" style="background:var(--bg2)"><div class="card-b" style="padding:13px">
+            <div style="display:flex;gap:9px;align-items:flex-start">
+              <div class="ico">${tp.emoji}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:13px">${esc(nm({ zh: tp.zh, en: tp.en }))}</div>
+                <div class="dim2" style="font-size:10.5px;margin-top:2px">${t('life.tripDays', { n: tp.days })} ·
+                  <span style="color:var(--up)">${t('life.tripRelief', { n: Math.round(tp.relief * cls.relief) })}</span> ·
+                  ⭐ ${Math.round(tp.prestige * cls.prestige)}</div>
+              </div>
+            </div>
+            <div class="mono" style="font-size:16px;font-weight:800;margin:9px 0 5px">${money(price)}</div>
+            <p class="dim2" style="font-size:11px;line-height:1.5;min-height:30px">${esc(nm({ zh: tp.descZh, en: tp.descEn }))}</p>
+            <button class="btn btn-sm ${afford ? 'btn-primary' : ''} btn-block" data-trip="${tp.id}" ${afford ? '' : 'disabled'}>${t('life.book')}</button>
+          </div></div>`;
+        }).join('')}
+        </div>
+        <div class="mini-grid" style="margin-top:14px">
+          <div class="mini"><label>${t('life.tripCount')}</label><b>${hl.trips}</b></div>
+          <div class="mini"><label>${t('life.tripSpent')}</label><b>${money(hl.tripSpent)}</b></div>
+          <div class="mini"><label>${t('life.medSpent')}</label><b class="down">${money(hl.medSpent)}</b></div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -130,6 +201,9 @@ export default {
     };
     if (j.otBusy) this.countdown(app, j.otRemainMs);
 
+    $('#do-treat') && ($('#do-treat').onclick = () => app.act(() => api.treat(), t('toast.success')).catch(() => {}));
+    $$('[data-cls]').forEach(b => b.onclick = () => { flightCls = b.dataset.cls; this.render(root, app); });
+    $$('[data-trip]').forEach(b => b.onclick = () => app.act(() => api.trip(b.dataset.trip, flightCls), t('toast.success')).catch(() => {}));
     $('#quit-job') && ($('#quit-job').onclick = () => app.act(() => api.takeJob(''), t('toast.success')).catch(() => {}));
     $$('[data-job]').forEach(b => b.onclick = () => app.act(() => api.takeJob(b.dataset.job), t('toast.success')).catch(() => {}));
     api.richlist().then(r => {
