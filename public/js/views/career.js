@@ -27,6 +27,37 @@ function dayBar(j) {
     <span>${String(j.workEnd).padStart(2, '0')}:00</span><span>${String(j.sleepHour).padStart(2, '0')}:00</span><span>24:00</span></div>`;
 }
 
+// 生涯页分四块：干活、找活、过日子、消遣。挤在一页里谁也看不清。
+let tab = 'work';
+const TABS = [
+  { id: 'work',   emoji: '🧑‍💼' },
+  { id: 'jobs',   emoji: '🧭' },
+  { id: 'living', emoji: '🍚' },
+  { id: 'fun',    emoji: '🎲' },
+];
+
+// 页签上的小标：不切过去也知道那边出没出事
+function badge(id, app) {
+  const s = app.state, j = s.job, hl = s.health, lv = s.living;
+  if (id === 'work') {
+    if (hl.sick) return { text: hl.sick.emoji, cls: 'r' };
+    if (hl.trip) return { text: hl.trip.emoji, cls: 'c' };
+    if (!j.current) return { text: t('career.resting'), cls: 'y' };
+    if (hl.stress >= 55) return { text: Math.round(hl.stress), cls: hl.stress >= 78 ? 'r' : 'y' };
+    if (j.canOvertime) return { text: '+' + money(j.otPay), cls: 'g' };
+    return null;
+  }
+  if (id === 'jobs') {
+    const open = j.list.filter(x => x.unlocked && !x.blocked && !x.current).length;
+    if (open) return { text: open, cls: 'g' };            // 有更好的岗位可以马上换
+    const next = j.list.find(x => !x.unlocked);           // 否则显示离下一级还有多远
+    return next ? { text: next.emoji + ' ' + Math.round(Math.min(1, j.exp / next.exp) * 100) + '%' } : null;
+  }
+  if (id === 'living') return { text: money(lv.monthlyCost) + t('living.perMonth'), cls: 'r' };
+  if (id === 'fun') return lv.lottoTickets ? { text: lv.lottoTickets } : null;
+  return null;
+}
+
 export default {
   render(root, app) {
     clearInterval(timer);
@@ -36,6 +67,14 @@ export default {
     const minutesPerHour = s.now.realMsPerHour / 60000;
 
     root.innerHTML = `
+    <div class="ptabs">
+      ${TABS.map(x => `<button class="ptab ${tab === x.id ? 'active' : ''}" data-tab="${x.id}">
+        <span class="e">${x.emoji}</span><span>${t('career.' + x.id + 'Tab')}</span>
+        ${badge(x.id, app) ? `<span class="b ${badge(x.id, app).cls || ''}">${badge(x.id, app).text}</span>` : ''}
+      </button>`).join('')}
+    </div>
+
+    ${tab === 'work' ? `
     <div class="grid" style="grid-template-columns:1.15fr 1fr;margin-bottom:16px">
       <div class="hustle-card">
         <div style="display:flex;align-items:center;gap:13px;margin-bottom:14px">
@@ -139,9 +178,66 @@ export default {
         <div class="dim2" style="font-size:11.5px;line-height:1.7;margin-top:12px">🧠 ${t('life.stressHint')}</div>
       </div></div>
     </div>
+    ` : ''}
 
-    <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
-      <div class="card"><div class="card-h"><h3>🍚 ${t('living.title')}</h3>
+    ${tab === 'work' ? `
+    <div class="card">
+      <div class="card-h"><h3>🪜 ${t('career.ladder')}</h3>
+        <span class="sub">${t('career.ladderHint')}</span>
+        <div class="right"><button class="btn btn-xs btn-ghost" data-tab="jobs">${t('career.allJobs')} →</button></div></div>
+      <div class="card-b">
+        <div class="ladder">
+          ${(() => {
+            const i = Math.max(0, j.list.findIndex(x => x.current));
+            const from = Math.max(0, Math.min(i - 1, j.list.length - 5));
+            return j.list.slice(from, from + 5).map(x => {
+              const st = x.current ? 'now' : x.unlocked && !x.blocked ? 'open' : 'locked';
+              const pc = x.current ? 100 : Math.round(Math.min(1, j.exp / Math.max(1, x.exp)) * 100);
+              return `<div class="rung ${st}">
+                <div class="e">${x.emoji}</div>
+                <div class="n">${esc(nm({ zh: x.zh, en: x.en }))}</div>
+                <b class="mono gold">${money(x.wage)}${t('common.perHour')}</b>
+                <div class="bar" style="height:4px;margin-top:6px"><i style="width:${pc}%"></i></div>
+                <div class="s">${x.current ? t('career.current2')
+                  : x.blocked ? '🚗 ' + t('career.needCarShort')
+                  : x.unlocked ? t('career.canTake')
+                  : `${int(j.exp)} / ${int(x.exp)}`}</div>
+              </div>`;
+            }).join('');
+          })()}
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
+    ${tab === 'jobs' ? `
+    <div class="card">
+      <div class="card-h"><h3>🧭 ${t('career.jobList')}</h3>
+        ${cur ? `<div class="right"><button class="btn btn-xs btn-ghost" id="quit-job">${t('career.quit')}</button></div>` : ''}</div>
+      <div class="card-b">
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:9px">
+        ${j.list.map(x => {
+          const locked = !x.unlocked || x.blocked;
+          return `<button class="job-card ${x.current ? 'current' : ''} ${locked ? 'locked' : ''}" data-job="${x.id}" ${locked ? 'disabled' : ''}>
+            <div class="ico">${x.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px">${esc(nm({ zh: x.zh, en: x.en }))}
+                ${x.current ? `<span class="tag y">${t('career.current2')}</span>` : ''}
+                ${x.car ? `<span class="tag b">🚗</span>` : ''}</div>
+              <div class="dim2" style="font-size:11px;margin-top:2px;line-height:1.5">${esc(nm({ zh: x.descZh, en: x.descEn }))}</div>
+              ${!x.unlocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needExp', { n: int(x.exp) })}</div>`
+                : x.blocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needCar')}</div>` : ''}
+            </div>
+            <div class="jw"><b class="mono gold" style="font-size:14px">${money(x.wage)}</b>
+              <div class="dim2" style="font-size:10px">${t('common.perHour')} · ${money(x.wage * j.workHours)}/${t('common.day')}</div></div>
+          </button>`;
+        }).join('')}
+        </div>
+      </div>
+    ` : ''}
+
+    ${tab === 'living' ? `
+      <div class="card" style="max-width:760px"><div class="card-h"><h3>🍚 ${t('living.title')}</h3>
         <span class="sub">${t('living.hint')}</span></div>
         <div class="card-b">
           <div class="summary" style="margin-bottom:12px">
@@ -191,8 +287,17 @@ export default {
             <div class="mini"><label>${t('living.fareSpent')}</label><b class="down">${money(lv.transitSpent)}</b></div>
           </div>
         </div></div>
+    ` : ''}
 
-      <div class="card"><div class="card-h"><h3>🎫 ${t('living.lottery')}</h3>
+    ${tab === 'fun' ? `
+    <div class="card" style="margin-bottom:16px;max-width:760px"><div class="card-b" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:26px">🗺️</span>
+      <div style="flex:1;min-width:200px"><b style="font-size:14px">${t('life.travel')}</b>
+        <div class="dim2" style="font-size:11.5px;line-height:1.6">${t('life.travelHint')}</div></div>
+      <button class="btn btn-primary btn-sm" id="go-world">${t('world.title')} →</button>
+    </div></div>
+
+      <div class="card" style="max-width:760px"><div class="card-h"><h3>🎫 ${t('living.lottery')}</h3>
         <span class="sub">${t('living.lotteryHint')}</span></div>
         <div class="card-b">
           ${lv.lotteries.map(l => `<div class="item-row" style="padding:11px 0">
@@ -215,39 +320,10 @@ export default {
               <b class="${lv.lottoWon >= lv.lottoSpent ? 'up' : 'down'}">${money(Math.abs(lv.lottoWon - lv.lottoSpent))}</b></div>
           </div>
         </div></div>
-    </div>
+    ` : ''}`;
 
-    <div class="card" style="margin-bottom:16px"><div class="card-b" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:26px">🗺️</span>
-      <div style="flex:1;min-width:200px"><b style="font-size:14px">${t('life.travel')}</b>
-        <div class="dim2" style="font-size:11.5px;line-height:1.6">${t('life.travelHint')}</div></div>
-      <button class="btn btn-primary btn-sm" id="go-world">${t('world.title')} →</button>
-    </div></div>
+    $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; this.render(root, app); });
 
-    <div class="card">
-      <div class="card-h"><h3>🧭 ${t('career.jobList')}</h3>
-        ${cur ? `<div class="right"><button class="btn btn-xs btn-ghost" id="quit-job">${t('career.quit')}</button></div>` : ''}</div>
-      <div class="card-b">
-        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:9px">
-        ${j.list.map(x => {
-          const locked = !x.unlocked || x.blocked;
-          return `<button class="job-card ${x.current ? 'current' : ''} ${locked ? 'locked' : ''}" data-job="${x.id}" ${locked ? 'disabled' : ''}>
-            <div class="ico">${x.emoji}</div>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:700;font-size:13px">${esc(nm({ zh: x.zh, en: x.en }))}
-                ${x.current ? `<span class="tag y">${t('career.current2')}</span>` : ''}
-                ${x.car ? `<span class="tag b">🚗</span>` : ''}</div>
-              <div class="dim2" style="font-size:11px;margin-top:2px;line-height:1.5">${esc(nm({ zh: x.descZh, en: x.descEn }))}</div>
-              ${!x.unlocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needExp', { n: int(x.exp) })}</div>`
-                : x.blocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needCar')}</div>` : ''}
-            </div>
-            <div class="jw"><b class="mono gold" style="font-size:14px">${money(x.wage)}</b>
-              <div class="dim2" style="font-size:10px">${t('common.perHour')} · ${money(x.wage * j.workHours)}/${t('common.day')}</div></div>
-          </button>`;
-        }).join('')}
-        </div>
-      </div>
-    </div>`;
 
     const btn = $('#ot-btn');
     if (btn) btn.onclick = async () => {
@@ -309,7 +385,7 @@ export default {
   },
 
   patch(app) {
-    if (!$('#ot-btn')) return;
+    if (tab !== 'work' || !$('#ot-btn')) return;
     const j = app.state.job;
     const el = $('.stamina .sbar > i');
     if (el) { el.style.width = j.stamina + '%'; el.className = stClass(j.stamina); }
