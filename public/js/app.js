@@ -15,8 +15,9 @@ import rank from './views/rank.js';
 import career from './views/career.js';
 import about from './views/about.js';
 import world from './views/world.js';
+import company from './views/company.js';
 
-const VIEWS = { dashboard, career, business, market, portfolio, bank, luxury, world, ledger, rank, about };
+const VIEWS = { dashboard, career, business, company, market, portfolio, bank, luxury, world, ledger, rank, about };
 export const THEMES = ['neon', 'midnight', 'daylight'];
 export function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -194,6 +195,8 @@ export const app = {
     $$('#speed-switch button').forEach(x => x.classList.toggle('active', +x.dataset.ms === s.now.realMsPerHour));
     $('#badge-biz').textContent = s.businesses.length || '';
     $('#badge-pf').textContent = s.holdings.length || '';
+    const co = s.netWorth.company;                       // 有公司就在导航上标出持股
+    $('#badge-co').textContent = co ? Math.round(co.stake * 100) + '%' : '';
   },
 
   go(view, force) {

@@ -5,6 +5,9 @@ import * as S from './sim.js';
 import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
+import * as CO from './company.js';
+import { FOUND_FEE, FOUND_MIN_SHOPS, INIT_SHARES, ROUNDS, ROUND, STAGES, STAGE,
+         CO_SECTORS, CO_SECTOR, DIVIDEND_TAX, MIN_DIVIDEND, ILLIQUID } from './catalog-company.js';
 import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE,
          destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES } from './catalog-world.js';
 
@@ -398,7 +401,7 @@ export function takeover(uid, { symbol }) {
 }
 
 // ── 实业 ────────────────────────────────────────────────────
-export function bizBuy(uid, { typeId, cityId, name }) {
+export function bizBuy(uid, { typeId, cityId, name, useCompany }) {
   S.advancePlayer(uid);
   const def = S.BIZ[typeId], city = S.CITY[cityId];
   if (!def || !city) throw new Err('店铺类型或城市无效 / Invalid business or city');
@@ -408,14 +411,22 @@ export function bizBuy(uid, { typeId, cityId, name }) {
   const setup = Math.round(def.cost * city.costMult);
   const travel = Math.round(city.travelCost || 0);
   const cost = setup + travel;
-  if (p.cash < cost)
+  // 公司账上的钱也能拿来开店——融来的钱就是干这个用的
+  const co = useCompany ? CO.companyOf(uid) : null;
+  if (useCompany && !co) throw new Err('你还没有公司 / You have not founded a company');
+  if (co) {
+    if (co.cash < cost)
+      throw new Err(`公司账上不够，需要 ${S.fmt(cost)}，现有 ${S.fmt(co.cash)} / Company needs ${S.fmt(cost)}, has ${S.fmt(co.cash)}`);
+  } else if (p.cash < cost) {
     throw new Err(travel
       ? `现金不足：装修 ${S.fmt(setup)} + 往返差旅 ${S.fmt(travel)} = ${S.fmt(cost)} / Need ${S.fmt(cost)} (setup + travel)`
       : `现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
-  p.cash -= cost;
+  }
+  if (co) db.prepare('UPDATE companies SET cash=cash-? WHERE id=?').run(cost, co.id);
+  else p.cash -= cost;
   const nm = String(name || '').trim().slice(0, 24) || `${city.name}${def.name}`;
-  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff)
-              VALUES(?,?,?,?,?,?,?,?,?,1)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(), 0.9 + Math.random() * 0.2, 2);
+  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff,company_id)
+              VALUES(?,?,?,?,?,?,?,?,?,1,?)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(), 0.9 + Math.random() * 0.2, 2, co ? co.id : 0);
   // 异地开店需要亲自跑一趟：付机票、在外面待几天，这期间不能上班
   if (city.travelDays > 0) {
     db.prepare('UPDATE players SET trip_until=?, trip_id=?, trip_relief=1 WHERE user_id=?')
@@ -424,7 +435,7 @@ export function bizBuy(uid, { typeId, cityId, name }) {
   }
   savePlayer(p);
   ledger(uid, 'biz', -setup, L('led.bizOpen', { name: nm, city: NM(city), type: NM(def), cost: setup }), def.emoji);
-  return { ok: true, cost, setup, travel, travelDays: city.travelDays || 0 };
+  return { ok: true, cost, setup, travel, travelDays: city.travelDays || 0, company: !!co };
 }
 
 export function bizAction(uid, { id, action, name, arg }) {
@@ -832,6 +843,169 @@ export function treat(uid) {
     .run(p.cash, p.bank, until, cost, uid);
   ledger(uid, 'health', -cost, L('led.treated', { ill: { zh: ill.zh, en: ill.en }, cost, days: ill.treatDays }), '🏥');
   return { ok: true, cost, until, days: ill.treatDays };
+}
+
+// ── 创业：注册公司、装店、估值、融资、分红 ──────────────────
+const TICKER_RE = /^[A-Z]{2,5}$/;
+
+function coState(uid) {
+  const co = CO.companyOf(uid);
+  const p = P(uid);
+  const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+  const prosp = M.cityProsperity();
+  const all = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+  if (!co) {
+    return { has: false, foundFee: FOUND_FEE, minShops: FOUND_MIN_SHOPS,
+      sectors: CO_SECTORS, rounds: ROUNDS, illiquid: ILLIQUID,
+      shopsAvailable: all.map(b => shopBrief(b, pb, prosp)),
+      canFound: all.length >= FOUND_MIN_SHOPS && p.cash >= FOUND_FEE, cash: p.cash };
+  }
+  const shops = all.filter(b => b.company_id === co.id);
+  const outside = all.filter(b => b.company_id !== co.id);
+  const val = CO.valuate(co, shops, pb, prosp, curHour());
+  const offer = CO.roundOffer(co, val, p.credit_score);
+  const stake = co.player_shares / co.shares;
+  return {
+    has: true, illiquid: ILLIQUID, rounds: ROUNDS, sectors: CO_SECTORS, cash: p.cash,
+    co: { id: co.id, name: co.name, nameEn: co.name_en, ticker: co.ticker, sector: co.sector,
+      stage: co.stage, stageZh: STAGE[co.stage]?.zh, stageEn: STAGE[co.stage]?.en,
+      foundedHour: co.founded_hour, cash: co.cash, shares: co.shares,
+      playerShares: co.player_shares, stake, roundN: co.round_n, raised: co.raised,
+      roundVal: co.round_val, peakVal: co.peak_val, lifetimeProfit: co.lifetime_profit,
+      dividendsPaid: co.dividends_paid },
+    val, offer, stakeValue: CO.stakeValue(co, val),
+    shops: shops.map(b => shopBrief(b, pb, prosp)),
+    outside: outside.map(b => shopBrief(b, pb, prosp)),
+    minDividend: MIN_DIVIDEND, dividendTax: DIVIDEND_TAX,
+  };
+}
+function shopBrief(b, pb, prosp) {
+  const r = S.bizRates(b, pb, prosp[b.city] || 1);
+  const def = S.BIZ[b.type_id], city = S.CITY[b.city];
+  return { id: b.id, name: b.name, emoji: def?.emoji || '🏬', typeZh: def?.name, typeEn: def?.en,
+    city: b.city, cityZh: city?.name, cityEn: city?.en, level: b.level, invested: b.invested,
+    dailyNet: r.dailyNet, dailyRev: r.dailyRev, companyId: b.company_id };
+}
+
+export function companyState(uid) { S.advancePlayer(uid); return coState(uid); }
+
+export function foundCompany(uid, { name, nameEn, ticker, sector, shopIds }) {
+  S.advancePlayer(uid);
+  if (CO.companyOf(uid)) throw new Err('你已经有一家公司了 / You already have a company');
+  const p = P(uid), hour = curHour();
+  const nm = String(name || '').trim().slice(0, 24);
+  if (nm.length < 2) throw new Err('公司名太短了 / Company name is too short');
+  const tk = String(ticker || '').trim().toUpperCase();
+  if (!TICKER_RE.test(tk)) throw new Err('股票代码要 2~5 个英文字母 / Ticker must be 2-5 letters');
+  if (db.prepare('SELECT COUNT(*) c FROM assets WHERE symbol=?').get(tk).c
+   || db.prepare('SELECT COUNT(*) c FROM companies WHERE ticker=?').get(tk).c)
+    throw new Err(`代码 ${tk} 已经被占用了 / Ticker ${tk} is taken`);
+  const sec = CO_SECTOR[sector] ? sector : CO_SECTORS[0].id;
+  const all = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+  if (all.length < FOUND_MIN_SHOPS)
+    throw new Err(`至少要先有 ${FOUND_MIN_SHOPS} 门生意 / You need at least ${FOUND_MIN_SHOPS} business first`);
+  if (p.cash < FOUND_FEE)
+    throw new Err(`注册费 ${S.fmt(FOUND_FEE)}，现金不够 / Registration costs ${S.fmt(FOUND_FEE)}`);
+
+  const wanted = new Set((Array.isArray(shopIds) ? shopIds : all.map(b => b.id)).map(Number));
+  const picked = all.filter(b => wanted.has(b.id));
+  if (!picked.length) throw new Err('至少要装一家店进去 / Put at least one business into it');
+
+  p.cash -= FOUND_FEE;
+  savePlayer(p);
+  const r = db.prepare(`INSERT INTO companies(user_id,name,name_en,ticker,sector,stage,founded_hour,
+              cash,shares,player_shares) VALUES(?,?,?,?,?, 'private',?,0,?,?)`)
+    .run(uid, nm, String(nameEn || '').trim().slice(0, 32), tk, sec, hour, INIT_SHARES, INIT_SHARES);
+  const coId = Number(r.lastInsertRowid);
+  const upd = db.prepare('UPDATE businesses SET company_id=? WHERE id=? AND user_id=?');
+  for (const b of picked) upd.run(coId, b.id, uid);
+  ledger(uid, 'company', -FOUND_FEE, L('led.coFound', { name: nm, ticker: tk, n: picked.length, fee: FOUND_FEE }), '🏢');
+  return { ok: true, ...coState(uid) };
+}
+
+// 把店铺装进公司 / 拿出来
+export function companyShops(uid, { add, remove }) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  if (co.stage === 'public') throw new Err('上市公司的资产不能随便进出 / A listed company cannot move assets in and out freely');
+  const upd = db.prepare('UPDATE businesses SET company_id=? WHERE id=? AND user_id=?');
+  let moved = 0;
+  for (const id of (Array.isArray(add) ? add : [])) { upd.run(co.id, Number(id), uid); moved++; }
+  for (const id of (Array.isArray(remove) ? remove : [])) { upd.run(0, Number(id), uid); moved++; }
+  if (!moved) throw new Err('没有要调整的店铺 / Nothing to move');
+  return { ok: true, ...coState(uid) };
+}
+
+// 融资：投资人给的估值总比你自己算的低
+export function raiseRound(uid) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  if (co.stage === 'public') throw new Err('已经上市了，融资要走公开市场 / Already listed');
+  const st = coState(uid);
+  const o = st.offer;
+  if (!o) throw new Err('后面没有轮次了 / No further rounds available');
+  if (!o.ok) {
+    const need = [];
+    if (st.val.value < o.needVal) need.push(`估值要到 ${S.fmt(o.needVal)}（现在 ${S.fmt(st.val.value)}）`);
+    if (st.val.shops < o.needShops) need.push(`公司名下要有 ${o.needShops} 家店（现在 ${st.val.shops} 家）`);
+    throw new Err(`还投不了：${need.join('，')} / Not yet: needs ${S.fmt(o.needVal)} valuation and ${o.needShops} shops`);
+  }
+  const stage = o.round.id;
+  db.prepare(`UPDATE companies SET cash=cash+?, shares=shares+?, round_n=round_n+1,
+              raised=raised+?, round_val=?, stage=?, last_val=?, peak_val=MAX(peak_val,?) WHERE id=?`)
+    .run(o.raise, o.newShares, o.raise, o.post, stage, st.val.value, st.val.value, co.id);
+  ledger(uid, 'company', 0, L('led.coRaise', { round: { zh: o.round.zh, en: o.round.en },
+    amt: o.raise, pre: o.pre, post: o.post, pct: Math.round(o.round.sell * 100),
+    stake: Math.round(o.stakeAfter * 100) }), '💰');
+  return { ok: true, raised: o.raise, ...coState(uid) };
+}
+
+// 分红：公司账上的钱按持股比例发下来，你那份要缴 20% 的税
+export function payDividend(uid, { amount }) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  const amt = Math.min(co.cash, num(amount, MIN_DIVIDEND, 1e15));
+  if (amt < MIN_DIVIDEND) throw new Err(`至少要发 ${S.fmt(MIN_DIVIDEND)} / Minimum dividend is ${S.fmt(MIN_DIVIDEND)}`);
+  if (co.cash < amt) throw new Err(`公司账上只有 ${S.fmt(co.cash)} / The company only has ${S.fmt(co.cash)}`);
+  const stake = co.player_shares / co.shares;
+  const gross = amt * stake;
+  const tax = gross * DIVIDEND_TAX;
+  const net = gross - tax;
+  const p = P(uid);
+  p.cash += net; p.total_dividend += net; p.total_tax += tax;
+  savePlayer(p);
+  db.prepare('UPDATE companies SET cash=cash-?, dividends_paid=dividends_paid+? WHERE id=?').run(amt, amt, co.id);
+  ledger(uid, 'dividend', net, L('led.coDividend', { total: amt, stake: Math.round(stake * 100),
+    gross, tax, net }), '💵');
+  return { ok: true, gross, tax, net, ...coState(uid) };
+}
+
+// 给公司注资：把个人的钱投进去（不稀释，你本来就是股东）
+export function fundCompany(uid, { amount }) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  const p = P(uid);
+  const amt = num(amount, 1, 1e15);
+  if (p.cash < amt) throw new Err(`现金不足 / Not enough cash`);
+  p.cash -= amt; savePlayer(p);
+  db.prepare('UPDATE companies SET cash=cash+? WHERE id=?').run(amt, co.id);
+  ledger(uid, 'company', -amt, L('led.coFund', { name: co.name, amt }), '🏢');
+  return { ok: true, ...coState(uid) };
+}
+
+export function renameCompany(uid, { name, nameEn }) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  const nm = String(name || '').trim().slice(0, 24);
+  if (nm.length < 2) throw new Err('公司名太短了 / Company name is too short');
+  db.prepare('UPDATE companies SET name=?, name_en=? WHERE id=?')
+    .run(nm, String(nameEn || '').trim().slice(0, 32), co.id);
+  return { ok: true, ...coState(uid) };
 }
 
 // ── 世界地图：订机票出发 ────────────────────────────────────
