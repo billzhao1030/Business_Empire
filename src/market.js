@@ -4,9 +4,9 @@ import { STOCKS, COMMODITIES, CRYPTOS, INDICES, DISTRICTS } from './catalog-asse
 import * as C from './catalog-content.js';
 import { HINTS, CONFIRM, familyOf } from './catalog-rumor.js';
 
-// ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 2 分钟）──
-export const SPEED_MIN_MS = 12_000;      // 最快：12 秒 = 1 游戏小时
-export const SPEED_MAX_MS = 300_000;     // 最慢：5 分钟 = 1 游戏小时
+// ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 1 分钟）──
+export const SPEED_MIN_MS = 3_000;       // 最快：3 秒 = 1 游戏小时（20 倍速）
+export const SPEED_MAX_MS = 300_000;     // 最慢：5 分钟 = 1 游戏小时（1/5 倍速）
 export const SPEED_DEFAULT = 60_000;     // 默认：1 分钟 = 1 游戏小时
 export let MS_PER_GAME_HOUR = Number(process.env.GAME_HOUR_MS || SPEED_DEFAULT);
 

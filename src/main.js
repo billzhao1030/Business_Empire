@@ -40,7 +40,16 @@ function tickWorld() {
   CO.syncPublicFundamentals();   // 上市公司的股价要围着自己的经营基本面转
   CO.applyMarketShare();         // 玩家的连锁做大了，同赛道的上市公司要让出份额
 }
-setInterval(() => { try { tickWorld(); } catch (e) { console.error('[tick]', e.message); } }, 5_000);
+// 心跳跟着流速走：默认 5 秒一次，但开到 20 倍速时一个游戏小时只有 3 秒——
+// 还按 5 秒推，行情就是一跳一个半小时。取两者中的小值，保证每跳最多补一个小时。
+function heartbeat() {
+  const d = Math.max(1_000, Math.min(5_000, M.MS_PER_GAME_HOUR));
+  setTimeout(() => {
+    try { tickWorld(); } catch (e) { console.error('[tick]', e.message); }
+    heartbeat();
+  }, d);
+}
+heartbeat();
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',

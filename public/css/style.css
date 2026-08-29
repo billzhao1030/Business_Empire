@@ -471,8 +471,10 @@ button{cursor:pointer;border:none;background:none}
 
 /* ══ 游戏速度 ══ */
 .speed-switch{display:flex;gap:2px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:3px}
-.speed-switch button{min-width:26px;height:22px;border-radius:6px;font-size:11px;font-weight:700;color:var(--dim2);transition:.14s}
+.speed-switch button{min-width:24px;padding:0 3px;height:22px;border-radius:6px;font-size:11px;font-weight:700;color:var(--dim2);transition:.14s}
 .speed-switch button:hover{color:var(--txt)}
 .speed-switch button.active{background:var(--panel3);color:var(--gold);box-shadow:0 0 0 1px var(--line2)}
-@media(max-width:1240px){.speed-switch{display:none}}
+/* 七档在窄屏挤不下时，先舍掉离 1× 最近的 ½——快档是要留全的 */
+@media(max-width:1420px){.speed-switch button[data-ms="120000"]{display:none}}
+@media(max-width:1340px){.speed-switch{display:none}}
 .item-row.sel{background:linear-gradient(90deg,var(--glow3),transparent);box-shadow:inset 3px 0 0 var(--gold)}
