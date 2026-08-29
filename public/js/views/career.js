@@ -269,7 +269,20 @@ export default {
                 ${mm.stamina ? `<span class="${mm.stamina > 0 ? 'up' : 'down'}">${t('career.stamina')}${mm.stamina > 0 ? '+' : ''}${mm.stamina}</span>` : ''}</div></button>`).join('')}
           </div>
           <div class="dim2" style="font-size:10.5px;margin:-6px 0 12px">🍳 ${t('living.cookHint')}</div>
-          ${lv.ownsEstate ? `<div class="dim2" style="font-size:11.5px">🏡 ${t('living.owned')}</div>` : `
+          <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:6px">${t('living.myHome')}</div>
+          ${lv.estates.length ? `
+          <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(168px,1fr));margin-bottom:${lv.ownsEstate ? '0' : '12px'}">
+            ${lv.estates.map(e => `<button class="opt ${e.isHome ? 'active' : ''}" data-liveat="${e.id}" ${e.isHome ? 'disabled' : ''}>
+              <div class="t">${e.emoji} ${esc(nm({ zh: e.zh, en: e.en }))}</div>
+              <div class="s">${e.isHome ? `<span class="gold">${t('living.homeLiving')}</span> · ${t('living.free')}`
+                : e.rented ? `<span class="up">${t('living.homeRented')}</span> · ${money(e.rentIncome)}${t('living.perMonth')}`
+                : `${t('living.homeVacant')} · ${t('living.homeSwitch')}`}
+                ${e.stress ? `<span class="dim2">· ${t('living.comfort')} ${e.stress <= -0.12 ? '★★★' : e.stress <= -0.05 ? '★★' : '★'}</span>` : ''}</div></button>`).join('')}
+          </div>
+          ${lv.ownsEstate ? `<div class="dim2" style="font-size:11.5px;margin-top:8px">🏡 ${t('living.owned')}</div>`
+            : `<div class="dim2" style="font-size:11.5px;margin:-4px 0 10px;color:var(--gold)">🔑 ${t('living.allRented')}</div>`}`
+          : `<div class="dim2" style="font-size:11.5px;margin-bottom:10px">🏡 ${t('living.noEstate')}</div>`}
+          ${lv.ownsEstate ? '' : `
           <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:6px">${t('living.home')}</div>
           <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr))">
             ${lv.homes.map(hh => `<button class="opt ${hh.id === lv.home.id ? 'active' : ''}" data-home="${hh.id}">
@@ -351,6 +364,7 @@ export default {
     $('#go-world') && ($('#go-world').onclick = () => app.go('world'));
     $$('[data-meal]').forEach(b => b.onclick = () => app.act(() => api.living(b.dataset.meal, null), t('toast.success')).catch(() => {}));
     $$('[data-home]').forEach(b => b.onclick = () => app.act(() => api.living(null, b.dataset.home), t('toast.success')).catch(() => {}));
+    $$('[data-liveat]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.liveat, 'live'), t('toast.success')).catch(() => {}));
     $$('[data-commute]').forEach(b => b.onclick = () => app.act(() => api.living(null, null, b.dataset.commute), t('toast.success')).catch(() => {}));
     $$('[data-lot]').forEach(b => b.onclick = async () => {
       b.disabled = true;

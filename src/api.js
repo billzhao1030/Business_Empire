@@ -130,7 +130,9 @@ export function getState(uid) {
     };
   }).sort((x, y) => y.value - x.value);
 
-  const items = db.prepare('SELECT * FROM items WHERE user_id=? ORDER BY id').all(uid).map(it => {
+  const rawItems = db.prepare('SELECT * FROM items WHERE user_id=? ORDER BY id').all(uid);
+  const homeItem = S.homeItemOf(p, rawItems);
+  const items = rawItems.map(it => {
     const d = S.ITEM[it.type_id];
     const value = S.itemValue(it);
     const loan = it.loan_id ? db.prepare("SELECT * FROM loans WHERE id=? AND status='active'").get(it.loan_id) : null;
@@ -139,6 +141,7 @@ export function getState(uid) {
       catName: { zh: ITEM_CATS[d?.cat]?.name, en: ITEM_CATS[d?.cat]?.en },
       region: region ? NM(region) : null, regionFlag: region?.flag, indexSym: d?.index || null,
       value, paid: it.paid, gain: value - it.paid, rented: !!it.rented, canRent: !!d?.rent,
+      canLive: d?.cat === 'estate', isHome: homeItem?.id === it.id, live: d?.live || null,
       prestige: d?.prestige, upkeep: value * (d?.upkeep || 0), rent: it.rented ? value * (d?.rent || 0) : value * (d?.rent || 0),
       resale: value * (['estate', 'art', 'watch'].includes(d?.cat) ? 0.95 : 0.85),
       mortgage: loan ? { id: loan.id, balance: loan.balance, payment: loan.payment, rate: loan.rate, monthsLeft: loan.months_left } : null };
@@ -246,14 +249,22 @@ export function getState(uid) {
       };
     })(),
     living: (() => {
-      const ownsEstate = db.prepare("SELECT COUNT(*) c FROM items i WHERE i.user_id=? AND i.type_id LIKE 'est_%'").get(uid).c > 0;
-      const meal = S.mealOf(p), home = S.homeOf(p, ownsEstate);
+      const estates = rawItems.filter(it => S.ITEM[it.type_id]?.cat === 'estate');
+      const meal = S.mealOf(p), home = S.homeOf(p, homeItem);
       const commute = S.commuteOf(p, carOwned);
       const dailyWage = (job ? job.wage : 0) * 8;
       // 通勤费只在出门的日子花：一周按上五天算
       const commuteDays = 22;
       return {
-        meal: { ...meal }, home: { ...home }, commute: { ...commute }, ownsEstate, carOwned,
+        meal: { ...meal }, home: { ...home }, commute: { ...commute }, carOwned,
+        ownsEstate: !!homeItem, estateCount: estates.length,
+        rentedOut: estates.filter(it => it.rented).length,
+        // 名下每一套房：住着的、空着的、租出去的
+        estates: estates.map(it => { const d = S.ITEM[it.type_id];
+          return { id: it.id, zh: d.name, en: d.en, emoji: d.emoji, value: S.itemValue(it),
+                   rented: !!it.rented, isHome: homeItem?.id === it.id,
+                   stress: d.live?.stress ?? 0, stamina: d.live?.stamina ?? 0,
+                   rentIncome: S.itemValue(it) * (d.rent || 0) }; }),
         meals: MEALS, homes: HOMES, commutes: COMMUTES,
         monthlyFood: meal.cost * 30, monthlyRent: home.rent,
         monthlyCommute: commute.cost * commuteDays, commuteDays,
@@ -711,8 +722,19 @@ export function itemAction(uid, { id, action }) {
     if (!def.rent) throw new Err('该资产不可出租 / Not rentable');
     const on = it.rented ? 0 : 1;
     db.prepare('UPDATE items SET rented=? WHERE id=?').run(on, it.id);
+    // 租出去就搬出来：房客住进去了，这套房不再是你的住处
+    if (on && p.home_item_id === it.id) db.prepare('UPDATE players SET home_item_id=0 WHERE user_id=?').run(uid);
     ledger(uid, 'item', 0, L('led.itemRent', { item: NM(def), on, rent: value * def.rent }), '🔑');
     return { ok: true, rented: !!on };
+  }
+  if (action === 'live') {
+    if (def.cat !== 'estate') throw new Err('这不是能住的地方 / You cannot live there');
+    // 自己要住进去，就先把房客请走
+    const wasRented = !!it.rented;
+    if (wasRented) db.prepare('UPDATE items SET rented=0 WHERE id=?').run(it.id);
+    db.prepare('UPDATE players SET home_item_id=? WHERE user_id=?').run(it.id, uid);
+    ledger(uid, 'item', 0, L(wasRented ? 'led.itemLiveEnd' : 'led.itemLive', { item: NM(def) }), def.emoji);
+    return { ok: true, homeItemId: it.id, endedTenancy: wasRented };
   }
   throw new Err('未知操作 / Unknown action');
 }

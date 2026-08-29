@@ -33,20 +33,24 @@ export default {
         <div class="ico lg">${i.emoji}</div>
         <div class="i-main">
           <div class="i-title">${esc(nm(i.item))}
+            ${i.isHome ? `<span class="tag gold">🏡 ${t('lux.living')}</span>` : ''}
             ${i.rented ? `<span class="tag g">${t('lux.rented')}</span>` : ''}
+            ${i.canLive && !i.isHome && !i.rented ? `<span class="tag">${t('lux.vacant')}</span>` : ''}
             ${i.mortgage ? `<span class="tag r">${t('lux.hasMortgage')}</span>` : ''}
             ${i.region ? `<span class="tag b">${i.regionFlag || ''} ${esc(nm(i.region))}</span>` : ''}</div>
           <div class="i-sub">
             <span>${t('lux.myValue')} <b>${money(i.value)}</b></span>
             <span>${t('lux.gain')} <b class="${cls(i.gain)}">${money(i.gain)}</b> (${pct(i.paid ? i.gain / i.paid : 0)})</span>
             <span>${t('lux.upkeep')} ${money(i.upkeep)}</span>
-            ${i.canRent ? `<span>${t('lux.rentIncome')} ${money(i.rent)}</span>` : ''}
+            ${i.canRent ? `<span class="${i.rented ? 'up' : 'dim2'}">${t('lux.rentIncome')} ${money(i.rent)}${i.rented ? '' : ' ' + t('lux.ifLet')}</span>` : ''}
+            ${i.isHome && i.live ? `<span class="gold">${t('lux.comfortTag')} ${i.live.stress <= -0.12 ? '★★★' : i.live.stress <= -0.05 ? '★★' : '★'}</span>` : ''}
             <span>⭐ ${i.prestige}</span>
             ${i.mortgage ? `<span class="down">${t('bank.left')} ${money(i.mortgage.balance)} · ${t('bank.monthly')} ${money(i.mortgage.payment)}</span>` : ''}
           </div>
         </div>
         <div class="i-act">
-          ${i.canRent ? `<button class="btn btn-xs" data-rent="${i.id}">${i.rented ? t('lux.stopRent') : t('lux.rentOut')}</button>` : ''}
+          ${i.canLive && !i.isHome ? `<button class="btn btn-xs" data-live="${i.id}">🏡 ${t('lux.liveHere')}</button>` : ''}
+          ${i.canRent ? `<button class="btn btn-xs" data-rent="${i.id}" ${i.isHome && !i.rented ? `title="${t('lux.rentedNoLive')}"` : ''}>${i.rented ? t('lux.stopRent') : t('lux.rentOut')}</button>` : ''}
           ${i.indexSym ? `<button class="btn btn-xs btn-ghost" data-idx="${i.indexSym}">📈</button>` : ''}
           <button class="btn btn-xs btn-danger" data-sell="${i.id}">${t('lux.sellIt')} ${money(i.resale)}</button>
         </div></div>`).join('')}
@@ -58,6 +62,7 @@ export default {
       </div>
       ${tab === 'car' && !app.state.job.carOwned ? `<div class="card-b" style="padding:11px 18px;border-bottom:1px solid var(--line);color:var(--gold);font-size:12.5px">${t('lux.carJobHint')}</div>` : ''}
       ${tab === 'estate' ? `<div class="card-b" style="padding:12px 18px;border-bottom:1px solid var(--line)">
+        <div class="dim2" style="font-size:11.5px;margin-bottom:10px">🏡 ${t('lux.liveHint')}</div>
         <div class="chips">
           <button class="chip ${!regionF ? 'active' : ''}" data-reg="">${t('mkt.all')}</button>
           ${cat.regions.map(r => { const ix = idxMap[r.index]; return `<button class="chip ${regionF === r.id ? 'active' : ''}" data-reg="${r.id}">
@@ -103,6 +108,7 @@ export default {
     $$('[data-buy]').forEach(b => b.onclick = () => app.act(() => api.itemBuy(b.dataset.buy), t('toast.success')).catch(() => {}));
     $$('[data-mort]').forEach(b => b.onclick = () => this.mortgageModal(app, b.dataset.mort));
     $$('[data-rent]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.rent, 'rent'), t('toast.success')).catch(() => {}));
+    $$('[data-live]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.live, 'live'), t('toast.success')).catch(() => {}));
     $$('[data-idx]').forEach(b => b.onclick = () => market.openDetail(b.dataset.idx, app));
     $$('[data-sell]').forEach(b => b.onclick = async () => {
       const it = s.items.find(x => x.id === +b.dataset.sell);

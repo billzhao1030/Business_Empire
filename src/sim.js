@@ -178,10 +178,29 @@ export function tripQuote(dest, nights, cabinId, hotelId, home) {
   return { nights: n, air, stay, daily, total: air + stay + daily, hours, relief, stamina, prestige,
            cabin: c, hotel: ht, km: rt.km, flightHours: rt.hours };
 }
-// 自有住房：住自己的房子不用付租金，居住体验也更好
+// 自有住房：住自己的房子不用付租金，居住体验也更好。
+// 但一套房子只能有一个用途——租出去了就是房客在住，你还得另外租房。
+// 想要既收租又不付房租，就得买第二套。
 export const OWNED_HOME = { id:'owned', emoji:'🏡', zh:'自有住房', en:'Your own home',
-  rent:0, stress:-0.10, stamina:0.08, prestige:0 };
-export function homeOf(p, ownsEstate) { return ownsEstate ? OWNED_HOME : (HOME[p.home_id] || HOMES[0]); }
+  rent:0, stress:-0.09, stamina:0.06, prestige:0 };
+
+// 住的是名下哪一套。优先认玩家自己选的那套；选的那套卖了或者租出去了，
+// 就自动搬进还空着的房子里最好的一套——这样买了房不用再点一下才生效。
+export function homeItemOf(p, items) {
+  const vacant = items.filter(it => ITEM[it.type_id]?.cat === 'estate' && !it.rented);
+  if (!vacant.length) return null;
+  const chosen = vacant.find(it => it.id === p.home_item_id);
+  if (chosen) return chosen;
+  return vacant.reduce((a, b) => (itemValue(b) > itemValue(a) ? b : a));
+}
+export function homeOf(p, homeItem) {
+  if (!homeItem) return HOME[p.home_id] || HOMES[0];
+  const def = ITEM[homeItem.type_id];
+  const lv = def?.live || {};
+  return { ...OWNED_HOME, zh: def ? def.name : OWNED_HOME.zh, en: def ? def.en : OWNED_HOME.en,
+    emoji: def?.emoji || OWNED_HOME.emoji, itemId: homeItem.id,
+    stress: lv.stress ?? OWNED_HOME.stress, stamina: lv.stamina ?? OWNED_HOME.stamina };
+}
 export function mealOf(p) { return MEAL[p.meal_id] || MEAL.canteen; }
 // 没车的时候「自己开车」不成立，退回走路
 export function commuteOf(p, carOwned) {
@@ -385,8 +404,7 @@ export function advancePlayer(userId) {
   const prosp = M.cityProsperity();
   const carOwned = items.some(it => ITEM[it.type_id]?.car);
   let job = JOB[p.job_id];
-  const ownsEstate = items.some(it => ITEM[it.type_id]?.cat === 'estate');
-  const home = homeOf(p, ownsEstate);
+  const home = homeOf(p, homeItemOf(p, items));
   let meal = mealOf(p);
   const commute = commuteOf(p, carOwned);
   // 做饭和通勤都是实打实的时间，先从一天里扣掉，剩下的才轮得到加班

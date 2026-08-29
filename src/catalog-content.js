@@ -117,14 +117,16 @@ export const REGIONS = [
   { id:'mc',   name:'摩纳哥',   en:'Monaco',          index:'PIMC', mult:25,   flag:'🏰' },
 ];
 
+// live：自己住进去的体验。房子是拿来住的——住得越好，人越松弛，精力也回得越快。
+// 出租出去的房子不算住处：房客住着，你就得另外租房。
 const PROP_TIERS = [
-  { id:'room',  name:'单间出租屋', en:'Studio Room', emoji:'🚪', base:32_000,     prestige:1,   upkeep:0.0018, rent:0.0048, desc:'十几平米，厨卫共用，但它是你的。', descEn:'Fifteen square metres, shared bathroom — but it is yours.' },
-  { id:'old',   name:'老式两居',  en:'Old Two-Bed',  emoji:'🏚️', base:88_000,     prestige:3,   upkeep:0.0020, rent:0.0045, desc:'楼梯房、没电梯，胜在便宜又好租。', descEn:'Walk-up, no lift — cheap and easy to let.' },
-  { id:'apt',   name:'公寓',     en:'Apartment',    emoji:'🏢', base:180_000,    prestige:4,   upkeep:0.0020, rent:0.0042, desc:'紧凑实用，最容易出租。', descEn:'Compact, practical, easiest to rent out.' },
-  { id:'house', name:'独栋住宅', en:'Detached House',emoji:'🏡', base:620_000,    prestige:11,  upkeep:0.0020, rent:0.0040, desc:'带院子和车库，家庭首选。', descEn:'Yard and garage — the family choice.' },
-  { id:'villa', name:'豪华别墅', en:'Luxury Villa', emoji:'🏘️', base:2_600_000,  prestige:28,  upkeep:0.0024, rent:0.0037, desc:'泳池、影音室、24 小时安保。', descEn:'Pool, screening room, round-the-clock security.' },
-  { id:'penth', name:'顶层公寓', en:'Penthouse',    emoji:'🌆', base:6_800_000,  prestige:52,  upkeep:0.0028, rent:0.0035, desc:'整层视野，专属电梯直达。', descEn:'Full-floor views, private elevator access.' },
-  { id:'manor', name:'庄园',     en:'Grand Estate', emoji:'🏰', base:24_000_000, prestige:120, upkeep:0.0032, rent:0.0032, desc:'占地数公顷，有自己的名字。', descEn:'Hectares of land, and a name of its own.' },
+  { id:'room',  name:'单间出租屋', en:'Studio Room', emoji:'🚪', base:32_000,     prestige:1,   upkeep:0.0018, rent:0.0048, live:{ stress:-0.02, stamina:0.01 }, desc:'十几平米，厨卫共用，但它是你的。', descEn:'Fifteen square metres, shared bathroom — but it is yours.' },
+  { id:'old',   name:'老式两居',  en:'Old Two-Bed',  emoji:'🏚️', base:88_000,     prestige:3,   upkeep:0.0020, rent:0.0045, live:{ stress:-0.05, stamina:0.03 }, desc:'楼梯房、没电梯，胜在便宜又好租。', descEn:'Walk-up, no lift — cheap and easy to let.' },
+  { id:'apt',   name:'公寓',     en:'Apartment',    emoji:'🏢', base:180_000,    prestige:4,   upkeep:0.0020, rent:0.0042, live:{ stress:-0.09, stamina:0.06 }, desc:'紧凑实用，最容易出租。', descEn:'Compact, practical, easiest to rent out.' },
+  { id:'house', name:'独栋住宅', en:'Detached House',emoji:'🏡', base:620_000,    prestige:11,  upkeep:0.0020, rent:0.0040, live:{ stress:-0.12, stamina:0.08 }, desc:'带院子和车库，家庭首选。', descEn:'Yard and garage — the family choice.' },
+  { id:'villa', name:'豪华别墅', en:'Luxury Villa', emoji:'🏘️', base:2_600_000,  prestige:28,  upkeep:0.0024, rent:0.0037, live:{ stress:-0.15, stamina:0.10 }, desc:'泳池、影音室、24 小时安保。', descEn:'Pool, screening room, round-the-clock security.' },
+  { id:'penth', name:'顶层公寓', en:'Penthouse',    emoji:'🌆', base:6_800_000,  prestige:52,  upkeep:0.0028, rent:0.0035, live:{ stress:-0.17, stamina:0.11 }, desc:'整层视野，专属电梯直达。', descEn:'Full-floor views, private elevator access.' },
+  { id:'manor', name:'庄园',     en:'Grand Estate', emoji:'🏰', base:24_000_000, prestige:120, upkeep:0.0032, rent:0.0032, live:{ stress:-0.18, stamina:0.12 }, desc:'占地数公顷，有自己的名字。', descEn:'Hectares of land, and a name of its own.' },
 ];
 
 const ESTATES = [];
@@ -134,15 +136,15 @@ for (const r of REGIONS) for (const t of PROP_TIERS) {
     name: `${r.name}·${t.name}`, en: `${t.en} · ${r.en}`, emoji: t.emoji,
     price: Math.round(t.base * r.mult / 1000) * 1000,
     prestige: Math.max(2, Math.round(t.prestige * Math.pow(r.mult, 0.38))),
-    upkeep: t.upkeep, rent: t.rent, drift: 0,
+    upkeep: t.upkeep, rent: t.rent, drift: 0, live: t.live,
     desc: t.desc, descEn: t.descEn,
   });
 }
 
 const LANDMARKS = [
-  { id:'est_island', cat:'estate', region:'mia', index:'PIMI', mortgage:true, name:'加勒比私人海岛', en:'Private Caribbean Island', emoji:'🏝️', price:520_000_000, prestige:520, upkeep:0.0035, rent:0.0030, drift:0, desc:'整座岛都是你的，包括那片珊瑚礁。', descEn:'The whole island is yours — coral reef included.' },
-  { id:'est_palm',   cat:'estate', region:'dxb', index:'PIDB', mortgage:true, name:'迪拜棕榈岛宫殿', en:'Palm Jumeirah Palace', emoji:'🕌', price:1_200_000_000, prestige:850, upkeep:0.0035, rent:0.0030, drift:0, desc:'金色的一切。土豪审美的巅峰。', descEn:'Everything is gold. Peak petro-baroque.' },
-  { id:'est_castle', cat:'estate', region:'mc',  index:'PIMC', mortgage:true, name:'摩纳哥海崖城堡', en:'Monaco Cliffside Castle', emoji:'🏰', price:2_600_000_000, prestige:1400, upkeep:0.0038, rent:0.0028, drift:0, desc:'有六百年历史，和一间自己的私人小教堂。', descEn:'Six centuries of history and a private chapel.' },
+  { id:'est_island', cat:'estate', region:'mia', index:'PIMI', mortgage:true, name:'加勒比私人海岛', en:'Private Caribbean Island', emoji:'🏝️', price:520_000_000, prestige:520, upkeep:0.0035, rent:0.0030, drift:0, live:{ stress:-0.20, stamina:0.13 }, desc:'整座岛都是你的，包括那片珊瑚礁。', descEn:'The whole island is yours — coral reef included.' },
+  { id:'est_palm',   cat:'estate', region:'dxb', index:'PIDB', mortgage:true, name:'迪拜棕榈岛宫殿', en:'Palm Jumeirah Palace', emoji:'🕌', price:1_200_000_000, prestige:850, upkeep:0.0035, rent:0.0030, drift:0, live:{ stress:-0.20, stamina:0.13 }, desc:'金色的一切。土豪审美的巅峰。', descEn:'Everything is gold. Peak petro-baroque.' },
+  { id:'est_castle', cat:'estate', region:'mc',  index:'PIMC', mortgage:true, name:'摩纳哥海崖城堡', en:'Monaco Cliffside Castle', emoji:'🏰', price:2_600_000_000, prestige:1400, upkeep:0.0038, rent:0.0028, drift:0, live:{ stress:-0.20, stamina:0.13 }, desc:'有六百年历史，和一间自己的私人小教堂。', descEn:'Six centuries of history and a private chapel.' },
 ];
 
 const VEHICLES = [

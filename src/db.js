@@ -301,6 +301,8 @@ addColumn('players','streak_day',     'INTEGER NOT NULL DEFAULT -1');
 addColumn('players','off_day',        'INTEGER NOT NULL DEFAULT -1');
 addColumn('players','meal_id',        "TEXT    NOT NULL DEFAULT 'canteen'");
 addColumn('players','home_id',        "TEXT    NOT NULL DEFAULT 'shared'");
+// 住进自己名下的哪一套房。0 = 还在租房；房子一旦租出去就不算住处了
+addColumn('players','home_item_id',   'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','food_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','rent_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','commute_id',     "TEXT    NOT NULL DEFAULT 'walk'");
