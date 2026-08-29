@@ -175,11 +175,34 @@ function logFatal(kind, err) {
   try { fs.appendFileSync(path.join(path.dirname(DB_PATH), 'error.log'), msg); } catch {}
   console.error(msg);
 }
-process.on('uncaughtException', e => logFatal('uncaughtException', e));
+// 兜底是为了让一次请求出错不至于把服务打死。但启动就失败（端口被占、
+// 数据目录不可写）属于另一回事：这种进程活着只会白白占着数据库句柄，
+// 让下一个真正的实例写不进去——直接退出。
+const FATAL_AT_BOOT = new Set(['EADDRINUSE', 'EACCES', 'EADDRNOTAVAIL']);
+let booted = false;
+function bail(kind, err) {
+  logFatal(kind, err);
+  console.error(`\n  ✖  启动失败：${err && err.message || err}`);
+  if (err && err.code === 'EADDRINUSE')
+    console.error(`  端口 ${PORT} 已被占用。先停掉占用它的进程，或换一个 PORT。\n`);
+  try { db.close(); } catch {}
+  process.exit(1);
+}
+process.on('uncaughtException', e => {
+  if (!booted && e && FATAL_AT_BOOT.has(e.code)) return bail('bootFailure', e);
+  logFatal('uncaughtException', e);
+});
 process.on('unhandledRejection', e => logFatal('unhandledRejection', e));
 server.on('clientError', (e, socket) => { try { socket.destroy(); } catch {} });
+server.on('error', e => { if (!booted) bail('listenFailure', e); else logFatal('serverError', e); });
+
+// 退出时把数据库关干净，WAL 才会合并回主库
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { try { server.close(); } catch {} try { db.close(); } catch {} process.exit(0); });
+}
 
 server.listen(PORT, () => {
+  booted = true;
   const h = M.currentGameHour();
   console.log(`\n  💼  Business Empire 已启动`);
   console.log(`  🌐  http://localhost:${PORT}`);
