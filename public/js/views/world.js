@@ -1,7 +1,7 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, durText, gDate } from '../util.js';
-import { drawWorld } from '../worldmap.js';
+import { WorldMap } from '../worldmap.js';
 
 let data = null, selected = null, hovered = null, nights = 5, cabin = 'economy', hotel = 'std', regionF = '';
 
@@ -37,7 +37,15 @@ export default {
     <div class="card" style="margin-bottom:16px">
       <div class="card-h"><h3>🗺️ ${t('world.title')}</h3>
         <span class="sub">${t('world.hint', { home: nm({ zh: data.home.zh, en: data.home.en }) })}</span></div>
-      <div class="card-b" style="padding:12px"><div style="position:relative"><canvas id="wmap" style="display:block;cursor:pointer"></canvas></div></div>
+      <div class="card-b" style="padding:12px">
+        <div id="wmap" style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line)"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-xs" id="wm-in">＋</button><button class="btn btn-xs" id="wm-out">－</button>
+          <button class="btn btn-xs btn-ghost" id="wm-home">🏠 ${t('world.centerHome')}</button>
+          <button class="btn btn-xs btn-ghost" id="wm-reset">${t('world.resetView')}</button>
+          <span class="dim2" style="font-size:11px;margin-left:auto">${t('world.mapHint')}</span>
+        </div>
+      </div>
     </div>
 
     <div class="grid" style="grid-template-columns:1.35fr 1fr;margin-bottom:16px">
@@ -137,23 +145,37 @@ export default {
       </div>
     </div>`;
 
-    // 地图交互
-    const cv = $('#wmap');
-    let geo = drawWorld(cv, { places: data.places, home: data.home, selected, visited, hovered });
-    const redraw = () => { geo = drawWorld(cv, { places: data.places, home: data.home, selected, visited, hovered }); };
-    cv.onmousemove = e => {
-      const r = cv.getBoundingClientRect();
-      const mx = e.clientX - r.left, my = e.clientY - r.top;
-      const hit = geo.pts.find(p => Math.hypot(p.x - mx, p.y - my) <= p.r);
-      const id = hit ? hit.id : null;
-      if (id !== hovered) { hovered = id; cv.style.cursor = id ? 'pointer' : 'default'; redraw(); }
-    };
-    cv.onmouseleave = () => { if (hovered) { hovered = null; redraw(); } };
-    cv.onclick = () => { if (hovered) { selected = hovered; this.render(root, app); } };
-    window.addEventListener('resize', redraw, { once: true });
+    // 地图：真实矢量国界 + 拖拽平移 + 滚轮缩放
+    const holder = $('#wmap');
+    if (!this.map || this.map.el !== holder) {
+      this.map = new WorldMap(holder, {
+        onSelect: (id) => { if (id) { selected = id; this.render(root, app); } },
+        onHover: () => {},
+      });
+      this.map.ready();
+      if (typeof window !== 'undefined') window.__wm = this.map;   // 供自动化测试驱动视图
+    } else { holder.appendChild(this.map.canvas); }
+    this.map.setData({
+      places: data.places.map(p => ({ ...p, label: nm(p) })),
+      home: { ...data.home, label: nm(data.home) },
+      selected, visited,
+    });
+    if (this.map.geo) this.map.draw();
+    $('#wm-in').onclick = () => this.map.zoomAt(1.5, this.map.size().w / 2, this.map.size().h / 2);
+    $('#wm-out').onclick = () => this.map.zoomAt(1 / 1.5, this.map.size().w / 2, this.map.size().h / 2);
+    $('#wm-home').onclick = () => { const m = this.map;
+      m.zoom = Math.max(m.zoom, 3.2); m.cx = (data.home.lon + 180) / 360; m.cy = (90 - data.home.lat) / 180;
+      m.clampView(); m.draw(); };
+    $('#wm-reset').onclick = () => { const m = this.map; m.zoom = 1; m.cx = 0.5; m.cy = 0.5; m.draw(); };
 
     $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; this.render(root, app); });
-    $$('[data-dest]').forEach(b => b.onclick = () => { selected = b.dataset.dest; this.render(root, app); });
+    $$('[data-dest]').forEach(b => b.onclick = () => {
+      selected = b.dataset.dest;
+      const d = data.places.find(x => x.id === selected);
+      if (d && this.map) { this.map.zoom = Math.max(this.map.zoom, 2.6);
+        this.map.cx = (d.lon + 180) / 360; this.map.cy = (90 - d.lat) / 180; this.map.clampView(); }
+      this.render(root, app);
+    });
     $$('[data-cab]').forEach(b => b.onclick = () => { cabin = b.dataset.cab; this.render(root, app); });
     $$('[data-hot]').forEach(b => b.onclick = () => { hotel = b.dataset.hot; this.render(root, app); });
     const rg = $('#w-nights');

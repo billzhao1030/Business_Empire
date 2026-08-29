@@ -53,7 +53,7 @@ abstract: it was that share price, and you just bought it.
 | **🌍 A macro economy that moves everything** | Seven regimes — Boom, Expansion, Steady, Inflation, Slowdown, Recession, Crisis — re-rolled every in-game month. The regime moves equity drift, volatility, the **central bank policy rate** (which sets your savings, loan and mortgage rates), and the footfall at every store you own. Ten world events can rewrite the board outright. |
 | **⏳ Labour that respects the clock and your body** | The day splits into sleep (23:00–07:00), an eight-hour shift (09:00–17:00) and free hours. Overtime occupies a real in-game hour and pays on completion — no click-spamming. Night shifts pay a 2.2× premium and cost double the stamina. Stamina drains as you work and recovers only in sleep; below 60 your output degrades, below 15 you cannot work overtime at all. Four overtime hours a day is sustainable, six burns you out. Wage income is capped by both time and biology; businesses are the only thing that scales. |
 | **🍚 A cost of living that never stops** | You eat every day and pay rent every month. Six meal tiers from skipping them to a private chef, three housing tiers, and owning a home ends the rent. On a starting wage that is **$820 a month — 43% of your pay**. Eat badly and stamina drains, stress climbs and illness becomes twice as likely; fail to cover food at all and you go hungry. Three lotteries carry real odds (1 in 139,838,160 for the mega jackpot) and real expected returns of 46–57%, sitting there so you can watch the arithmetic yourself. |
-| **🗺️ A world map with a life's footprint** | Drop a pin at the start to choose where you were born — 24 cities across seven continents — and every airfare and flight time thereafter is computed from the real great-circle distance to it. London to Paris is 343 km and $100; London to Adelaide is 16,265 km and $1,900. Forty-one destinations, each trip configured by nights, cabin and accommodation, priced as airfare plus lodging plus daily spending. You cannot work at all while away. Everywhere you go is recorded — first arrival, return visits, nights and money spent. |
+| **🗺️ A world map with a life's footprint** | Drop a pin at the start to choose where you were born — 24 cities across seven continents — and every airfare and flight time thereafter is computed from the real great-circle distance to it. London to Paris is 343 km and $100; London to Adelaide is 16,265 km and $1,900. Forty-one destinations, each trip configured by nights, cabin and accommodation, priced as airfare plus lodging plus daily spending. You cannot work at all while away. Everywhere you go is recorded — first arrival, return visits, nights and money spent. The map is real vector geography — Natural Earth 1:50m, 241 countries — with drag-to-pan and zoom to 14×. |
 | **⏱️ Adjustable world speed** | Five steps from 5 real minutes per in-game hour down to 12 seconds, a 25× range, re-anchored on the current moment so the clock never jumps. |
 | **🧠 Debt that costs more than interest** | Leverage over 35%, or repayments eating a third of your income, steadily raise your **stress**. Past 50 it degrades output, past 78 you cannot face overtime, and past 55 every hour risks illness — five of them, from a bad cold to a cardiac scare. Illness stops you working; a doctor halves the recovery, or you tough it out while stress climbs. **Travel** is the cure: seven itineraries from a $600 weekend to a $6M suborbital flight, in economy, business or first — free of airfare if you own a jet. |
 | **💰 Costs broken out like a real business** | Cost of goods at 42% of takings, wages around 22% (one employee generates ~4.5× their own wage, headcount derived from revenue), and rent charged monthly against the fit-out whether the doors are open or not. Net margin settles at 26–30% and payback runs 38 in-game days for a stall to 330 for heavy industry. Bigger cities take more but rent rises faster than revenue — the same tea shop pays back in 82 days in a small town and 213 in Dubai. Opening in another city means flying there: airfare plus days on the ground when you cannot work. |
@@ -182,6 +182,18 @@ a live tick for all of them takes well under a millisecond.
 - [ ] Short selling and margin
 - [ ] Limit and stop orders
 - [ ] Competitor AI that opens stores against you in the same districts
+
+---
+
+## Credits
+
+The world map is drawn from **[Natural Earth](https://www.naturalearthdata.com/)** 1:50m Admin 0
+country boundaries, in the public domain, bundled as TopoJSON via
+[world-atlas](https://github.com/topojson/world-atlas). Natural Earth data is free of any
+restriction on use. Everything else — engine, art, text and data — is original to this project.
+
+Nothing is fetched from the network while the game runs: the map, all 257 instruments and every
+asset are served from your own machine.
 
 ---
 
