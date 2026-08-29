@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, modal, confirmBox, durText } from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, modal, confirmBox, durText, keepScroll} from '../util.js';
 
 let pickType = null, pickCity = 'city';
 
@@ -274,7 +274,7 @@ export default {
     if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
     const root = document.getElementById('view');
     const top = root.scrollTop;
-    this.render(root, app);
+    keepScroll(() => this.render(root, app));
     root.scrollTop = top;
   }
 };

@@ -150,3 +150,17 @@ export function realPace(ms) {
   const mins = (ms || 60000) / 60000;
   return mins < 1 ? Math.round(mins * 60) + 's' : (Number.isInteger(mins) ? mins : mins.toFixed(1)) + ' min';
 }
+
+// 原地重绘时不要把页面弹回顶部。
+// 视图是把 #view 的 innerHTML 整个换掉的，浏览器会顺手把 scrollTop 归零——
+// 在实业页往下翻到某家店、点一下「投放营销」，就会被弹回最上面。
+export function keepScroll(fn) {
+  const root = document.getElementById('view');
+  const top = root ? root.scrollTop : 0;
+  const put = () => { if (root && top) root.scrollTop = top; };
+  const r = fn();
+  put();
+  if (r && typeof r.then === 'function') r.then(put).catch(put);
+  else if (typeof requestAnimationFrame === 'function') requestAnimationFrame(put);
+  return r;
+}
