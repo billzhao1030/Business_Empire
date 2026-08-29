@@ -137,6 +137,26 @@ export const app = {
       : hod < (j?.workStart ?? 9) ? 'morning' : hod < (j?.workEnd ?? 17) ? 'shift' : 'evening';
     ph.className = 'tc-phase ' + phase;
     ph.textContent = t('phase.' + phase);
+    this.paintDayBar(hod, frac);
+  },
+
+  // 一天中的位置，带小数——作息条和顶栏的钟用同一个数
+  liveHod() { const { hour, frac } = this.liveHour(); return (hour % 24) + frac; },
+
+  // 生涯页的作息条游标：跟着时钟走，而不是等 5 秒一次的轮询
+  paintDayBar(hod, frac) {
+    const now = $('#daybar-now');
+    if (!now) return;
+    const at = hod + frac;
+    now.style.left = (at / 24 * 100) + '%';
+    const lb = $('#daybar-time');
+    if (lb) lb.textContent = String(hod).padStart(2, '0') + ':' + String(Math.floor(frac * 60)).padStart(2, '0');
+    // 当前所处的时段高亮
+    const bar = $('#daybar');
+    if (bar) for (const seg of bar.querySelectorAll('[data-from]')) {
+      const from = +seg.dataset.from, n = +seg.dataset.n;
+      seg.classList.toggle('cur', hod >= from && hod < from + n);
+    }
   },
 
   netFails: 0,

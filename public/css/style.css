@@ -444,7 +444,13 @@ button{cursor:pointer;border:none;background:none}
 .daybar .dseg-sleep{background:rgba(167,139,250,.18)}
 .daybar .dseg-shift{background:rgba(86,160,255,.20);color:var(--blue)}
 .daybar .dseg-free{background:rgba(255,196,77,.16);color:var(--gold)}
-.daybar .now{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--txt);box-shadow:0 0 8px var(--txt)}
+.daybar-wrap{position:relative}
+.daybar-wrap .now{position:absolute;top:-3px;height:28px;width:2px;background:var(--gold);
+  box-shadow:0 0 8px var(--gold);transition:left .25s linear;z-index:3;pointer-events:none}
+.daybar-wrap .now i{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-style:normal;
+  font-size:10px;font-weight:800;font-variant-numeric:tabular-nums;color:#241a04;
+  background:var(--gold);padding:1px 5px;border-radius:5px;white-space:nowrap;line-height:13px}
+.daybar>div.cur{filter:brightness(1.5)}
 
 /* ══ 紧凑筛选下拉 ══ */
 .selbox{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--line);
