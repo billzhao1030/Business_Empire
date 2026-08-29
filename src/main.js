@@ -145,6 +145,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/trade':       return send(res, 200, API.trade(uid, body));
       case '/api/takeover':    return send(res, 200, API.takeover(uid, body));
       case '/api/biz/buy':     return send(res, 200, API.bizBuy(uid, body));
+      case '/api/biz/cities':  return send(res, 200, API.bizCities(uid, body));
       case '/api/company':          return send(res, 200, API.companyState(uid));
       case '/api/company/found':    return send(res, 200, API.foundCompany(uid, body));
       case '/api/company/shops':    return send(res, 200, API.companyShops(uid, body));

@@ -139,13 +139,23 @@ export default {
     });
   },
 
-  // ── 开新店 ────────────────────────────────────────────────
-  openNew(app) {
+  // ── 开新店：全世界 7,330 座城市任选 ──────────────────────
+  async openNew(app) {
     const cat = app.catalog, s = app.state;
     pickType = pickType || cat.biz[0].id;
+    let cities = [], cityQuery = '', searching = false, picked = null;
+    const loadCities = async q => {
+      try {
+        const r = await api.bizCities(q, pickType);
+        cities = r.results; if (!picked) picked = r.home;
+      } catch { cities = []; }
+    };
+    await loadCities('');
+    pickCity = (cities[0] && cities[0].id) || pickCity;
     const render = el => {
       const def = cat.biz.find(x => x.id === pickType);
-      const city = cat.cities.find(c => c.id === pickCity);
+      const city = cities.find(c => c.id === pickCity) || picked;
+      if (!city) return;
       const setup = Math.round(def.cost * city.costMult);
       const travel = Math.round(city.travelCost || 0);
       const cost = setup + travel;
@@ -170,14 +180,24 @@ export default {
             <div class="s">${money(c)} · ${x.hours[0]}:00–${x.hours[1]}:00 (${x.openHours}h)</div></button>`;
         }).join('')}
       </div>
-      <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;margin-bottom:7px">${t('biz.chooseCity')}</div>
-      <div class="opt-grid" style="margin-bottom:16px">
-        ${cat.cities.map(c => `<button class="opt ${c.id === pickCity ? 'active' : ''}" data-city="${c.id}">
-          <div class="t">${esc(nm({ zh: c.name, en: c.en }))}</div>
-          <div class="s">${t('biz.costLabel')} ×${c.costMult} · ${t('biz.revenue')} ×${c.revMult}</div></button>`).join('')}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+        <span class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px">${t('biz.chooseCity')}</span>
+        <span class="dim2" style="font-size:10.5px">${t('biz.cityHint')}</span>
+      </div>
+      <input id="nb-city-q" type="search" placeholder="${t('biz.citySearchPh')}" value="${esc(cityQuery)}"
+        style="width:100%;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-size:12.5px;margin-bottom:8px">
+      <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(196px,1fr));max-height:224px;overflow:auto;margin-bottom:16px">
+        ${cities.length ? cities.map(c => `<button class="opt ${c.id === pickCity ? 'active' : ''}" data-city="${c.id}">
+          <div class="t">${c.flag || ''} ${esc(nm({ zh: c.name, en: c.en }))}</div>
+          <div class="s">${money(c.setup)}${c.travelCost ? ` <span class="dim2">+✈️${money(c.travelCost)}</span>` : ''}
+            <span class="dim2">· ${t('biz.revenue')} ${c.revMult.toFixed(2)}× · ${t('biz.rent')} <b class="${c.rentMult > 1.5 ? 'down' : ''}">${c.rentMult.toFixed(2)}×</b></span></div>
+          </button>`).join('')
+        : `<div class="dim2" style="font-size:11.5px;padding:10px">${t('biz.noCity')}</div>`}
       </div>
       <label class="field"><span>${t('biz.nameIt')}</span><input id="nb-name" placeholder="${esc(nm({ zh: city.name + def.name, en: def.en + ' · ' + city.en }))}" maxlength="24"></label>
       <div class="summary">
+        <div><span>📍 ${t('biz.location')}</span><span class="mono">${city.flag || ''} ${esc(nm({ zh: city.name, en: city.en }))}
+          <span class="dim2" style="font-weight:400">${esc(nm({ zh: city.desc || '', en: city.descEn || '' }))}</span></span></div>
         <div><span>${t('biz.setup')}</span><span class="mono">${moneyFull(setup)}</span></div>
         ${travel ? `<div><span>✈️ ${t('biz.travelCost')}（${city.travelDays} ${t('common.day')}）</span><span class="mono down">${moneyFull(travel)}</span></div>` : ''}
         <div><span>${t('biz.hours')}</span><span class="mono">${def.hours[0]}:00–${def.hours[1]}:00 · ${H}h</span></div>
@@ -194,6 +214,24 @@ export default {
       <p class="dim2" style="font-size:11.5px;margin-top:10px;line-height:1.6">${esc(nm({ zh: def.desc, en: def.descEn }))}</p>`;
       box.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { pickType = b.dataset.type; render(el); });
       box.querySelectorAll('[data-city]').forEach(b => b.onclick = () => { pickCity = b.dataset.city; render(el); });
+      const cq = box.querySelector('#nb-city-q');
+      if (cq) {
+        cq.oninput = () => {
+          cityQuery = cq.value;
+          clearTimeout(this._cityT);
+          this._cityT = setTimeout(async () => {
+            if (searching) return;
+            searching = true;
+            const q = cityQuery.trim();
+            await loadCities(q);
+            searching = false;
+            if (cities.length && !cities.some(c => c.id === pickCity)) pickCity = cities[0].id;
+            render(el);
+            const nq = el.querySelector('#nb-city-q');
+            if (nq) { nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); }
+          }, 240);
+        };
+      }
       const sub = el.querySelector('#nb-submit');
       sub.disabled = s.player.cash < cost;
       sub.textContent = s.player.cash < cost ? `${t('common.cash')} ${money(s.player.cash)} / ${money(cost)}` : `${t('biz.open')} · ${money(cost)}`;

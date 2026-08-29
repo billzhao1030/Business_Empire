@@ -6,11 +6,12 @@ import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 import * as CO from './company.js';
+import { cityOf, cityEconomy, cityTravel, popText, LEGACY_CITIES } from './citybiz.js';
 import { FOUND_FEE, FOUND_MIN_SHOPS, INIT_SHARES, ROUNDS, ROUND, STAGES, STAGE,
          CO_SECTORS, CO_SECTOR, DIVIDEND_TAX, MIN_DIVIDEND, ILLIQUID,
          IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT, IPO_FEE } from './catalog-company.js';
 import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE,
-         destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES } from './catalog-world.js';
+         destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES, ATLAS } from './catalog-world.js';
 
 const { RATES, L } = S;
 class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
@@ -90,7 +91,7 @@ export function getState(uid) {
   const pbonus = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
 
   const businesses = db.prepare('SELECT * FROM businesses WHERE user_id=? ORDER BY id').all(uid).map(b => {
-    const r = S.bizRates(b, pbonus), def = S.BIZ[b.type_id], city = S.CITY[b.city];
+    const r = S.bizRates(b, pbonus), def = S.BIZ[b.type_id], city = S.bizCity(b);
     return {
       id: b.id, typeId: b.type_id, name: b.name, emoji: def?.emoji, type: NM(def), cat: def?.cat, catEn: def?.catEn,
       city: NM(city), cityId: b.city, level: b.level, marketing: b.marketing,
@@ -223,7 +224,7 @@ export function getState(uid) {
     health: (() => {
       const ill = p.sick_id ? S.ILL[p.sick_id] : null;
       const bizTrip = p.trip_id && p.trip_id.startsWith('biz:');
-      const bizCity = bizTrip ? S.CITY[p.trip_id.slice(4)] : null;
+      const bizCity = bizTrip ? (cityOf(p.trip_id.slice(4), S.birthOf(p)) || S.CITY[p.trip_id.slice(4)]) : null;
       const dst = !bizTrip && p.trip_id ? S.DEST[p.trip_id] : null;
       const trip = bizTrip
         ? (bizCity ? { id: 'biztrip', zh: '出差：' + bizCity.name, en: 'Business trip: ' + bizCity.en, emoji: '✈️' } : null)
@@ -407,9 +408,11 @@ export function takeover(uid, { symbol }) {
 // ── 实业 ────────────────────────────────────────────────────
 export function bizBuy(uid, { typeId, cityId, name, useCompany }) {
   S.advancePlayer(uid);
-  const def = S.BIZ[typeId], city = S.CITY[cityId];
-  if (!def || !city) throw new Err('店铺类型或城市无效 / Invalid business or city');
+  const def = S.BIZ[typeId];
   const p = P(uid), hour = curHour();
+  const home = S.birthOf(p);
+  const city = cityOf(cityId, home);
+  if (!def || !city) throw new Err('店铺类型或城市无效 / Invalid business or city');
   if (p.sick_until > hour) throw new Err('生着病没法去选址开店 / You are too ill to go and set up a shop');
   if (p.trip_until > hour) throw new Err('你正在外地，回来再说 / You are already away');
   const setup = Math.round(def.cost * city.costMult);
@@ -429,9 +432,13 @@ export function bizBuy(uid, { typeId, cityId, name, useCompany }) {
   if (co) db.prepare('UPDATE companies SET cash=cash-? WHERE id=?').run(cost, co.id);
   else p.cash -= cost;
   const nm = String(name || '').trim().slice(0, 24) || `${city.name}${def.name}`;
-  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff,auto_repair,company_id)
-              VALUES(?,?,?,?,?,?,?,?,?,1,?,?)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(),
-                0.9 + Math.random() * 0.2, 2, co ? 1 : 0, co ? co.id : 0);
+  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,
+              auto_staff,auto_repair,company_id,rev_mult,rent_mult,wage_mult,cost_mult,city_vol,city_name,city_en,city_flag)
+              VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?)`)
+    .run(uid, typeId, nm, cityId, city.revMult, cost, curHour(),
+         0.9 + Math.random() * 0.2, 2, co ? 1 : 0, co ? co.id : 0,
+         city.revMult, city.rentMult, city.wageMult, city.costMult, city.vol || 1,
+         city.name, city.en, city.flag || '');
   // 异地开店需要亲自跑一趟：付机票、在外面待几天，这期间不能上班
   if (city.travelDays > 0) {
     db.prepare('UPDATE players SET trip_until=?, trip_id=?, trip_relief=1 WHERE user_id=?')
@@ -447,7 +454,7 @@ export function bizAction(uid, { id, action, name, arg }) {
   S.advancePlayer(uid);
   const b = db.prepare('SELECT * FROM businesses WHERE id=? AND user_id=?').get(num(id, 1), uid);
   if (!b) throw new Err('店铺不存在 / Business not found', 404);
-  const def = S.BIZ[b.type_id], city = S.CITY[b.city], p = P(uid);
+  const def = S.BIZ[b.type_id], city = S.bizCity(b), p = P(uid);
 
   if (action === 'upgrade') {
     if (b.level >= S.MAX_LEVEL) throw new Err('已达最高等级 / Max level reached');
@@ -850,6 +857,54 @@ export function treat(uid) {
   return { ok: true, cost, until, days: ill.treatDays };
 }
 
+// ── 开店城市：全世界 7,330 座任选 ──────────────────────────
+function cityCard(c, def) {
+  const setup = def ? Math.round(def.cost * c.costMult) : null;
+  return { id: c.id, name: c.name, en: c.en, flag: c.flag || '', atlas: !!c.atlas,
+    country: c.country, countryEn: c.countryEn, region: c.region, pop: c.pop,
+    capital: c.capital, worldCity: c.worldCity,
+    costMult: c.costMult, revMult: c.revMult, rentMult: c.rentMult, wageMult: c.wageMult,
+    travelCost: c.travelCost || 0, travelDays: c.travelDays || 0, km: c.km || 0,
+    desc: c.desc, descEn: c.descEn, setup, total: setup == null ? null : setup + (c.travelCost || 0) };
+}
+
+// 开店选址：默认给家乡 + 附近 + 几个世界级商圈，也可以搜
+export function bizCities(uid, { q, typeId, limit }) {
+  const p = P(uid), home = S.birthOf(p);
+  const def = typeId ? S.BIZ[typeId] : null;
+  const n = Math.min(60, Math.max(1, (limit | 0) || 24));
+  const seen = new Set();
+  const out = [];
+  const push = id => {
+    if (seen.has(id)) return;
+    const c = cityOf(id, home);
+    if (!c) return;
+    seen.add(id); out.push(cityCard(c, def));
+  };
+  const query = String(q || '').trim();
+  if (query) {
+    for (const c of searchCities(query, n)) push(CITY_ALIAS.get(c.id) ? c.id : c.id);
+    return { home: cityCard(cityOf(home.id, home) || home, def), results: out, searched: true };
+  }
+  push(home.id);                                    // 家乡永远排第一
+  for (const c of nearbyCities(home, 11)) push(c.id);   // 就近的大城市
+  for (const id of ['tokyo.jp', 'new-york.us', 'london.gb', 'dubai.ae', 'singapore.sg',
+                    'shanghai.cn', 'mumbai.in', 'sao-paulo.br', 'lagos.ng', 'bangkok.th'])
+    push(id);
+  return { home: cityCard(cityOf(home.id, home) || home, def), results: out.slice(0, n), searched: false };
+}
+
+// 离家最近的几座大城市（先按距离，人口太小的不算）
+function nearbyCities(home, n) {
+  const out = [];
+  for (const c of ATLAS) {
+    if (c.id === home.id || c.pop < 150_000) continue;
+    out.push({ c, d: distanceKm(home, c) });
+  }
+  out.sort((a, b) => a.d - b.d);
+  return out.slice(0, n).map(x => x.c);
+}
+
 // ── 创业：注册公司、装店、估值、融资、分红 ──────────────────
 const TICKER_RE = /^[A-Z]{2,5}$/;
 
@@ -900,7 +955,7 @@ function coState(uid) {
 }
 function shopBrief(b, pb, prosp) {
   const r = S.bizRates(b, pb, prosp[b.city] || 1);
-  const def = S.BIZ[b.type_id], city = S.CITY[b.city];
+  const def = S.BIZ[b.type_id], city = S.bizCity(b);
   return { id: b.id, name: b.name, emoji: def?.emoji || '🏬', typeZh: def?.name, typeEn: def?.en,
     city: b.city, cityZh: city?.name, cityEn: city?.en, level: b.level, invested: b.invested,
     dailyNet: r.dailyNet, dailyRev: r.dailyRev, companyId: b.company_id };

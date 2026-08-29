@@ -49,6 +49,7 @@ export const api = {
   coFund: (amount) => post('/api/company/fund', { amount }),
   coRename: (name, nameEn) => post('/api/company/rename', { name, nameEn }),
   coIpo: () => post('/api/company/ipo', {}),
+  bizCities: (q, typeId) => post('/api/biz/cities', { q, typeId }),
   place: (id) => post('/api/place', { id }),
   citySearch: (q, limit) => post('/api/citysearch', { q, limit }),
   nearest: (lon, lat, minPop) => post('/api/nearest', { lon, lat, minPop }),

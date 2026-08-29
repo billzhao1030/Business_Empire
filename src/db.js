@@ -247,6 +247,16 @@ addColumn('businesses', 'auto_repair', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses', 'understaffed','REAL    NOT NULL DEFAULT 0');
 addColumn('businesses', 'company_id', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('companies', 'rate_vslow', 'REAL NOT NULL DEFAULT 0');
+// 开店时把当地的经营参数固化在店铺上：城市从 6 个抽象档位变成 7,330 座真实城市之后，
+// bizRates 是每小时都要跑的热路径，不该每次再去推算一遍。0 表示老存档，回落到城市表。
+addColumn('businesses', 'rev_mult',  'REAL NOT NULL DEFAULT 0');
+addColumn('businesses', 'rent_mult', 'REAL NOT NULL DEFAULT 0');
+addColumn('businesses', 'wage_mult', 'REAL NOT NULL DEFAULT 0');
+addColumn('businesses', 'cost_mult', 'REAL NOT NULL DEFAULT 0');
+addColumn('businesses', 'city_vol',  'REAL NOT NULL DEFAULT 0');
+addColumn('businesses', 'city_name', "TEXT NOT NULL DEFAULT ''");
+addColumn('businesses', 'city_en',   "TEXT NOT NULL DEFAULT ''");
+addColumn('businesses', 'city_flag', "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'region',    "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'index_sym', "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'units',     'REAL NOT NULL DEFAULT 0');
