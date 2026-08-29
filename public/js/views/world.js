@@ -19,6 +19,7 @@ export default {
     if (!data) { try { data = await api.world(); } catch { data = null; } }
     if (!data) { root.innerHTML = `<div class="card"><div class="card-b"><div class="empty"><p>${t('common.loading')}</p></div></div></div>`; return; }
     const s = app.state, fp = data.footprint;
+    const view = this.map ? this.map.viewState() : null;      // 重画前先记住视角
     const visited = Object.fromEntries(data.places.filter(p => p.visit).map(p => [p.id, p.visit]));
     const featured = data.places.filter(p => !regionF || p.region === regionF);
     const list = results || featured;
@@ -180,15 +181,21 @@ export default {
     this.pick = pick;
 
     // 地图：真实矢量国界 + 7,330 座城市 + 拖拽平移 + 滚轮缩放
+    // innerHTML 重写会换掉容器，所以每次都要把 canvas 挪过来、把视角放回去，
+    // 否则轮询一刷新，玩家刚放大的地方就被弹回全球视图了。
     const holder = $('#wmap');
-    if (!this.map || this.map.el !== holder) {
+    if (!this.map) {
       this.map = new WorldMap(holder, {
         onSelect: (id) => { if (id) this.pick(id); },
         onHover: () => {},
       });
       this.map.ready();
       if (typeof window !== 'undefined') window.__wm = this.map;   // 供自动化测试驱动视图
-    } else { holder.appendChild(this.map.canvas); }
+    } else {
+      this.map.el = holder;
+      holder.appendChild(this.map.canvas);
+      this.map.restoreView(view);
+    }
     this.map.setData({
       places: data.places.map(p => ({ ...p, label: nm(p) })),
       home: { ...data.home, label: nm(data.home) },
@@ -251,10 +258,17 @@ export default {
     };
   },
 
+  // 轮询：只有真的有变化才重画。地图是要用手操作的，不能每 5 秒推倒一次。
   async patch(app) {
     if (document.querySelector('.modal-mask')) return;
     const a = document.activeElement;
     if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
+    if (this.map && this.map.dragging) return;
+    const s = app.state;
+    const sig = [s.player.cash | 0, s.health.trip ? s.health.trip.hoursLeft | 0 : -1,
+                 data ? data.footprint.places : -1, data ? data.footprint.trips : -1].join('|');
+    if (sig === this._sig) return;
+    this._sig = sig;
     data = null;
     const root = document.getElementById('view');
     const top = root.scrollTop;

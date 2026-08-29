@@ -142,7 +142,7 @@ export class WorldMap {
     this.el = el;
     this.onSelect = opts.onSelect || (() => {});
     this.onHover = opts.onHover || (() => {});
-    this.ratio = opts.ratio || 0.52;
+    this.ratio = opts.ratio || 0.42;
     this.zoom = 1; this.cx = 0.5; this.cy = 0.5;     // 视图中心（世界坐标）
     this.places = []; this.home = null; this.selected = null; this.hovered = null; this.visited = {};
     this.cities = null; this.aliasSkip = null; this.showCities = opts.showCities !== false;
@@ -154,6 +154,8 @@ export class WorldMap {
     this._bind();
   }
   setData(d) { Object.assign(this, d); this.draw(); }
+  viewState() { return { zoom: this.zoom, cx: this.cx, cy: this.cy }; }
+  restoreView(v) { if (!v) return; this.zoom = v.zoom; this.cx = v.cx; this.cy = v.cy; this.clampView(); }
   async ready() {
     const [geo, cities] = await Promise.all([loadGeo(), this.showCities ? loadCities() : null]);
     this.geo = geo; this.cities = cities;
@@ -162,7 +164,8 @@ export class WorldMap {
 
   size() {
     const w = this.el.clientWidth || 900;
-    return { w, h: Math.round(w * this.ratio) };
+    const cap = this.maxHeight || 520;
+    return { w, h: Math.min(cap, Math.round(w * this.ratio)) };
   }
   toScreen(lon, lat) {
     const { w, h } = this.size();
@@ -192,8 +195,8 @@ export class WorldMap {
   _bind() {
     const cv = this.canvas;
     let drag = null, moved = 0;
-    cv.addEventListener('mousedown', e => { drag = { x: e.clientX, y: e.clientY, cx: this.cx, cy: this.cy }; moved = 0; cv.style.cursor = 'grabbing'; });
-    window.addEventListener('mouseup', () => { if (drag) { drag = null; cv.style.cursor = 'grab'; } });
+    cv.addEventListener('mousedown', e => { drag = { x: e.clientX, y: e.clientY, cx: this.cx, cy: this.cy }; moved = 0; this.dragging = true; cv.style.cursor = 'grabbing'; });
+    window.addEventListener('mouseup', () => { this.dragging = false; if (drag) { drag = null; cv.style.cursor = 'grab'; } });
     cv.addEventListener('mousemove', e => {
       const r = cv.getBoundingClientRect();
       if (drag) {
@@ -327,6 +330,7 @@ export class WorldMap {
         ctx.beginPath(); ctx.arc(x, y, rad, 0, 7);
         ctx.fillStyle = dotFill; ctx.globalAlpha = big ? .95 : mid ? .8 : .62; ctx.fill();
         ctx.globalAlpha = 1;
+        this._drawn.push({ c, sx: x, sy: y });          // 画到屏幕上的每一座都能点
         if (labels >= 130) continue;
         const fs = big ? 11.5 : mid ? 10.5 : 9.5;
         ctx.font = `600 ${fs}px ${sans}`;
@@ -337,7 +341,6 @@ export class WorldMap {
         labels++;
         ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.strokeText(label, x, ty);
         ctx.fillStyle = txtFill; ctx.fillText(label, x, ty);
-        this._drawn.push({ c, sx: x, sy: y });
       }
       this._shown = { dots, labels, minPop };
     }
