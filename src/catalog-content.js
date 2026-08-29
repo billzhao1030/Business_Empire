@@ -256,23 +256,25 @@ export const NEWS_MARKET_BAD = [
 ];
 
 // ── 人生随机事件 ────────────────────────────────────────────
+// 金额 = clamp(净资产 × nwRate × 随机, floor, cap)——穷的时候是小钱，富的时候才是大钱
 export const LIFE_EVENTS = [
-  { id:'ticket',   icon:'🚔', zh:'超速被开罚单',              en:'Speeding ticket',                     min:-8_000,  max:-500,   scaleNW:0.00002 },
-  { id:'tax_audit',icon:'🧾', zh:'税务稽查，补缴税款',        en:'Tax audit — back taxes assessed',     min:-50_000, max:-2_000, scaleNW:0.0004 },
-  { id:'medical',  icon:'🏥', zh:'突发疾病，支付高额医疗费',  en:'Sudden illness, hefty medical bills', min:-30_000, max:-1_000, scaleNW:0.0002 },
-  { id:'lawsuit',  icon:'⚖️', zh:'商业纠纷败诉，赔偿对方',    en:'Lost a commercial dispute; damages paid', min:-80_000, max:-5_000, scaleNW:0.0006 },
-  { id:'theft',    icon:'🥷', zh:'门店遭窃，损失现金与货品',  en:'Burglary at a store; cash and stock lost', min:-20_000, max:-1_000, scaleNW:0.00015 },
-  { id:'charity',  icon:'🤝', zh:'参加慈善晚宴并慷慨捐赠',    en:'Generous pledge at a charity gala',   min:-100_000,max:-5_000, scaleNW:0.001, prestige:12 },
-  { id:'lottery',  icon:'🎰', zh:'买彩票中了个小奖',          en:'A small lottery win',                 min:2_000,   max:60_000, scaleNW:0.0002 },
-  { id:'refund',   icon:'💸', zh:'去年多缴税款获得退税',      en:'Tax refund from last year',           min:3_000,   max:80_000, scaleNW:0.0005 },
-  { id:'award',    icon:'🏆', zh:'当选「年度商业人物」',      en:'Named Businessperson of the Year',    min:0,       max:0,      prestige:25 },
-  { id:'interview',icon:'🎤', zh:'接受财经杂志封面专访',      en:'Cover interview in a finance magazine',min:0,      max:0,      prestige:15 },
-  { id:'inherit',  icon:'📜', zh:'远房亲戚留下一笔遗产',      en:'A distant relative leaves an inheritance', min:20_000, max:400_000, scaleNW:0.002 },
-  { id:'partner',  icon:'🤵', zh:'老同学入股你的生意，付了溢价', en:'An old classmate buys in at a premium', min:10_000, max:200_000, scaleNW:0.0012 },
-  { id:'scandal',  icon:'📰', zh:'被小报曝出负面新闻，声望受损', en:'Tabloid hit piece damages your standing', min:0, max:0, prestige:-20 },
-  { id:'fire',     icon:'🔥', zh:'一处物业失火，保险未能全额覆盖', en:'Fire at a property; insurance falls short', min:-150_000, max:-10_000, scaleNW:0.0012 },
-  { id:'bonus',    icon:'🎁', zh:'供应商年终返利到账',        en:'Year-end supplier rebate lands',      min:5_000,   max:150_000,scaleNW:0.0008 },
+  { id:'ticket',   icon:'🚔', zh:'超速被开罚单',              en:'Speeding ticket',                      gain:false, nwRate:0.004, floor:40,   cap:8_000 },
+  { id:'tax_audit',icon:'🧾', zh:'税务稽查，补缴税款',        en:'Tax audit — back taxes assessed',      gain:false, nwRate:0.020, floor:60,   cap:400_000 },
+  { id:'medical',  icon:'🏥', zh:'突发小病，自费看诊',        en:'A minor illness, paid out of pocket',  gain:false, nwRate:0.008, floor:35,   cap:60_000 },
+  { id:'lawsuit',  icon:'⚖️', zh:'商业纠纷败诉，赔偿对方',    en:'Lost a dispute; damages paid',         gain:false, nwRate:0.030, floor:120,  cap:900_000 },
+  { id:'theft',    icon:'🥷', zh:'东西被偷了',                en:'Something got stolen',                 gain:false, nwRate:0.010, floor:50,   cap:120_000 },
+  { id:'charity',  icon:'🤝', zh:'参加慈善晚宴并慷慨捐赠',    en:'Generous pledge at a charity gala',    gain:false, nwRate:0.025, floor:200,  cap:2_000_000, prestige:12 },
+  { id:'fire',     icon:'🔥', zh:'一处物业失火，保险未能全额覆盖', en:'Fire at a property; insurance falls short', gain:false, nwRate:0.035, floor:300, cap:1_500_000 },
+  { id:'lottery',  icon:'🎰', zh:'买彩票中了个小奖',          en:'A small lottery win',                  gain:true,  nwRate:0.012, floor:30,   cap:80_000 },
+  { id:'refund',   icon:'💸', zh:'去年多缴税款获得退税',      en:'Tax refund from last year',            gain:true,  nwRate:0.018, floor:50,   cap:150_000 },
+  { id:'inherit',  icon:'📜', zh:'远房亲戚留下一笔遗产',      en:'A distant relative leaves an inheritance', gain:true, nwRate:0.060, floor:400, cap:3_000_000 },
+  { id:'partner',  icon:'🤵', zh:'老同学入股你的生意，付了溢价', en:'An old classmate buys in at a premium', gain:true, nwRate:0.040, floor:250, cap:2_000_000 },
+  { id:'bonus',    icon:'🎁', zh:'供应商年终返利到账',        en:'Year-end supplier rebate lands',       gain:true,  nwRate:0.022, floor:80,   cap:600_000 },
+  { id:'award',    icon:'🏆', zh:'当选「年度商业人物」',      en:'Named Businessperson of the Year',     gain:true,  nwRate:0,     floor:0, cap:0, prestige:25 },
+  { id:'interview',icon:'🎤', zh:'接受财经杂志封面专访',      en:'Cover interview in a finance magazine', gain:true, nwRate:0,     floor:0, cap:0, prestige:15 },
+  { id:'scandal',  icon:'📰', zh:'被小报曝出负面新闻，声望受损', en:'Tabloid hit piece damages your standing', gain:false, nwRate:0, floor:0, cap:0, prestige:-20 },
 ];
+
 
 // 板块中英对照
 export const SECTOR_EN = {
@@ -394,4 +396,45 @@ export const FLIGHT_CLASSES = [
   { id:'business', zh:'商务舱',   en:'Business',      mult:2.6, relief:1.15, prestige:1.6 },
   { id:'first',    zh:'头等舱',   en:'First Class',   mult:5.5, relief:1.28, prestige:2.4 },
   { id:'private',  zh:'私人飞机', en:'Private Jet',   mult:0,   relief:1.40, prestige:3.2, needJet:true },
+];
+
+// ── 一日三餐：吃什么直接影响身体状态 ──────────────────────
+// cost = 每游戏日伙食费；stamina/stress 为每小时修正；sick 为患病概率倍率
+export const MEALS = [
+  { id:'skip',    emoji:'🚱', zh:'饿着',        en:'Skipping meals',  cost:0,   stamina:-0.40, stress:0.35, sick:2.0,
+    descZh:'省下饭钱，代价是身体。撑不了几天。', descEn:'Saves money, costs your body. It will not last.' },
+  { id:'instant', emoji:'🍜', zh:'泡面度日',    en:'Instant noodles', cost:7,   stamina:-0.12, stress:0.12, sick:1.35,
+    descZh:'最便宜的活法，每天都在透支。', descEn:'The cheapest way to stay alive, and a daily overdraft on your health.' },
+  { id:'canteen', emoji:'🍱', zh:'路边摊 / 食堂',en:'Street food',     cost:16,  stamina:0,     stress:0,    sick:1.0,
+    descZh:'管饱，谈不上好，但过得去。', descEn:'Filling, unremarkable, good enough.' },
+  { id:'diner',   emoji:'🍚', zh:'普通餐馆',    en:'Casual dining',   cost:38,  stamina:0.10,  stress:-0.06, sick:0.85,
+    descZh:'一天两顿正经饭，人有精神。', descEn:'Two proper meals a day. You feel like a person.' },
+  { id:'healthy', emoji:'🥗', zh:'健康轻食',    en:'Healthy meals',   cost:85,  stamina:0.22,  stress:-0.14, sick:0.62,
+    descZh:'配比讲究，睡得也踏实。', descEn:'Properly balanced. You sleep better too.' },
+  { id:'chef',    emoji:'👨‍🍳', zh:'私人厨师',   en:'Private chef',    cost:420, stamina:0.35,  stress:-0.24, sick:0.45, prestige:5,
+    descZh:'厨师住在你家，按你的作息做饭。', descEn:'A chef who lives in and cooks to your schedule.' },
+];
+
+// ── 住处：没房就得租，租金按月扣 ──────────────────────────
+export const HOMES = [
+  { id:'shared', emoji:'🛏️', zh:'合租单间',  en:'Shared room',     rent:340,  stress:0.05,  stamina:-0.03,
+    descZh:'厨卫共用，隔壁的动静你都听得见。', descEn:'Shared kitchen and bath; you hear everything next door.' },
+  { id:'onebed', emoji:'🏠', zh:'一居室',    en:'One-bedroom flat', rent:850,  stress:0,     stamina:0,
+    descZh:'不大，但门一关就是自己的地方。', descEn:'Small, but behind a door that is yours.' },
+  { id:'nice',   emoji:'🏙️', zh:'高档公寓',  en:'Nice apartment',  rent:2_200, stress:-0.06, stamina:0.05, prestige:3,
+    descZh:'有电梯、有物业、有阳光。', descEn:'Lift, concierge, and actual sunlight.' },
+];
+
+// ── 彩票：中奖率按真实彩种设定，期望回报 45%~60% ──────────
+// tiers: [中奖概率的分母, 奖金]；jackpot 为累进奖池
+export const LOTTERIES = [
+  { id:'scratch', emoji:'🎫', zh:'刮刮乐',   en:'Scratch Card',  price:2, maxBuy:200,
+    tiers:[[250_000, 50_000], [10_000, 1_000], [500, 100], [50, 20], [8, 2]],
+    descZh:'两块钱一张，撕开就知道结果。', descEn:'Two dollars, and you know instantly.' },
+  { id:'lotto',   emoji:'🎰', zh:'福彩乐透', en:'Lotto 6/49',    price:5, maxBuy:100, jackpotBase:8_000_000, jackpotGrow:2.2,
+    tiers:[[13_983_816, 'JACKPOT'], [2_330_636, 600_000], [55_491, 15_000], [1_033, 400], [57, 45]],
+    descZh:'六个号码，一千三百九十八万分之一。', descEn:'Six numbers, one in 13,983,816.' },
+  { id:'mega',    emoji:'💎', zh:'超级大乐透', en:'Mega Jackpot', price:10, maxBuy:100, jackpotBase:60_000_000, jackpotGrow:5.5,
+    tiers:[[139_838_160, 'JACKPOT'], [12_607_306, 3_000_000], [931_001, 200_000], [14_547, 4_000], [700, 1_200], [89, 150]],
+    descZh:'一亿四千万分之一。你比被雷劈中的概率还低得多。', descEn:'One in 139 million — far less likely than being struck by lightning.' },
 ];

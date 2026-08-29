@@ -4,7 +4,7 @@ import * as M from './market.js';
 import * as S from './sim.js';
 import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
-         ILLNESSES, TRIPS, FLIGHT_CLASSES } from './catalog-content.js';
+         ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, LOTTERIES } from './catalog-content.js';
 
 const { RATES, L } = S;
 class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
@@ -227,6 +227,24 @@ export function getState(uid) {
           business: S.tripCost(t, 'business'), first: S.tripCost(t, 'first'), private: S.tripCost(t, 'private') } })),
         classes: FLIGHT_CLASSES,
         hasJet: db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c > 0,
+      };
+    })(),
+    living: (() => {
+      const ownsEstate = db.prepare("SELECT COUNT(*) c FROM items i WHERE i.user_id=? AND i.type_id LIKE 'est_%'").get(uid).c > 0;
+      const meal = S.mealOf(p), home = S.homeOf(p, ownsEstate);
+      const dailyWage = (job ? job.wage : 0) * 8;
+      return {
+        meal: { ...meal }, home: { ...home }, ownsEstate,
+        meals: MEALS, homes: HOMES,
+        monthlyFood: meal.cost * 30, monthlyRent: home.rent,
+        monthlyCost: meal.cost * 30 + home.rent,
+        monthlyWage: dailyWage * 30,
+        foodSpent: p.food_spent, rentSpent: p.rent_spent,
+        lotteries: LOTTERIES.map(l => ({ id: l.id, emoji: l.emoji, zh: l.zh, en: l.en, price: l.price,
+          maxBuy: l.maxBuy, descZh: l.descZh, descEn: l.descEn,
+          topOdds: l.tiers[0][0], jackpot: l.jackpotBase ? jackpotOf(l) : l.tiers[0][1],
+          tiers: l.tiers.map(([o, pz]) => ({ odds: o, prize: pz === 'JACKPOT' ? jackpotOf(l) : pz, isJackpot: pz === 'JACKPOT' })) })),
+        lottoSpent: p.lotto_spent, lottoWon: p.lotto_won, lottoTickets: p.lotto_tickets,
       };
     })(),
     macro: M.regimeState(),
@@ -702,6 +720,69 @@ export function hustle(uid) {
            until: hour + 1, stamina, cash: p.cash };
 }
 
+// ── 生活方式：吃什么、住哪儿 ────────────────────────────────
+export function setLiving(uid, { mealId, homeId }) {
+  S.advancePlayer(uid);
+  if (mealId) {
+    if (!S.MEAL[mealId]) throw new Err('伙食档位无效 / Invalid meal plan');
+    db.prepare('UPDATE players SET meal_id=? WHERE user_id=?').run(mealId, uid);
+    const m = S.MEAL[mealId];
+    ledger(uid, 'living', 0, L('led.setMeal', { meal: { zh: m.zh, en: m.en }, cost: m.cost }), m.emoji);
+  }
+  if (homeId) {
+    if (!S.HOME[homeId]) throw new Err('住处无效 / Invalid housing');
+    db.prepare('UPDATE players SET home_id=? WHERE user_id=?').run(homeId, uid);
+    const h = S.HOME[homeId];
+    ledger(uid, 'living', 0, L('led.setHome', { home: { zh: h.zh, en: h.en }, rent: h.rent }), h.emoji);
+  }
+  return { ok: true };
+}
+
+// ── 彩票：中奖率按真实彩种设定，累进奖池随销量增长 ──────────
+function jackpotOf(l) {
+  const v = Number(db.prepare('SELECT value FROM meta WHERE key=?').get('jackpot_' + l.id)?.value || 0);
+  return Math.max(l.jackpotBase || 0, v);
+}
+export function buyLottery(uid, { id, n }) {
+  S.advancePlayer(uid);
+  const l = S.LOTTO[id];
+  if (!l) throw new Err('彩种不存在 / Lottery not found');
+  const count = Math.max(1, Math.min(l.maxBuy, Math.floor(num(n, 1, 100000))));
+  const p = P(uid), spend = count * l.price;
+  if (p.cash < spend) throw new Err(`现金不足，需要 ${S.fmt(spend)} / Need ${S.fmt(spend)}`);
+
+  let jackpot = jackpotOf(l), won = 0, jackpotHit = false;
+  const wins = [];
+  for (let i = 0; i < count; i++) {
+    for (const [odds, prize] of l.tiers) {
+      if (Math.random() < 1 / odds) {
+        const amt = prize === 'JACKPOT' ? jackpot : prize;
+        won += amt;
+        wins.push({ prize: amt, jackpot: prize === 'JACKPOT' });
+        if (prize === 'JACKPOT') jackpotHit = true;
+        break;                       // 每张票只中一个档位
+      }
+    }
+  }
+  // 没中头奖的部分继续做大奖池
+  if (l.jackpotBase) {
+    const next = jackpotHit ? l.jackpotBase : jackpot + count * l.price * (l.jackpotGrow || 1);
+    db.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+      .run('jackpot_' + l.id, String(Math.round(next)));
+  }
+  p.cash += won - spend;
+  db.prepare(`UPDATE players SET cash=?, lotto_spent=lotto_spent+?, lotto_won=lotto_won+?,
+              lotto_tickets=lotto_tickets+? WHERE user_id=?`).run(p.cash, spend, won, count, uid);
+  if (jackpotHit) {
+    ledger(uid, 'lottery', won - spend, L('led.lottoJackpot', { lot: { zh: l.zh, en: l.en }, amt: jackpot }), '🎉');
+    db.prepare('UPDATE players SET prestige=prestige+40 WHERE user_id=?').run(uid);
+  } else {
+    ledger(uid, 'lottery', won - spend, L('led.lotto', { lot: { zh: l.zh, en: l.en }, n: count, spend, won }), l.emoji);
+  }
+  return { ok: true, count, spend, won, net: won - spend, jackpotHit, wins: wins.slice(0, 30),
+           jackpot: jackpotOf(l), cash: p.cash };
+}
+
 // ── 请假：放自己一天，重置连轴转 ────────────────────────────
 export function dayOff(uid) {
   S.advancePlayer(uid);
@@ -839,6 +920,24 @@ export function marketOverview(uid) {
     breadth, sectors,
     gainers: rank.slice(0, 8), losers: rank.slice(-8).reverse(),
     index: { ...M.marketIndex(), history: bex ? M.history(bex.id, 300) : [], desc: bex?.desc || '' },
+    living: (() => {
+      const ownsEstate = db.prepare("SELECT COUNT(*) c FROM items i WHERE i.user_id=? AND i.type_id LIKE 'est_%'").get(uid).c > 0;
+      const meal = S.mealOf(p), home = S.homeOf(p, ownsEstate);
+      const dailyWage = (job ? job.wage : 0) * 8;
+      return {
+        meal: { ...meal }, home: { ...home }, ownsEstate,
+        meals: MEALS, homes: HOMES,
+        monthlyFood: meal.cost * 30, monthlyRent: home.rent,
+        monthlyCost: meal.cost * 30 + home.rent,
+        monthlyWage: dailyWage * 30,
+        foodSpent: p.food_spent, rentSpent: p.rent_spent,
+        lotteries: LOTTERIES.map(l => ({ id: l.id, emoji: l.emoji, zh: l.zh, en: l.en, price: l.price,
+          maxBuy: l.maxBuy, descZh: l.descZh, descEn: l.descEn,
+          topOdds: l.tiers[0][0], jackpot: l.jackpotBase ? jackpotOf(l) : l.tiers[0][1],
+          tiers: l.tiers.map(([o, pz]) => ({ odds: o, prize: pz === 'JACKPOT' ? jackpotOf(l) : pz, isJackpot: pz === 'JACKPOT' })) })),
+        lottoSpent: p.lotto_spent, lottoWon: p.lotto_won, lottoTickets: p.lotto_tickets,
+      };
+    })(),
     macro: M.regimeState(),
     news: M.latestNews(20),
   };

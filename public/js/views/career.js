@@ -30,7 +30,7 @@ function dayBar(j) {
 export default {
   render(root, app) {
     clearInterval(timer);
-    const s = app.state, j = s.job, cur = j.current, hl = s.health;
+    const s = app.state, j = s.job, cur = j.current, hl = s.health, lv = s.living;
     const next = j.list.find(x => !x.unlocked);
     const prog = next ? Math.min(1, j.exp / next.exp) : 1;
     const minutesPerHour = s.now.realMsPerHour / 60000;
@@ -139,6 +139,64 @@ export default {
       </div></div>
     </div>
 
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+      <div class="card"><div class="card-h"><h3>🍚 ${t('living.title')}</h3>
+        <span class="sub">${t('living.hint')}</span></div>
+        <div class="card-b">
+          <div class="summary" style="margin-bottom:12px">
+            <div><span>${t('living.food')}（${esc(nm({ zh: lv.meal.zh, en: lv.meal.en }))}）</span>
+              <span class="mono down">${money(lv.meal.cost)}${t('living.perDay')} · ${money(lv.monthlyFood)}${t('living.perMonth')}</span></div>
+            <div><span>${t('living.rent')}（${esc(nm({ zh: lv.home.zh, en: lv.home.en }))}）</span>
+              <span class="mono ${lv.home.rent ? 'down' : 'up'}">${lv.home.rent ? money(lv.home.rent) + t('living.perMonth') : t('living.owned')}</span></div>
+            <div class="tot"><span>${t('living.monthlyCost')}</span>
+              <span class="mono down">${money(lv.monthlyCost)}
+                <span class="dim2" style="font-weight:400">（${lv.monthlyWage ? pctPlain(lv.monthlyCost / lv.monthlyWage, 0) : '—'} ${t('living.ofIncome')}）</span></span></div>
+          </div>
+          <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:6px">${t('living.meal')}</div>
+          <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr));margin-bottom:12px">
+            ${lv.meals.map(mm => `<button class="opt ${mm.id === lv.meal.id ? 'active' : ''}" data-meal="${mm.id}">
+              <div class="t">${mm.emoji} ${esc(nm({ zh: mm.zh, en: mm.en }))}</div>
+              <div class="s">${money(mm.cost)}${t('living.perDay')}
+                ${mm.stamina ? `<span class="${mm.stamina > 0 ? 'up' : 'down'}">体力${mm.stamina > 0 ? '+' : ''}${mm.stamina}</span>` : ''}</div></button>`).join('')}
+          </div>
+          ${lv.ownsEstate ? `<div class="dim2" style="font-size:11.5px">🏡 ${t('living.owned')}</div>` : `
+          <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:6px">${t('living.home')}</div>
+          <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr))">
+            ${lv.homes.map(hh => `<button class="opt ${hh.id === lv.home.id ? 'active' : ''}" data-home="${hh.id}">
+              <div class="t">${hh.emoji} ${esc(nm({ zh: hh.zh, en: hh.en }))}</div>
+              <div class="s">${money(hh.rent)}${t('living.perMonth')}</div></button>`).join('')}
+          </div>`}
+          <div class="mini-grid" style="margin-top:12px">
+            <div class="mini"><label>${t('living.foodSpent')}</label><b class="down">${money(lv.foodSpent)}</b></div>
+            <div class="mini"><label>${t('living.rentSpent')}</label><b class="down">${money(lv.rentSpent)}</b></div>
+          </div>
+        </div></div>
+
+      <div class="card"><div class="card-h"><h3>🎫 ${t('living.lottery')}</h3>
+        <span class="sub">${t('living.lotteryHint')}</span></div>
+        <div class="card-b">
+          ${lv.lotteries.map(l => `<div class="item-row" style="padding:11px 0">
+            <div class="ico">${l.emoji}</div>
+            <div class="i-main">
+              <div class="i-title">${esc(nm({ zh: l.zh, en: l.en }))} <span class="tag">${money(l.price)}</span></div>
+              <div class="i-sub"><span>${t('living.jackpot')} <b class="gold">${money(l.jackpot)}</b></span>
+                <span>${t('living.odds')} 1/${l.topOdds.toLocaleString()}</span></div>
+            </div>
+            <div class="i-act">
+              <button class="btn btn-xs" data-lot="${l.id}" data-n="1">×1</button>
+              <button class="btn btn-xs" data-lot="${l.id}" data-n="10">×10</button>
+              <button class="btn btn-xs btn-ghost" data-lot="${l.id}" data-n="${l.maxBuy}">×${l.maxBuy}</button>
+            </div></div>`).join('')}
+          <div class="mini-grid" style="margin-top:12px">
+            <div class="mini"><label>${t('living.tickets')}</label><b>${int(lv.lottoTickets)}</b></div>
+            <div class="mini"><label>${t('living.spent')}</label><b class="down">${money(lv.lottoSpent)}</b></div>
+            <div class="mini"><label>${t('living.won')}</label><b class="up">${money(lv.lottoWon)}</b></div>
+            <div class="mini"><label>${lv.lottoWon >= lv.lottoSpent ? t('living.netWin') : t('living.netLoss')}</label>
+              <b class="${lv.lottoWon >= lv.lottoSpent ? 'up' : 'down'}">${money(Math.abs(lv.lottoWon - lv.lottoSpent))}</b></div>
+          </div>
+        </div></div>
+    </div>
+
     <div class="card" style="margin-bottom:16px">
       <div class="card-h"><h3>✈️ ${t('life.travel')}</h3>
         <span class="sub">${t('life.travelHint')}</span>
@@ -217,6 +275,20 @@ export default {
     };
     if (j.otBusy) this.countdown(app, j.otRemainMs);
 
+    $$('[data-meal]').forEach(b => b.onclick = () => app.act(() => api.living(b.dataset.meal, null), t('toast.success')).catch(() => {}));
+    $$('[data-home]').forEach(b => b.onclick = () => app.act(() => api.living(null, b.dataset.home), t('toast.success')).catch(() => {}));
+    $$('[data-lot]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await app.guard(() => api.lottery(b.dataset.lot, +b.dataset.n));
+        const msg = r.jackpotHit ? t('living.jackpotWin', { amt: money(r.won) })
+          : r.won > 0 ? t('living.wonAmount', { n: r.wins.length, amt: money(r.won) })
+          : t('living.noWin');
+        toast(`${msg}　(${money(-r.spend)} → ${r.net >= 0 ? '+' : ''}${money(r.net)})`,
+          r.jackpotHit ? 'ok' : r.net >= 0 ? 'ok' : 'warn', t('living.result'));
+        await app.refresh(true);
+      } catch (e) { toast(e.message.split(' / ')[0], 'err'); b.disabled = false; }
+    });
     $('#day-off') && ($('#day-off').onclick = () => app.act(() => api.dayOff(), t('toast.success')).catch(() => {}));
     $('#do-treat') && ($('#do-treat').onclick = () => app.act(() => api.treat(), t('toast.success')).catch(() => {}));
     $$('[data-cls]').forEach(b => b.onclick = () => { flightCls = b.dataset.cls; this.render(root, app); });
