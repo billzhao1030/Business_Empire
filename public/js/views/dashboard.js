@@ -151,6 +151,16 @@ export default {
       </div>
     </div>`;
 
+    // 净资产走势与资产构成：这两张图之前只有容器，从来没人往里画过。
+    // chart 一直是 null，patch() 里那句 if (chart) 就永远静悄悄地跳过了。
+    const box = $('#nw-chart');
+    if (box) {
+      chart = new PriceChart(box, { height: 230 });
+      chart.setData((s.nwHistory || []).map(p => ({ hour: p.hour, price: p.value })));
+    }
+    const dn = $('#nw-donut');
+    if (dn) donut(dn, segs, 150);
+
     $('#go-ledger').onclick = () => app.go('ledger');
     $('#d-go-career') && ($('#d-go-career').onclick = () => app.go('career'));
     const hb = $('#d-hustle');
@@ -186,6 +196,12 @@ export default {
     set('d-bizh', money(nw.bizNetPerHour));
     set('d-debt', money(nw.debt));
     if (chart) chart.setData((s.nwHistory || []).map(p => ({ hour: p.hour, price: p.value })));
+    const dn = document.getElementById('nw-donut');
+    if (dn) donut(dn, [
+      { v: nw.cash, color: COLORS[0] }, { v: nw.bank + nw.deposits, color: COLORS[1] },
+      { v: nw.portfolio, color: COLORS[2] }, { v: nw.business, color: COLORS[3] },
+      { v: nw.items, color: COLORS[4] },
+    ], 150);
     const nl = $('#news-list');
     if (nl && s.news.length) {
       nl.innerHTML = s.news.map(n => `<div class="news-item">
