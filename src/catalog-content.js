@@ -89,17 +89,17 @@ export const BIZ_TYPES = BIZ_RAW.map(([id,name,en,emoji,cat,catEn,cost,pay,hours
 // revMult 营收系数 / rentMult 房租系数 / wageMult 当地工资水平
 // 大城市营收更高，但房租涨得比营收更快——这才是真实的商业地理
 export const CITIES = [
-  { id:'town',   name:'小镇',     en:'Small Town',        costMult:0.62, revMult:0.72, rentMult:0.50, wageMult:0.75, vol:0.6, travelCost:0,     travelDays:0,
+  { id:'town',   name:'乡镇',       en:'Country Town',        costMult:0.62, revMult:0.72, rentMult:0.50, wageMult:0.75, vol:0.6, travelCost:0,     travelDays:0,
     desc:'租金便宜，客流也少。', descEn:'Cheap rent, thin foot traffic.' },
-  { id:'city',   name:'本市',     en:'Hometown',          costMult:1.00, revMult:1.00, rentMult:1.00, wageMult:1.00, vol:1.0, travelCost:0,     travelDays:0,
-    desc:'你最熟悉的地方。', descEn:'The city you know best.' },
-  { id:'capital',name:'省会城市', en:'Provincial Capital',costMult:1.25, revMult:1.22, rentMult:1.40, wageMult:1.15, vol:1.15, travelCost:450,  travelDays:1,
-    desc:'消费力更强的区域中心，房租也更贵。', descEn:'A regional hub with real spending power — and dearer rent.' },
-  { id:'tier1',  name:'一线城市', en:'Tier-1 City',       costMult:1.65, revMult:1.55, rentMult:2.10, wageMult:1.35, vol:1.35, travelCost:1_600, travelDays:2,
-    desc:'客流强劲，但房租是小镇的四倍。', descEn:'Strong footfall, but rent is four times a small town.' },
-  { id:'ny',     name:'纽约',     en:'New York',          costMult:2.05, revMult:1.90, rentMult:2.90, wageMult:1.60, vol:1.6, travelCost:7_500, travelDays:3,
+  { id:'city',   name:'本市',       en:'Your home city',          costMult:1.00, revMult:1.00, rentMult:1.00, wageMult:1.00, vol:1.0, travelCost:0,     travelDays:0,
+    desc:'你出生和长大的地方，人脉和路都最熟。', descEn:'Where you grew up — you know the streets and the people.' },
+  { id:'capital',name:'区域中心',   en:'Regional Hub',costMult:1.25, revMult:1.22, rentMult:1.40, wageMult:1.15, vol:1.15, travelCost:450,  travelDays:1,
+    desc:'邻近的区域中心，消费力更强，房租也更贵。', descEn:'A nearby regional centre: more spending power, dearer rent.' },
+  { id:'tier1',  name:'全国最大都市', en:'Major Metropolis',       costMult:1.65, revMult:1.55, rentMult:2.10, wageMult:1.35, vol:1.35, travelCost:1_600, travelDays:2,
+    desc:'全国最贵的商圈，客流强劲但房租吓人。', descEn:'The priciest retail in the country — strong footfall, brutal rent.' },
+  { id:'ny',     name:'国际金融中心', en:'Global Financial Hub',          costMult:2.05, revMult:1.90, rentMult:2.90, wageMult:1.60, vol:1.6, travelCost:7_500, travelDays:3,
     desc:'如果你能在这里成功，你能在任何地方成功——前提是先付得起房租。', descEn:'If you can make it here you can make it anywhere — if you can cover the rent.' },
-  { id:'dubai',  name:'迪拜',     en:'Dubai',             costMult:2.40, revMult:2.30, rentMult:3.20, wageMult:1.60, vol:1.9, travelCost:9_800, travelDays:3,
+  { id:'dubai',  name:'免税繁荣之城', en:'Tax-free Boomtown',             costMult:2.40, revMult:2.30, rentMult:3.20, wageMult:1.60, vol:1.9, travelCost:9_800, travelDays:3,
     desc:'零税、高客单价，但商场铺位的租金冠绝全球。', descEn:'No tax and huge tickets, but mall rents like nowhere else.' },
 ];
 

@@ -1,6 +1,7 @@
 // 玩家经济引擎：实业经营、银行利息、股息、税收、贷款/房贷、房产指数、随机事件
 import { db } from './db.js';
 import * as M from './market.js';
+import { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours,
          COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB,
@@ -145,6 +146,25 @@ export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_
 export const MEAL = Object.fromEntries(MEALS.map(m => [m.id, m]));
 export const HOME = Object.fromEntries(HOMES.map(h => [h.id, h]));
 export const LOTTO = Object.fromEntries(LOTTERIES.map(l => [l.id, l]));
+export { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE };
+export function birthOf(p) { return DEST[p.birth_id] || DEST[DEFAULT_HOME]; }
+export const CABIN = Object.fromEntries(CABINS.map(c => [c.id, c]));
+export const HOTEL = Object.fromEntries(HOTELS.map(h => [h.id, h]));
+// 一趟旅程的报价：往返机票 + 住宿 + 日常开销
+export function tripQuote(dest, nights, cabinId, hotelId, home) {
+  const c = CABIN[cabinId] || CABINS[0], ht = HOTEL[hotelId] || HOTELS[1];
+  const n = Math.max(dest.minNights || 1, Math.min(60, Math.round(nights)));
+  const rt = routeOf(home || DEST[DEFAULT_HOME], dest);
+  const air = Math.round(rt.fare * (c.mult || 0));
+  const stay = Math.round(dest.hotel * ht.mult * n);
+  const daily = Math.round(dest.spend * n * (ht.mult > 1 ? 1.3 : 1));
+  const hours = Math.round(rt.hours * 2 + n * 24);
+  const relief = Math.min(100, dest.relief * n * c.relief * ht.relief * 0.55);
+  const stamina = Math.min(100, 8 * n * ht.relief);
+  const prestige = Math.round(dest.prestige * c.prestige * ht.prestige);
+  return { nights: n, air, stay, daily, total: air + stay + daily, hours, relief, stamina, prestige,
+           cabin: c, hotel: ht, km: rt.km, flightHours: rt.hours };
+}
 // 自有住房：住自己的房子不用付租金，居住体验也更好
 export const OWNED_HOME = { id:'owned', emoji:'🏡', zh:'自有住房', en:'Your own home',
   rent:0, stress:-0.10, stamina:0.08, prestige:0 };
@@ -345,13 +365,23 @@ export function advancePlayer(userId) {
       p.stress = clamp(p.stress - 8, 0, STRESS_MAX);
     }
     if (p.trip_until && h >= p.trip_until && p.trip_id) {
-      const tp = TRIP[p.trip_id];
-      if (tp) {
-        p.stress = clamp(p.stress - tp.relief * (p.trip_relief || 1), 0, STRESS_MAX);
-        p.stamina = clamp(p.stamina + tp.stamina, 0, STAMINA_MAX);
-        ledger.push([h, 'trip', 0, L('led.tripBack', { trip: { zh: tp.zh, en: tp.en }, relief: Math.round(tp.relief * (p.trip_relief || 1)) }), tp.emoji]);
+      const isBiz = p.trip_id.startsWith('biz:');
+      const dest = isBiz ? null : DEST[p.trip_id];
+      if (dest) {
+        p.stress = clamp(p.stress - (p.trip_relief || 0), 0, STRESS_MAX);
+        p.stamina = clamp(p.stamina + (p.trip_stam || 0), 0, STAMINA_MAX);
+        ledger.push([h, 'trip', 0, L('led.tripBack', { trip: { zh: dest.zh, en: dest.en },
+          relief: Math.round(p.trip_relief || 0) }), dest.flag]);
+        // 记一笔足迹
+        db.prepare(`INSERT INTO visits(user_id,place_id,times,nights,spent,first_hour,last_hour)
+                    VALUES(?,?,1,?,?,?,?)
+                    ON CONFLICT(user_id,place_id) DO UPDATE SET
+                      times=times+1, nights=nights+excluded.nights,
+                      spent=spent+excluded.spent, last_hour=excluded.last_hour`)
+          .run(userId, dest.id, p.trip_nights || 0, p.trip_spent2 || 0, h, h);
       }
-      p.trip_id = ''; p.trip_relief = 1; p.work_streak = 0;
+      p.trip_id = ''; p.trip_relief = 0; p.trip_stam = 0; p.trip_nights = 0; p.trip_spent2 = 0;
+      p.work_streak = 0;
     }
 
     // ── 自动升职：经验够了就换到更好的岗位（需要车的岗位仍需自己选）──
@@ -591,12 +621,14 @@ export function advancePlayer(userId) {
                 total_tax=?,total_dividend=?,missed_pay=?,peak_networth=?,bankrupt=?,
                 job_exp=?,job_hours=?,job_income=?,stamina=?,ot_pending=?,
                 stress=?,sick_until=?,sick_id=?,sick_treated=?,trip_until=?,trip_id=?,
-                work_streak=?,worked_today=?,streak_day=?,meal_id=?,food_spent=?,rent_spent=?,job_id=? WHERE user_id=?`)
+                work_streak=?,worked_today=?,streak_day=?,meal_id=?,food_spent=?,rent_spent=?,job_id=?,
+                trip_relief=?,trip_stam=?,trip_nights=?,trip_spent2=? WHERE user_id=?`)
       .run(p.cash, p.bank, p.credit_score, p.last_hour, p.prestige, p.month_profit,
            p.total_tax, p.total_dividend, p.missed_pay, p.peak_networth, p.bankrupt,
            p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending,
            p.stress, p.sick_until, p.sick_id, p.sick_treated, p.trip_until, p.trip_id,
-           p.work_streak, p.worked_today, p.streak_day, p.meal_id, p.food_spent, p.rent_spent, p.job_id, userId);
+           p.work_streak, p.worked_today, p.streak_day, p.meal_id, p.food_spent, p.rent_spent, p.job_id,
+           p.trip_relief, p.trip_stam, p.trip_nights, p.trip_spent2, userId);
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);

@@ -423,3 +423,11 @@ button{cursor:pointer;border:none;background:none}
   gap:12px;padding:10px 16px;font-size:13px;font-weight:600;color:#2a0509;
   background:linear-gradient(90deg,var(--orange),var(--down));box-shadow:0 4px 20px rgba(0,0,0,.4)}
 .offline-bar .btn{background:rgba(0,0,0,.28);border-color:rgba(0,0,0,.3);color:#fff}
+
+/* ══ 游戏速度 ══ */
+.speed-switch{display:flex;gap:2px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:3px}
+.speed-switch button{min-width:26px;height:22px;border-radius:6px;font-size:11px;font-weight:700;color:var(--dim2);transition:.14s}
+.speed-switch button:hover{color:var(--txt)}
+.speed-switch button.active{background:var(--panel3);color:var(--gold);box-shadow:0 0 0 1px var(--line2)}
+@media(max-width:1240px){.speed-switch{display:none}}
+.item-row.sel{background:linear-gradient(90deg,var(--glow3),transparent);box-shadow:inset 3px 0 0 var(--gold)}

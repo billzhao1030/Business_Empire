@@ -180,6 +180,17 @@ CREATE TABLE IF NOT EXISTS networth (
   PRIMARY KEY (user_id, hour)
 );
 
+CREATE TABLE IF NOT EXISTS visits (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  place_id   TEXT    NOT NULL,
+  times      INTEGER NOT NULL DEFAULT 0,
+  nights     INTEGER NOT NULL DEFAULT 0,
+  spent      REAL    NOT NULL DEFAULT 0,
+  first_hour INTEGER NOT NULL,
+  last_hour  INTEGER NOT NULL,
+  PRIMARY KEY (user_id, place_id)
+);
+
 CREATE TABLE IF NOT EXISTS news (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
   hour     INTEGER NOT NULL,
@@ -232,6 +243,10 @@ addColumn('players','med_spent',      'REAL    NOT NULL DEFAULT 0');
 addColumn('players','trip_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','trips',          'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','trip_relief',    'REAL    NOT NULL DEFAULT 1');
+addColumn('players','trip_stam',      'REAL    NOT NULL DEFAULT 0');
+addColumn('players','trip_nights',    'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','trip_spent2',    'REAL    NOT NULL DEFAULT 0');
+addColumn('players','birth_id',       "TEXT    NOT NULL DEFAULT ''");
 addColumn('players','work_streak',    'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','worked_today',   'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','streak_day',     'INTEGER NOT NULL DEFAULT -1');

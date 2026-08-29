@@ -2,6 +2,7 @@ import { api, token, setToken } from './api.js';
 import { t, nm, lang, setLang, onLangChange } from './i18n.js';
 import { $, $$, money, moneyFull, price, pct, cls, esc, toast, closeAllModals, gDate } from './util.js';
 import { showOfflineReport } from './offline.js';
+import { chooseBirthplace } from './birthplace.js';
 
 import dashboard from './views/dashboard.js';
 import business from './views/business.js';
@@ -13,8 +14,9 @@ import ledger from './views/ledger.js';
 import rank from './views/rank.js';
 import career from './views/career.js';
 import about from './views/about.js';
+import world from './views/world.js';
 
-const VIEWS = { dashboard, career, business, market, portfolio, bank, luxury, ledger, rank, about };
+const VIEWS = { dashboard, career, business, market, portfolio, bank, luxury, world, ledger, rank, about };
 export const THEMES = ['neon', 'midnight', 'daylight'];
 export function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -76,7 +78,8 @@ export const app = {
     this.paintNav();
     this.go(this.view, true);
     this.startLoops();
-    if (state.offline) setTimeout(() => showOfflineReport(state.offline, this), 380);
+    if (!state.birth?.chosen) setTimeout(() => chooseBirthplace(this), 300);
+    else if (state.offline) setTimeout(() => showOfflineReport(state.offline, this), 380);
   },
 
   paintNav() {
@@ -183,6 +186,7 @@ export const app = {
     $$('.tbs label')[1].textContent = t('common.cash');
     $$('.tbs label')[2].textContent = t('mkt.marketIndex');
     $$('.tbs label')[3].textContent = t('common.credit');
+    $$('#speed-switch button').forEach(x => x.classList.toggle('active', +x.dataset.ms === s.now.realMsPerHour));
     $('#badge-biz').textContent = s.businesses.length || '';
     $('#badge-pf').textContent = s.holdings.length || '';
   },
@@ -236,6 +240,15 @@ $('#auth-form').onsubmit = async e => {
 };
 $$('.nav-item[data-view]').forEach(b => b.onclick = () => app.go(b.dataset.view));
 $$('#theme-switch button').forEach(b => b.onclick = () => applyTheme(b.dataset.theme));
+$$('#speed-switch button').forEach(b => b.onclick = async () => {
+  try {
+    const r = await api.speed(+b.dataset.ms);
+    $$('#speed-switch button').forEach(x => x.classList.toggle('active', +x.dataset.ms === r.msPerHour));
+    app._lastTotal = null;                       // 流速变了，重新对齐时钟
+    toast(t('speed.changed', { m: r.minutes < 1 ? Math.round(r.minutes * 60) + 's' : r.minutes + ' min' }), 'ok');
+    await app.refresh(true);
+  } catch (e) { toast(e.message, 'err'); }
+});
 $$('#lang-switch button').forEach(b => {
   b.classList.toggle('active', b.dataset.lang === lang);
   b.onclick = () => {

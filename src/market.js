@@ -4,7 +4,27 @@ import { STOCKS, COMMODITIES, CRYPTOS, INDICES, DISTRICTS } from './catalog-asse
 import * as C from './catalog-content.js';
 
 // ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 2 分钟）──
-export const MS_PER_GAME_HOUR = Number(process.env.GAME_HOUR_MS || 60_000);
+export const SPEED_MIN_MS = 12_000;      // 最快：12 秒 = 1 游戏小时
+export const SPEED_MAX_MS = 300_000;     // 最慢：5 分钟 = 1 游戏小时
+export const SPEED_DEFAULT = 60_000;     // 默认：1 分钟 = 1 游戏小时
+export let MS_PER_GAME_HOUR = Number(process.env.GAME_HOUR_MS || SPEED_DEFAULT);
+
+// 改变流速时以「当前游戏时刻」为锚点重设起点，保证时钟不跳变
+export function setSpeed(ms) {
+  const v = Math.max(SPEED_MIN_MS, Math.min(SPEED_MAX_MS, Math.round(ms)));
+  if (v === MS_PER_GAME_HOUR) return v;
+  const hour = Number(getMeta('market_hour', '0'));
+  const frac = hourProgress();
+  MS_PER_GAME_HOUR = v;
+  setMeta('epoch_ms', String(Date.now() - (hour + frac) * v));
+  setMeta('ms_per_hour', v);
+  return v;
+}
+export function loadSpeed() {
+  const v = Number(getMeta('ms_per_hour', 0));
+  if (v >= SPEED_MIN_MS && v <= SPEED_MAX_MS) MS_PER_GAME_HOUR = v;
+  return MS_PER_GAME_HOUR;
+}
 export const DAY_HOURS   = 24;
 export const MONTH_HOURS = 720;    // 30 天
 export const YEAR_HOURS  = 8640;   // 12 个月

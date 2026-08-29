@@ -17,11 +17,12 @@ const PORT = Number(process.env.PORT || 8020);
 const BUILD_ID = String(Date.now());   // 每次启动生成，用于识别前后端版本是否一致
 process.env.BE_BUILD = BUILD_ID;
 
+M.loadSpeed();
 M.bootTime();
 M.initAssets();
 M.loadSectorMom();
 M.advanceMarket();
-setInterval(() => { try { M.advanceMarket(); } catch (e) { console.error('[tick]', e.message); } }, M.MS_PER_GAME_HOUR / 2);
+setInterval(() => { try { M.advanceMarket(); } catch (e) { console.error('[tick]', e.message); } }, 5_000);
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -137,6 +138,9 @@ const server = http.createServer(async (req, res) => {
       case '/api/dayoff':      return send(res, 200, API.dayOff(uid));
       case '/api/living':      return send(res, 200, API.setLiving(uid, body));
       case '/api/lottery':     return send(res, 200, API.buyLottery(uid, body));
+      case '/api/world':       return send(res, 200, API.worldMap(uid));
+      case '/api/speed':       return send(res, 200, API.setSpeed(uid, body));
+      case '/api/birthplace':  return send(res, 200, API.setBirthplace(uid, body));
       case '/api/trip':        return send(res, 200, API.bookTrip(uid, body));
       case '/api/richlist':    return send(res, 200, { list: API.richList(uid) });
       case '/api/overview':    return send(res, 200, API.marketOverview(uid));

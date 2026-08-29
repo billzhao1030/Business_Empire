@@ -197,42 +197,12 @@ export default {
         </div></div>
     </div>
 
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-h"><h3>✈️ ${t('life.travel')}</h3>
-        <span class="sub">${t('life.travelHint')}</span>
-        <div class="right"><div class="segs" id="fclass">
-          ${hl.classes.map(c => `<button class="seg ${c.id === flightCls ? 'active' : ''} ${c.needJet && !hl.hasJet ? 'locked' : ''}"
-            data-cls="${c.id}" ${c.needJet && !hl.hasJet ? 'disabled title="' + t('life.needJet') + '"' : ''}>${esc(nm({ zh: c.zh, en: c.en }))}</button>`).join('')}
-        </div></div></div>
-      <div class="card-b">
-        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
-        ${hl.trips_catalog.map(tp => {
-          const price = tp.price[flightCls] ?? tp.price.economy;
-          const cls = hl.classes.find(c => c.id === flightCls) || hl.classes[0];
-          const afford = s.player.cash >= price && !hl.sick && !hl.trip;
-          return `<div class="card" style="background:var(--bg2)"><div class="card-b" style="padding:13px">
-            <div style="display:flex;gap:9px;align-items:flex-start">
-              <div class="ico">${tp.emoji}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:13px">${esc(nm({ zh: tp.zh, en: tp.en }))}</div>
-                <div class="dim2" style="font-size:10.5px;margin-top:2px">${t('life.tripDays', { n: tp.days })} ·
-                  <span style="color:var(--up)">${t('life.tripRelief', { n: Math.round(tp.relief * cls.relief) })}</span> ·
-                  ⭐ ${Math.round(tp.prestige * cls.prestige)}</div>
-              </div>
-            </div>
-            <div class="mono" style="font-size:16px;font-weight:800;margin:9px 0 5px">${money(price)}</div>
-            <p class="dim2" style="font-size:11px;line-height:1.5;min-height:30px">${esc(nm({ zh: tp.descZh, en: tp.descEn }))}</p>
-            <button class="btn btn-sm ${afford ? 'btn-primary' : ''} btn-block" data-trip="${tp.id}" ${afford ? '' : 'disabled'}>${t('life.book')}</button>
-          </div></div>`;
-        }).join('')}
-        </div>
-        <div class="mini-grid" style="margin-top:14px">
-          <div class="mini"><label>${t('life.tripCount')}</label><b>${hl.trips}</b></div>
-          <div class="mini"><label>${t('life.tripSpent')}</label><b>${money(hl.tripSpent)}</b></div>
-          <div class="mini"><label>${t('life.medSpent')}</label><b class="down">${money(hl.medSpent)}</b></div>
-        </div>
-      </div>
-    </div>
+    <div class="card" style="margin-bottom:16px"><div class="card-b" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:26px">🗺️</span>
+      <div style="flex:1;min-width:200px"><b style="font-size:14px">${t('life.travel')}</b>
+        <div class="dim2" style="font-size:11.5px;line-height:1.6">${t('life.travelHint')}</div></div>
+      <button class="btn btn-primary btn-sm" id="go-world">${t('world.title')} →</button>
+    </div></div>
 
     <div class="card">
       <div class="card-h"><h3>🧭 ${t('career.jobList')}</h3>
@@ -275,6 +245,7 @@ export default {
     };
     if (j.otBusy) this.countdown(app, j.otRemainMs);
 
+    $('#go-world') && ($('#go-world').onclick = () => app.go('world'));
     $$('[data-meal]').forEach(b => b.onclick = () => app.act(() => api.living(b.dataset.meal, null), t('toast.success')).catch(() => {}));
     $$('[data-home]').forEach(b => b.onclick = () => app.act(() => api.living(null, b.dataset.home), t('toast.success')).catch(() => {}));
     $$('[data-lot]').forEach(b => b.onclick = async () => {
