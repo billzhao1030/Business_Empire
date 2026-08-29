@@ -511,9 +511,13 @@ export function advancePlayer(userId) {
       if (co && b.company_id === co.id) { co.cash += net; co.lifetime_profit += net; coDayNet += net; }
       else p.cash += net;
       p.month_profit += net;
+      // 门店维护。不修的话 condition 一路掉，毛利本来就薄的小生意会被拖成亏损，
+      // 一家连锁就这么慢慢烂掉——公司名下的店从公司账上出这笔钱。
       if (b.auto_repair && b.condition < 0.72) {
         const rc = r.def.cost * r.city.costMult * 0.22 * (1 - b.condition);
-        if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
+        const fromCo = co && b.company_id === co.id;
+        if (fromCo) { if (co.cash > rc * 3) { co.cash -= rc; b.condition = 1; } }
+        else if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
       }
     }
     // 公司的利润跑速：快慢两条线一拉开，就是在增长
@@ -691,9 +695,9 @@ export function advancePlayer(userId) {
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);
-    if (co) db.prepare(`UPDATE companies SET cash=?,rate_fast=?,rate_slow=?,growth=?,
+    if (co) db.prepare(`UPDATE companies SET cash=?,rate_fast=?,rate_slow=?,rate_vslow=?,growth=?,
                         lifetime_profit=? WHERE id=?`)
-      .run(co.cash, co.rate_fast, co.rate_slow, co.growth, co.lifetime_profit, co.id);
+      .run(co.cash, co.rate_fast, co.rate_slow, co.rate_vslow, co.growth, co.lifetime_profit, co.id);
     const ui = db.prepare('UPDATE items SET value=? WHERE id=?');
     for (const it of items) ui.run(it.value, it.id);
     const ul = db.prepare('UPDATE loans SET balance=?,months_left=?,next_due=?,paid_total=?,status=? WHERE id=?');

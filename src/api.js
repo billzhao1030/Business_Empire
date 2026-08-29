@@ -7,7 +7,8 @@ import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIV
          ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 import * as CO from './company.js';
 import { FOUND_FEE, FOUND_MIN_SHOPS, INIT_SHARES, ROUNDS, ROUND, STAGES, STAGE,
-         CO_SECTORS, CO_SECTOR, DIVIDEND_TAX, MIN_DIVIDEND, ILLIQUID } from './catalog-company.js';
+         CO_SECTORS, CO_SECTOR, DIVIDEND_TAX, MIN_DIVIDEND, ILLIQUID,
+         IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT, IPO_FEE } from './catalog-company.js';
 import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE,
          destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES } from './catalog-world.js';
 
@@ -428,8 +429,9 @@ export function bizBuy(uid, { typeId, cityId, name, useCompany }) {
   if (co) db.prepare('UPDATE companies SET cash=cash-? WHERE id=?').run(cost, co.id);
   else p.cash -= cost;
   const nm = String(name || '').trim().slice(0, 24) || `${city.name}${def.name}`;
-  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff,company_id)
-              VALUES(?,?,?,?,?,?,?,?,?,1,?)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(), 0.9 + Math.random() * 0.2, 2, co ? co.id : 0);
+  db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff,auto_repair,company_id)
+              VALUES(?,?,?,?,?,?,?,?,?,1,?,?)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(),
+                0.9 + Math.random() * 0.2, 2, co ? 1 : 0, co ? co.id : 0);
   // 异地开店需要亲自跑一趟：付机票、在外面待几天，这期间不能上班
   if (city.travelDays > 0) {
     db.prepare('UPDATE players SET trip_until=?, trip_id=?, trip_relief=1 WHERE user_id=?')
@@ -863,11 +865,23 @@ function coState(uid) {
       shopsAvailable: all.map(b => shopBrief(b, pb, prosp)),
       canFound: all.length >= FOUND_MIN_SHOPS && p.cash >= FOUND_FEE, cash: p.cash };
   }
+  CO.syncPublicStake(co);                       // 上市后创始人持股以持仓为准
   const shops = all.filter(b => b.company_id === co.id);
   const outside = all.filter(b => b.company_id !== co.id);
   const val = CO.valuate(co, shops, pb, prosp, curHour());
-  const offer = CO.roundOffer(co, val, p.credit_score);
+  const offer = co.stage === 'public' ? null : CO.roundOffer(co, val, p.credit_score);
   const stake = co.player_shares / co.shares;
+  const mkt = M.indexLevel('BEXI') / 1000;      // 大盘冷暖决定承销商敢不敢定高价
+  const ipo = co.stage === 'public' ? null : CO.ipoPlan(co, val, mkt);
+  const listed = co.stage === 'public' && co.asset_id ? (() => {
+    const a = M.assetById(co.asset_id);
+    if (!a) return null;
+    return { symbol: a.symbol, price: a.price, prevClose: a.prev_close, fair: a.fair,
+      change: a.prev_close ? a.price / a.prev_close - 1 : 0, eps: a.eps,
+      pe: a.eps > 0 ? a.price / a.eps : null, marketCap: a.price * a.shares,
+      ipoPrice: co.ipo_price, ipoHour: co.ipo_hour,
+      sinceIpo: co.ipo_price ? a.price / co.ipo_price - 1 : 0 };
+  })() : null;
   return {
     has: true, illiquid: ILLIQUID, rounds: ROUNDS, sectors: CO_SECTORS, cash: p.cash,
     co: { id: co.id, name: co.name, nameEn: co.name_en, ticker: co.ticker, sector: co.sector,
@@ -876,7 +890,9 @@ function coState(uid) {
       playerShares: co.player_shares, stake, roundN: co.round_n, raised: co.raised,
       roundVal: co.round_val, peakVal: co.peak_val, lifetimeProfit: co.lifetime_profit,
       dividendsPaid: co.dividends_paid },
-    val, offer, stakeValue: CO.stakeValue(co, val),
+    val, offer, ipo, listed, stakeValue: CO.stakeValue(co, val),
+    ipoReq: { rounds: IPO_MIN_ROUNDS, value: IPO_MIN_VAL, shops: IPO_MIN_SHOPS,
+              float: IPO_FLOAT, fee: IPO_FEE },
     shops: shops.map(b => shopBrief(b, pb, prosp)),
     outside: outside.map(b => shopBrief(b, pb, prosp)),
     minDividend: MIN_DIVIDEND, dividendTax: DIVIDEND_TAX,
@@ -920,7 +936,7 @@ export function foundCompany(uid, { name, nameEn, ticker, sector, shopIds }) {
               cash,shares,player_shares) VALUES(?,?,?,?,?, 'private',?,0,?,?)`)
     .run(uid, nm, String(nameEn || '').trim().slice(0, 32), tk, sec, hour, INIT_SHARES, INIT_SHARES);
   const coId = Number(r.lastInsertRowid);
-  const upd = db.prepare('UPDATE businesses SET company_id=? WHERE id=? AND user_id=?');
+  const upd = db.prepare('UPDATE businesses SET company_id=?, auto_repair=1 WHERE id=? AND user_id=?');
   for (const b of picked) upd.run(coId, b.id, uid);
   ledger(uid, 'company', -FOUND_FEE, L('led.coFound', { name: nm, ticker: tk, n: picked.length, fee: FOUND_FEE }), '🏢');
   return { ok: true, ...coState(uid) };
@@ -932,7 +948,7 @@ export function companyShops(uid, { add, remove }) {
   const co = CO.companyOf(uid);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   if (co.stage === 'public') throw new Err('上市公司的资产不能随便进出 / A listed company cannot move assets in and out freely');
-  const upd = db.prepare('UPDATE businesses SET company_id=? WHERE id=? AND user_id=?');
+  const upd = db.prepare('UPDATE businesses SET company_id=?, auto_repair=1 WHERE id=? AND user_id=?');
   let moved = 0;
   for (const id of (Array.isArray(add) ? add : [])) { upd.run(co.id, Number(id), uid); moved++; }
   for (const id of (Array.isArray(remove) ? remove : [])) { upd.run(0, Number(id), uid); moved++; }
@@ -998,6 +1014,37 @@ export function fundCompany(uid, { amount }) {
   db.prepare('UPDATE companies SET cash=cash+? WHERE id=?').run(amt, co.id);
   ledger(uid, 'company', -amt, L('led.coFund', { name: co.name, amt }), '🏢');
   return { ok: true, ...coState(uid) };
+}
+
+// 上市：公司从此变成行情页上一支真的股票
+export function listCompany(uid) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  if (co.stage === 'public') throw new Err('已经上市了 / Already listed');
+  if (db.prepare('SELECT COUNT(*) c FROM assets WHERE symbol=?').get(co.ticker).c)
+    throw new Err(`代码 ${co.ticker} 已被占用 / Ticker ${co.ticker} is taken`);
+  const p = P(uid);
+  const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+  const prosp = M.cityProsperity();
+  const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, co.id);
+  const val = CO.valuate(co, shops, pb, prosp, curHour());
+  const plan = CO.ipoPlan(co, val, M.indexLevel('BEXI') / 1000);
+  if (!plan.ok) {
+    const need = [];
+    if (plan.rounds < plan.needRounds) need.push(`要先融过 ${plan.needRounds} 轮（现在 ${plan.rounds} 轮）`);
+    if (val.value < plan.needVal) need.push(`估值要到 ${S.fmt(plan.needVal)}（现在 ${S.fmt(val.value)}）`);
+    if (val.shops < plan.needShops) need.push(`名下要有 ${plan.needShops} 家店（现在 ${val.shops} 家）`);
+    if (plan.needProfit) need.push('公司还没有盈利');
+    throw new Err(`还上不了市：${need.join('，')} / Not eligible to list yet`);
+  }
+  const hour = curHour();
+  const r = CO.goPublic(co, val, plan, hour);
+  db.prepare('UPDATE players SET prestige=prestige+? WHERE user_id=?').run(12, uid);
+  ledger(uid, 'company', 0, L('led.coIpo', { name: co.name, ticker: co.ticker,
+    price: r.price, raised: r.raised, cap: r.marketCap,
+    stake: Math.round(plan.stakeAfter * 100) }), '🔔');
+  return { ok: true, ...r, ...coState(uid) };
 }
 
 export function renameCompany(uid, { name, nameEn }) {
