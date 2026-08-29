@@ -1,7 +1,7 @@
 // ── 创业公司：估值、增长、融资 ──────────────────────────────
 import { db } from './db.js';
 import * as M from './market.js';
-import { bizRates, prestigeBonus, prestigeOf } from './sim.js';
+import { bizRates, bizEnv, prestigeBonus, prestigeOf } from './sim.js';
 
 // 公司主人的声望加成（店铺营收会跟着它走）
 function prestigeBonusOf(userId) {
@@ -36,9 +36,10 @@ export function companyShops(uid, coId) {
 //   营收法  年营收 × 增长溢价    —— 还没赚钱但跑得快的
 //   清算法  投入的残值 + 现金    —— 兜底，公司再差也值这些
 export function valuate(co, shops, pb = 0, prosp = {}, hour = 0) {
+  const env = bizEnv();
   let daily = 0, dailyRev = 0, invested = 0;
   for (const b of shops) {
-    const r = bizRates(b, pb, prosp[b.city] || 1);
+    const r = bizRates(b, pb, prosp[b.city] || 1, env.macro, env.month);
     daily += r.dailyNet;
     dailyRev += r.dailyRev;
     invested += b.invested;

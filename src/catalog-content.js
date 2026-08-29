@@ -1,45 +1,8 @@
 // 实业店铺 / 城市 / 房产地区 / 奢侈品 / 事件文案（中英双语）
 
-// ── 实业 ────────────────────────────────────────────────────
-// 实业：cost = 开店成本，pay = 目标回本周期（游戏小时），rev/opc 由下方自动推算
-const BIZ_RAW = [
-  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',400,55,[8,20],'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
-  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',1_000,65,[8,18],'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
-  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',2_200,75,[10,20],'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
-  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',4_000,85,[6,11],'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
-  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',8_000,95,[8,17],'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
-  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',16_000,110,[18,2],'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
-  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',26_000,140,[6,20],'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
-  ['coffeecart','流动咖啡车','Coffee Cart','☕','餐饮','Food & Bev',32_000,165,[7,15],'一台意式咖啡机 + 一辆小推车，写字楼下的早高峰就是印钞机。','One espresso machine, one cart. The morning rush is a money printer.'],
-  ['milktea','奶茶店','Bubble Tea Shop','🧋','餐饮','Food & Bev',58_000,195,[10,22],'年轻人的快乐水。翻台率高，毛利惊人。','Liquid happiness for the young. High turnover, stunning margins.'],
-  ['bakery','面包烘焙坊','Bakery','🥐','餐饮','Food & Bev',95_000,225,[6,20],'凌晨四点开工，香味就是最好的广告。','Up at 4am. The smell is the only advertising you need.'],
-  ['carwash','洗车行','Car Wash','🚿','服务','Services',150_000,255,[8,19],'现金流稳定，几乎不受经济周期影响。','Steady cash flow, almost immune to the business cycle.'],
-  ['barber','理发沙龙','Hair Salon','💈','服务','Services',210_000,285,[9,20],'手艺活儿，办卡预付款让你提前收到钱。','A craft business — prepaid memberships put cash in your pocket early.'],
-  ['convenience','便利店','Convenience Store','🏪','零售','Retail',330_000,320,[0,24],'24 小时营业，社区的水电煤。','Open 24/7 — the utility of the neighbourhood.'],
-  ['netcafe','电竞网咖','Esports Cafe','🖥️','娱乐','Entertainment',490_000,355,[0,24],'显卡就是生产力，通宵包夜利润最高。','GPUs are productivity. The overnight package is where the margin is.'],
-  ['fastfood','快餐店','Fast Food Outlet','🍔','餐饮','Food & Bev',760_000,390,[7,23],'标准化出餐，可复制性极强的现金牛。','Standardised kitchen, endlessly replicable cash cow.'],
-  ['gym','健身房','Fitness Gym','🏋️','服务','Services',1_150_000,425,[6,23],'卖的是年卡，赚的是不来的人。','You sell annual passes; you profit from the people who never show up.'],
-  ['autoshop','汽车修理厂','Auto Repair Shop','🔧','服务','Services',1_800_000,460,[8,18],'配件加价率是行业公开的秘密。','The markup on parts is the industry open secret.'],
-  ['clothing','服装精品店','Fashion Boutique','👗','零售','Retail',2_700_000,495,[10,22],'时尚生意，压货是最大的敌人。','Fashion moves fast — dead stock is the enemy.'],
-  ['pharmacy','连锁药房','Pharmacy Chain','💊','零售','Retail',4_000_000,530,[8,22],'牌照壁垒高，抗周期能力一流。','Licensing moat, recession-proof demand.'],
-  ['supermarket','大型超市','Supermarket','🛒','零售','Retail',6_000_000,565,[8,22],'薄利多销，靠账期和规模挣钱。','Thin margins, huge volume — you earn on scale and payment terms.'],
-  ['restaurant','高级餐厅','Fine Dining','🍽️','餐饮','Food & Bev',9_000_000,600,[11,23],'米其林指南来的那天，你的排队会到街尾。','The day the Michelin inspector arrives, the queue reaches the corner.'],
-  ['bar','夜店酒吧','Nightclub & Bar','🍸','娱乐','Entertainment',13_500_000,635,[20,4],'夜里十点后才开始营业，酒水毛利 80%。','Opens at 10pm. Drinks carry an 80% gross margin.'],
-  ['cinema','连锁影院','Cinema Chain','🎬','娱乐','Entertainment',20_000_000,670,[10,24],'票房分账 + 爆米花暴利，档期决定一切。','Box-office splits plus popcorn margins.'],
-  ['phonestore','数码旗舰店','Electronics Flagship','📱','零售','Retail',30_000_000,705,[10,22],'新机发布日门口能排三百米。','On launch day the queue runs 300 metres.'],
-  ['hotel','精品酒店','Boutique Hotel','🏨','地产','Property',45_000_000,740,[0,24],'重资产、高入住率，旺季一房难求。','Asset-heavy, occupancy-driven.'],
-  ['dealership','4S 汽车城','Car Dealership','🚗','零售','Retail',68_000_000,775,[9,19],'卖车不赚钱，金融和售后才是利润中心。','Cars barely break even — financing and servicing are the profit centres.'],
-  ['logistics','物流快运公司','Logistics Company','🚚','工业','Industrial',100_000_000,810,[0,24],'电商时代的血管，规模即护城河。','The arteries of e-commerce. Scale is the moat.'],
-  ['clinic','私立医院','Private Hospital','🏥','服务','Services',150_000_000,845,[0,24],'高端医疗，客单价极高，口碑极难建立。','Premium healthcare: enormous ticket size, slow reputation building.'],
-  ['software','软件公司','Software Company','💻','科技','Technology',230_000_000,880,[9,21],'边际成本趋近于零的生意，人才就是资产。','Near-zero marginal cost. The talent is the balance sheet.'],
-  ['tvstation','卫星电视台','TV Network','📺','传媒','Media',350_000_000,915,[0,24],'掌握话语权。广告位按秒计价。','You own the narrative. Ad slots are priced by the second.'],
-  ['resort','海岛度假村','Island Resort','🏝️','地产','Property',550_000_000,950,[0,24],'把风景变成现金流，一价全包利润惊人。','Turning scenery into cash flow.'],
-  ['factory','汽车制造厂','Auto Factory','🏭','工业','Industrial',850_000_000,985,[0,24],'重工业帝国的基石，产能利用率决定生死。','The bedrock of an industrial empire.'],
-  ['airline','航空公司','Airline','✈️','工业','Industrial',1_300_000_000,1020,[0,24],'烧钱的浪漫。油价一涨，全年白干。','Romantic and ruinous. One fuel spike wipes out the year.'],
-  ['chipfab','芯片晶圆厂','Semiconductor Fab','🔬','科技','Technology',2_000_000_000,1055,[0,24],'现代工业的皇冠。一台光刻机就是一栋楼的钱。','The crown of modern industry.'],
-  ['privbank','私人银行','Private Bank','🏦','金融','Finance',3_200_000_000,1090,[9,17],'当你有钱到需要一家自己的银行时。','For when you are rich enough to need your own bank.'],
-  ['spaceport','商业航天基地','Commercial Spaceport','🚀','科技','Technology',5_000_000_000,1130,[0,24],'终极浪漫：把火箭和卫星做成一门生意。','The ultimate flex: turning rockets into a business.'],
-];
+// ── 实业：目录见 catalog-biz.js（17 个行业 · 134 种店铺）──────
+import { BIZ_RAW, BIZ_CATS } from './catalog-biz.js';
+export { BIZ_CATS };
 
 // 由「回本周期」反推每小时营收与运营成本（含人工/固定/变动三部分后的真实净利）
 // ── 成本结构（按现实经营逻辑拆开）──────────────────────────
@@ -66,23 +29,44 @@ export function isOpenAt(h, hod) {
   return h[1] > h[0] ? (hod >= h[0] && hod < h[1]) : (hod >= h[0] || hod < h[1]);
 }
 
-export const BIZ_TYPES = BIZ_RAW.map(([id,name,en,emoji,cat,catEn,cost,pay,hours,desc,descEn]) => {
+// 风险溢价：越靠周期、波动越大的生意，回本越快；稳的生意回本越慢。
+// 又稳又快的生意是不存在的，这条在游戏里也一样。
+export function riskPremium(cyc, vol) {
+  const score = 0.5 * Math.abs(cyc) + 0.5 * vol;      // 逆周期的店同样承担周期风险
+  return Math.pow(Math.max(0.25, score), -0.45);
+}
+// 旺季：peak 月份需求最高，反相 6 个月最低
+export function seasonMult(season, month) {
+  if (!season) return 1;
+  const [peak, amp] = season;
+  return 1 + amp * Math.cos((month - peak) * Math.PI / 6);
+}
+const CAT = Object.fromEntries(BIZ_CATS.map(c => [c.id, c]));
+
+export const BIZ_TYPES = BIZ_RAW.map(([id,name,en,emoji,catId,cost,hours,desc,descEn,over={}]) => {
+  const c = CAT[catId];
+  const tr = { cogs: c.cogs, cyc: c.cyc, vol: c.vol, wear: c.wear, mktg: c.mktg, labor: c.labor,
+               season: null, ...over };
   const H = openHours(hours);
-  const days = payDays(cost);
+  const days = payDays(cost) * riskPremium(tr.cyc, tr.vol);
   const dailyNet = cost / days;                       // 目标日净利
   const monthlyRent = cost * rentRate(cost);
   const hourlyRent = monthlyRent / (30 * 24);         // 关门也要付
   const wage = staffWage(cost);
+  const revPerWage = REV_PER_WAGE * tr.labor;         // 人效：软件公司人少而贵，超市人多而廉
   // 营收与人数互相决定，迭代几次收敛：
   //   日净利 = H*(营收*(1-进货率) - 人数*工资) - 24*房租
-  //   人数   = ceil(营收 / (工资 * 4.5))
+  //   人数   = ceil(营收 / (工资 * 人效))
   let staff = 1, rev = 0;
   for (let i = 0; i < 8; i++) {
-    rev = (dailyNet + 24 * hourlyRent + H * staff * wage) / (H * (1 - COGS_RATE));
-    staff = Math.max(1, Math.ceil(rev / (wage * REV_PER_WAGE)));
+    rev = (dailyNet + 24 * hourlyRent + H * staff * wage) / (H * (1 - tr.cogs));
+    staff = Math.max(1, Math.ceil(rev / (wage * revPerWage)));
   }
-  return { id, name, en, emoji, cat, catEn, cost, hours, openHours: H,
+  return { id, name, en, emoji, cat: c.zh, catEn: c.en, catId, catEmoji: c.emoji,
+           cost, hours, openHours: H,
            payDays: days, rev, wage, staff, monthlyRent, hourlyRent, dailyNetBase: dailyNet,
+           cogs: tr.cogs, cyc: tr.cyc, vol: tr.vol, wear: tr.wear, mktg: tr.mktg,
+           labor: tr.labor, revPerWage, season: tr.season,
            mgmt: mgmtHours(cost), managerSalary: managerSalary(cost), desc, descEn };
 });
 
@@ -117,14 +101,16 @@ export const REGIONS = [
   { id:'mc',   name:'摩纳哥',   en:'Monaco',          index:'PIMC', mult:25,   flag:'🏰' },
 ];
 
+// live：自己住进去的体验。房子是拿来住的——住得越好，人越松弛，精力也回得越快。
+// 出租出去的房子不算住处：房客住着，你就得另外租房。
 const PROP_TIERS = [
-  { id:'room',  name:'单间出租屋', en:'Studio Room', emoji:'🚪', base:32_000,     prestige:1,   upkeep:0.0018, rent:0.0048, desc:'十几平米，厨卫共用，但它是你的。', descEn:'Fifteen square metres, shared bathroom — but it is yours.' },
-  { id:'old',   name:'老式两居',  en:'Old Two-Bed',  emoji:'🏚️', base:88_000,     prestige:3,   upkeep:0.0020, rent:0.0045, desc:'楼梯房、没电梯，胜在便宜又好租。', descEn:'Walk-up, no lift — cheap and easy to let.' },
-  { id:'apt',   name:'公寓',     en:'Apartment',    emoji:'🏢', base:180_000,    prestige:4,   upkeep:0.0020, rent:0.0042, desc:'紧凑实用，最容易出租。', descEn:'Compact, practical, easiest to rent out.' },
-  { id:'house', name:'独栋住宅', en:'Detached House',emoji:'🏡', base:620_000,    prestige:11,  upkeep:0.0020, rent:0.0040, desc:'带院子和车库，家庭首选。', descEn:'Yard and garage — the family choice.' },
-  { id:'villa', name:'豪华别墅', en:'Luxury Villa', emoji:'🏘️', base:2_600_000,  prestige:28,  upkeep:0.0024, rent:0.0037, desc:'泳池、影音室、24 小时安保。', descEn:'Pool, screening room, round-the-clock security.' },
-  { id:'penth', name:'顶层公寓', en:'Penthouse',    emoji:'🌆', base:6_800_000,  prestige:52,  upkeep:0.0028, rent:0.0035, desc:'整层视野，专属电梯直达。', descEn:'Full-floor views, private elevator access.' },
-  { id:'manor', name:'庄园',     en:'Grand Estate', emoji:'🏰', base:24_000_000, prestige:120, upkeep:0.0032, rent:0.0032, desc:'占地数公顷，有自己的名字。', descEn:'Hectares of land, and a name of its own.' },
+  { id:'room',  name:'单间出租屋', en:'Studio Room', emoji:'🚪', base:32_000,     prestige:1,   upkeep:0.0018, rent:0.0048, live:{ stress:-0.02, stamina:0.01 }, desc:'十几平米，厨卫共用，但它是你的。', descEn:'Fifteen square metres, shared bathroom — but it is yours.' },
+  { id:'old',   name:'老式两居',  en:'Old Two-Bed',  emoji:'🏚️', base:88_000,     prestige:3,   upkeep:0.0020, rent:0.0045, live:{ stress:-0.05, stamina:0.03 }, desc:'楼梯房、没电梯，胜在便宜又好租。', descEn:'Walk-up, no lift — cheap and easy to let.' },
+  { id:'apt',   name:'公寓',     en:'Apartment',    emoji:'🏢', base:180_000,    prestige:4,   upkeep:0.0020, rent:0.0042, live:{ stress:-0.09, stamina:0.06 }, desc:'紧凑实用，最容易出租。', descEn:'Compact, practical, easiest to rent out.' },
+  { id:'house', name:'独栋住宅', en:'Detached House',emoji:'🏡', base:620_000,    prestige:11,  upkeep:0.0020, rent:0.0040, live:{ stress:-0.12, stamina:0.08 }, desc:'带院子和车库，家庭首选。', descEn:'Yard and garage — the family choice.' },
+  { id:'villa', name:'豪华别墅', en:'Luxury Villa', emoji:'🏘️', base:2_600_000,  prestige:28,  upkeep:0.0024, rent:0.0037, live:{ stress:-0.15, stamina:0.10 }, desc:'泳池、影音室、24 小时安保。', descEn:'Pool, screening room, round-the-clock security.' },
+  { id:'penth', name:'顶层公寓', en:'Penthouse',    emoji:'🌆', base:6_800_000,  prestige:52,  upkeep:0.0028, rent:0.0035, live:{ stress:-0.17, stamina:0.11 }, desc:'整层视野，专属电梯直达。', descEn:'Full-floor views, private elevator access.' },
+  { id:'manor', name:'庄园',     en:'Grand Estate', emoji:'🏰', base:24_000_000, prestige:120, upkeep:0.0032, rent:0.0032, live:{ stress:-0.18, stamina:0.12 }, desc:'占地数公顷，有自己的名字。', descEn:'Hectares of land, and a name of its own.' },
 ];
 
 const ESTATES = [];
@@ -134,15 +120,15 @@ for (const r of REGIONS) for (const t of PROP_TIERS) {
     name: `${r.name}·${t.name}`, en: `${t.en} · ${r.en}`, emoji: t.emoji,
     price: Math.round(t.base * r.mult / 1000) * 1000,
     prestige: Math.max(2, Math.round(t.prestige * Math.pow(r.mult, 0.38))),
-    upkeep: t.upkeep, rent: t.rent, drift: 0,
+    upkeep: t.upkeep, rent: t.rent, drift: 0, live: t.live,
     desc: t.desc, descEn: t.descEn,
   });
 }
 
 const LANDMARKS = [
-  { id:'est_island', cat:'estate', region:'mia', index:'PIMI', mortgage:true, name:'加勒比私人海岛', en:'Private Caribbean Island', emoji:'🏝️', price:520_000_000, prestige:520, upkeep:0.0035, rent:0.0030, drift:0, desc:'整座岛都是你的，包括那片珊瑚礁。', descEn:'The whole island is yours — coral reef included.' },
-  { id:'est_palm',   cat:'estate', region:'dxb', index:'PIDB', mortgage:true, name:'迪拜棕榈岛宫殿', en:'Palm Jumeirah Palace', emoji:'🕌', price:1_200_000_000, prestige:850, upkeep:0.0035, rent:0.0030, drift:0, desc:'金色的一切。土豪审美的巅峰。', descEn:'Everything is gold. Peak petro-baroque.' },
-  { id:'est_castle', cat:'estate', region:'mc',  index:'PIMC', mortgage:true, name:'摩纳哥海崖城堡', en:'Monaco Cliffside Castle', emoji:'🏰', price:2_600_000_000, prestige:1400, upkeep:0.0038, rent:0.0028, drift:0, desc:'有六百年历史，和一间自己的私人小教堂。', descEn:'Six centuries of history and a private chapel.' },
+  { id:'est_island', cat:'estate', region:'mia', index:'PIMI', mortgage:true, name:'加勒比私人海岛', en:'Private Caribbean Island', emoji:'🏝️', price:520_000_000, prestige:520, upkeep:0.0035, rent:0.0030, drift:0, live:{ stress:-0.20, stamina:0.13 }, desc:'整座岛都是你的，包括那片珊瑚礁。', descEn:'The whole island is yours — coral reef included.' },
+  { id:'est_palm',   cat:'estate', region:'dxb', index:'PIDB', mortgage:true, name:'迪拜棕榈岛宫殿', en:'Palm Jumeirah Palace', emoji:'🕌', price:1_200_000_000, prestige:850, upkeep:0.0035, rent:0.0030, drift:0, live:{ stress:-0.20, stamina:0.13 }, desc:'金色的一切。土豪审美的巅峰。', descEn:'Everything is gold. Peak petro-baroque.' },
+  { id:'est_castle', cat:'estate', region:'mc',  index:'PIMC', mortgage:true, name:'摩纳哥海崖城堡', en:'Monaco Cliffside Castle', emoji:'🏰', price:2_600_000_000, prestige:1400, upkeep:0.0038, rent:0.0028, drift:0, live:{ stress:-0.20, stamina:0.13 }, desc:'有六百年历史，和一间自己的私人小教堂。', descEn:'Six centuries of history and a private chapel.' },
 ];
 
 const VEHICLES = [

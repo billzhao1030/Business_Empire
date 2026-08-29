@@ -2,7 +2,32 @@ import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, modal, confirmBox, durText, keepScroll} from '../util.js';
 
-let pickType = null, pickCity = 'city';
+let pickType = null, pickCity = 'city', pickCat = 'all', typeQuery = '', sortBy = 'cost';
+
+// 每种店的「性格」：直接把模拟里用的那几个数翻译成一句人话
+const TRAIT_ROWS = [
+  { k: 'margin', get: d => 1 - d.cogs,  fmt: v => Math.round(v * 100) + '%', hue: v => v > 0.6 ? 'up' : v < 0.35 ? 'down' : '',
+    scale: v => v },
+  { k: 'cyc',    get: d => d.cyc,       fmt: v => v < 0 ? t('biz.tr.counter') : v < 0.5 ? t('biz.tr.defensive') : v < 1.3 ? t('biz.tr.normal') : t('biz.tr.cyclical'),
+    hue: v => v < 0 ? 'up' : v > 1.6 ? 'down' : '', scale: v => Math.min(1, Math.abs(v) / 2) },
+  { k: 'vol',    get: d => d.vol,       fmt: v => v < 0.6 ? t('biz.tr.steady') : v < 1.2 ? t('biz.tr.normal') : v < 1.8 ? t('biz.tr.swingy') : t('biz.tr.wild'),
+    hue: v => v > 1.7 ? 'down' : v < 0.6 ? 'up' : '', scale: v => Math.min(1, v / 2.4) },
+  { k: 'labor',  get: d => d.labor,     fmt: v => v > 1.6 ? t('biz.tr.lean') : v < 0.8 ? t('biz.tr.handson') : t('biz.tr.normal'),
+    hue: () => '', scale: v => Math.min(1, v / 3) },
+  { k: 'wear',   get: d => d.wear,      fmt: v => v > 1.7 ? t('biz.tr.heavy') : v < 0.7 ? t('biz.tr.light') : t('biz.tr.normal'),
+    hue: v => v > 1.8 ? 'down' : '', scale: v => Math.min(1, v / 2.5) },
+  { k: 'mktg',   get: d => d.mktg,      fmt: v => v > 1.5 ? t('biz.tr.adDriven') : v < 0.6 ? t('biz.tr.adDeaf') : t('biz.tr.normal'),
+    hue: () => '', scale: v => Math.min(1, v / 2) },
+];
+const MONTHS_ZH = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
+const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function seasonText(d) {
+  if (!d.season) return null;
+  const [peak, amp] = d.season;
+  const low = ((peak + 5) % 12) + 1;
+  const M = lang === 'zh' ? MONTHS_ZH : MONTHS_EN;
+  return t('biz.tr.seasonText', { hi: M[peak - 1], lo: M[low - 1], amp: Math.round(amp * 100) });
+}
 
 const bar = (v, color, max = 1) => `<div class="bar"><i style="width:${Math.min(100, v / max * 100)}%;background:${color}"></i></div>`;
 
@@ -46,7 +71,7 @@ export default {
         <div class="ico lg">${b.emoji}</div>
         <div style="min-width:0;flex:1">
           <div class="biz-name">${esc(b.name)} <span class="tag">Lv.${b.level}</span>${b.marketing ? ` <span class="tag b">📣${b.marketing}</span>` : ''}</div>
-          <div class="biz-meta">${esc(nm(b.type))} · ${esc(nm(b.city))} ·
+          <div class="biz-meta">${b.trait ? b.trait.catEmoji + ' ' : ''}${esc(nm(b.type))} · ${esc(nm(b.city))} ·
             <span class="tag ${b.openNow ? 'g' : ''}">${b.allDay ? '🌃 24h' : `${String(b.hours[0]).padStart(2, '0')}:00–${String(b.hours[1]).padStart(2, '0')}:00`}
               ${b.openNow ? t('biz.openNow') : t('biz.closedNow')}</span></div>
         </div>
@@ -69,6 +94,12 @@ export default {
             ${bar(b.condition, b.condition < .6 ? 'var(--orange)' : 'var(--blue)')}</div>
         </div>
         ${under ? `<div class="down" style="font-size:11px;margin-top:7px">⚠️ ${t('biz.understaffed')}</div>` : ''}
+        ${b.trait ? `<div class="dim2" style="font-size:10.5px;margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span>${t('biz.tr.margin')} <b>${Math.round((1 - b.trait.cogs) * 100)}%</b></span>
+          <span>${t('biz.tr.cyc')} <b class="${b.cycMult > 1.05 ? 'up' : b.cycMult < 0.95 ? 'down' : ''}">${b.cycMult != null ? (b.cycMult >= 1 ? '+' : '') + Math.round((b.cycMult - 1) * 100) + '%' : '—'}</b></span>
+          ${b.trait.season ? `<span>🗓️ ${seasonText(b.trait)} <b class="${b.seasonMult > 1.02 ? 'up' : b.seasonMult < 0.98 ? 'down' : ''}">${(b.seasonMult >= 1 ? '+' : '') + Math.round((b.seasonMult - 1) * 100)}%</b></span>` : ''}
+          <span>${t('biz.tr.vol')} <b>${b.trait.vol < 0.6 ? t('biz.tr.steady') : b.trait.vol < 1.2 ? t('biz.tr.normal') : b.trait.vol < 1.8 ? t('biz.tr.swingy') : t('biz.tr.wild')}</b></span>
+        </div>` : ''}
 
         <div style="margin-top:12px">
           <div class="dim2" style="font-size:10px;font-weight:700;letter-spacing:.5px;margin-bottom:5px">${t('biz.price')} — ${esc(nm({ zh: tier.zh, en: tier.en }))}</div>
@@ -152,33 +183,64 @@ export default {
     };
     await loadCities('');
     pickCity = (cities[0] && cities[0].id) || pickCity;
+    const buildList = () => {
+      const q = typeQuery.trim().toLowerCase();
+      let l = cat.biz.filter(x => (pickCat === 'all' || x.catId === pickCat)
+        && (!q || x.name.toLowerCase().includes(q) || x.en.toLowerCase().includes(q)
+            || x.cat.toLowerCase().includes(q) || x.catEn.toLowerCase().includes(q)));
+      const by = { cost: (a, b) => a.cost - b.cost,
+                   payback: (a, b) => a.payDays - b.payDays,
+                   margin: (a, b) => a.cogs - b.cogs,
+                   steady: (a, b) => (a.vol + Math.abs(a.cyc)) - (b.vol + Math.abs(b.cyc)) };
+      return l.sort(by[sortBy] || by.cost);
+    };
     const render = el => {
+      const list = buildList();
+      if (!list.some(x => x.id === pickType) && list.length) pickType = list[0].id;
       const def = cat.biz.find(x => x.id === pickType);
       const city = cities.find(c => c.id === pickCity) || picked;
-      if (!city) return;
+      if (!city || !def) return;
       const setup = Math.round(def.cost * city.costMult);
       const travel = Math.round(city.travelCost || 0);
       const cost = setup + travel;
       const rev = def.rev * city.revMult;
       const H = def.openHours;
       const wage = def.wage * city.wageMult;
-      const staffN = Math.max(1, Math.ceil(rev / (wage * 4.5)));
+      const staffN = Math.max(1, Math.ceil(rev / (wage * (def.revPerWage ?? 4.5))));
       const dailyRev = H * rev;
-      const cogs = dailyRev * (cat.cogsRate ?? 0.42);
+      const cogs = dailyRev * (def.cogs ?? cat.cogsRate ?? 0.42);
       const wages = H * staffN * wage;
       const rentM = def.monthlyRent * city.rentMult;
       const net = dailyRev - cogs - wages - rentM / 30;
       const box = el.querySelector('#nb-body');
       box.innerHTML = `
-      <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;margin-bottom:7px">${t('biz.chooseType')}</div>
-      <div class="opt-grid" style="max-height:230px;overflow:auto;margin-bottom:16px">
-        ${cat.biz.map(x => {
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px">
+        <span class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px">${t('biz.chooseType')}</span>
+        <select id="nb-cat" class="sel">
+          <option value="all" ${pickCat === 'all' ? 'selected' : ''}>${t('biz.allCats')} · ${cat.biz.length}</option>
+          ${cat.bizCats.map(c => { const n = cat.biz.filter(x => x.catId === c.id).length;
+            return `<option value="${c.id}" ${pickCat === c.id ? 'selected' : ''}>${c.emoji} ${esc(nm(c))} · ${n}</option>`; }).join('')}
+        </select>
+        <select id="nb-sort" class="sel">
+          <option value="cost" ${sortBy === 'cost' ? 'selected' : ''}>${t('biz.sortCost')}</option>
+          <option value="payback" ${sortBy === 'payback' ? 'selected' : ''}>${t('biz.sortPayback')}</option>
+          <option value="margin" ${sortBy === 'margin' ? 'selected' : ''}>${t('biz.sortMargin')}</option>
+          <option value="steady" ${sortBy === 'steady' ? 'selected' : ''}>${t('biz.sortSteady')}</option>
+        </select>
+        <input id="nb-type-q" type="search" placeholder="${t('biz.typeSearchPh')}" value="${esc(typeQuery)}"
+          style="flex:1;min-width:130px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-size:12px">
+        <span class="dim2" style="font-size:10.5px">${t('biz.typeCount', { n: list.length })}</span>
+      </div>
+      <div class="opt-grid" style="max-height:250px;overflow:auto;margin-bottom:16px">
+        ${list.length ? list.map(x => {
           const c = Math.round(x.cost * city.costMult) + Math.round(city.travelCost || 0);
           const afford = s.player.cash >= c;
+          const sea = seasonText(x);
           return `<button class="opt ${x.id === pickType ? 'active' : ''}" data-type="${x.id}" ${afford ? '' : 'style="opacity:.45"'}>
             <div class="t">${x.emoji} ${esc(nm({ zh: x.name, en: x.en }))}</div>
-            <div class="s">${money(c)} · ${x.hours[0]}:00–${x.hours[1]}:00 (${x.openHours}h)</div></button>`;
-        }).join('')}
+            <div class="s">${money(c)} · ${t('biz.grossMargin')} ${Math.round((1 - x.cogs) * 100)}% · ${Math.round(x.payDays)}${t('biz.dPayback')}
+              ${sea ? `<span class="gold">· ${sea}</span>` : ''}</div></button>`;
+        }).join('') : `<div class="dim2" style="font-size:11.5px;padding:10px">${t('biz.noType')}</div>`}
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
         <span class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px">${t('biz.chooseCity')}</span>
@@ -222,8 +284,30 @@ export default {
       </div>
       <p class="dim2" style="font-size:11px;margin-top:8px;line-height:1.6">🕐 ${t('biz.hoursHint')}</p>
       ${travel ? `<p style="font-size:11.5px;margin-top:8px;line-height:1.6;color:var(--orange)">✈️ ${t('biz.travelWarn', { n: city.travelDays })}</p>` : ''}
+      <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;margin:14px 0 7px">${def.catEmoji} ${t('biz.character')}</div>
+      <div class="trait-grid">
+        ${TRAIT_ROWS.map(r => { const v = r.get(def);
+          return `<div class="trait"><label>${t('biz.tr.' + r.k)}</label>
+            <div class="tv ${r.hue(v)}">${r.fmt(v)}</div>
+            <div class="bar sm"><i style="width:${Math.round(r.scale(v) * 100)}%"></i></div></div>`; }).join('')}
+      </div>
+      ${seasonText(def) ? `<div class="dim2" style="font-size:11px;margin-top:8px">🗓️ ${seasonText(def)}</div>` : ''}
       <p class="dim2" style="font-size:11.5px;margin-top:10px;line-height:1.6">${esc(nm({ zh: def.desc, en: def.descEn }))}</p>`;
       box.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { pickType = b.dataset.type; render(el); });
+      const catSel = box.querySelector('#nb-cat');
+      if (catSel) catSel.onchange = () => { pickCat = catSel.value; render(el); };
+      const sortSel = box.querySelector('#nb-sort');
+      if (sortSel) sortSel.onchange = () => { sortBy = sortSel.value; render(el); };
+      const tq = box.querySelector('#nb-type-q');
+      if (tq) tq.oninput = () => {
+        typeQuery = tq.value;
+        clearTimeout(this._typeT);
+        this._typeT = setTimeout(() => {
+          render(el);
+          const n = el.querySelector('#nb-type-q');
+          if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+        }, 160);
+      };
       box.querySelectorAll('[data-city]').forEach(b => b.onclick = () => { pickCity = b.dataset.city; render(el); });
       box.querySelectorAll('[data-payer]').forEach(b => b.onclick = () => { payer = +b.dataset.payer; render(el); });
       const cq = box.querySelector('#nb-city-q');
