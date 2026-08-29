@@ -35,6 +35,7 @@ export const api = {
   catalog: () => req('/api/catalog'),
   leaderboard: () => req('/api/leaderboard'),
   richlist: () => req('/api/richlist'),
+  companyBoard: () => req('/api/companyboard'),
   overview: () => req('/api/overview'),
   takeJob: jobId => post('/api/job', { jobId }),
   hustle: () => post('/api/hustle', {}),
