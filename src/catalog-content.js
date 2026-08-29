@@ -3,13 +3,13 @@
 // ── 实业 ────────────────────────────────────────────────────
 // 实业：cost = 开店成本，pay = 目标回本周期（游戏小时），rev/opc 由下方自动推算
 const BIZ_RAW = [
-  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',50,55,[8,20],'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
-  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',200,65,[8,18],'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
-  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',500,75,[10,20],'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
-  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',1_200,85,[6,11],'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
-  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',3_000,95,[8,17],'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
-  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',6_000,110,[18,2],'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
-  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',12_000,140,[6,20],'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
+  ['streetvend','街头小摊','Street Stall','🧺','零售','Retail',400,55,[8,20],'一块布、一堆小玩意，成本低到可以忽略。这就是你的第一桶金。','A blanket and a pile of trinkets. This is where the first dollar comes from.'],
+  ['shoeshine','擦鞋摊','Shoeshine Stand','🥾','服务','Services',1_000,65,[8,18],'火车站门口的老手艺，客人多是赶时间的生意人。','An old trade outside the station; your customers are always in a hurry.'],
+  ['balloon','气球小贩','Balloon Vendor','🎈','零售','Retail',2_200,75,[10,20],'公园门口的周末生意，孩子一哭家长就掏钱。','Weekend park trade — one crying child and the wallet opens.'],
+  ['pancake','煎饼摊','Street Food Cart','🥞','餐饮','Food & Bev',4_000,85,[6,11],'早高峰四十分钟，决定你一整天的收入。','Forty minutes of morning rush decides your whole day.'],
+  ['scrap','废品回收站','Scrap Yard','♻️','工业','Industrial',8_000,95,[8,17],'脏活累活，但现金流从不骗人。','Dirty work, but the cash flow never lies.'],
+  ['nightstall','夜市大排档','Night Market Stall','🏮','餐饮','Food & Bev',16_000,110,[18,2],'啤酒配烧烤，凌晨两点才是营业高峰。','Beer and skewers — peak hour is 2am.'],
+  ['newsstand','报刊亭','Newsstand','📰','零售','Retail',26_000,140,[6,20],'街角的小生意，卖报纸、香烟和彩票。','A corner kiosk selling papers, smokes and lottery tickets.'],
   ['coffeecart','流动咖啡车','Coffee Cart','☕','餐饮','Food & Bev',32_000,165,[7,15],'一台意式咖啡机 + 一辆小推车，写字楼下的早高峰就是印钞机。','One espresso machine, one cart. The morning rush is a money printer.'],
   ['milktea','奶茶店','Bubble Tea Shop','🧋','餐饮','Food & Bev',58_000,195,[10,22],'年轻人的快乐水。翻台率高，毛利惊人。','Liquid happiness for the young. High turnover, stunning margins.'],
   ['bakery','面包烘焙坊','Bakery','🥐','餐饮','Food & Bev',95_000,225,[6,20],'凌晨四点开工，香味就是最好的广告。','Up at 4am. The smell is the only advertising you need.'],
@@ -42,8 +42,24 @@ const BIZ_RAW = [
 ];
 
 // 由「回本周期」反推每小时营收与运营成本（含人工/固定/变动三部分后的真实净利）
-// 成本结构：固定成本（房租，24 小时都在烧）+ 变动成本 + 工资（只在营业时段）
-export const COST_FIXED = 0.15, COST_VAR = 0.25, COST_WAGE = 0.25;
+// ── 成本结构（按现实经营逻辑拆开）──────────────────────────
+// 进货/原料成本：占营收的固定比例，只在营业时才发生
+export const COGS_RATE = 0.42;
+// 月租金占开办成本的比例：小店铺租金压力大，重资产项目自有土地占比高
+export const rentRate = cost => 0.115 * Math.pow(50 / Math.max(cost, 50), 0.10);
+// 员工时薪：与玩家自己的打工工资体系同一量级（$9 起步 → 大厂 $40+）
+export const staffWage = cost => 9 * Math.pow(Math.max(cost, 50) / 50, 0.09);
+// 回本周期（游戏日）：小生意几十天，重资产要几百天——比之前拉长了一个数量级
+export const payDays = cost => 38 * Math.pow(Math.max(cost, 400) / 400, 0.13);
+// 一名员工大约能创造自身工资 4.5 倍的营收——人工占营收约 22%，符合零售餐饮的实际水平
+export const REV_PER_WAGE = 4.5;
+// 管理精力：每家店每天要占用老板多少小时（店长上任后降到 0.15）
+export const mgmtHours = cost => Math.min(5, 0.8 + 0.55 * Math.log10(Math.max(cost, 400) / 400));
+export const MGMT_WITH_MANAGER = 0.15;
+// 店长月薪：约为普通员工的 2 倍全职工资
+export const managerSalary = cost => staffWage(cost) * 360;
+export const AWAKE_HOURS = 16;          // 07:00–23:00
+export const MGMT_MAX_WITH_JOB = 8;     // 管理时间超过这个数就没法再打工了
 
 export function openHours(h) { return h[1] > h[0] ? h[1] - h[0] : 24 - h[0] + h[1]; }
 export function isOpenAt(h, hod) {
@@ -51,21 +67,40 @@ export function isOpenAt(h, hod) {
 }
 
 export const BIZ_TYPES = BIZ_RAW.map(([id,name,en,emoji,cat,catEn,cost,pay,hours,desc,descEn]) => {
-  // 目标：按 pay 回本。日净利 = H*(rev - 0.75*opc) - 24*0.15*opc，其中 opc = 0.45*rev
   const H = openHours(hours);
-  const dailyNet = cost / pay * 24;
-  const rev = dailyNet / (H * (1 - 0.75 * 0.45) - 24 * 0.15 * 0.45);
-  return { id, name, en, emoji, cat, catEn, cost, pay, hours, openHours: H,
-           rev, opc: rev * 0.45, desc, descEn };
+  const days = payDays(cost);
+  const dailyNet = cost / days;                       // 目标日净利
+  const monthlyRent = cost * rentRate(cost);
+  const hourlyRent = monthlyRent / (30 * 24);         // 关门也要付
+  const wage = staffWage(cost);
+  // 营收与人数互相决定，迭代几次收敛：
+  //   日净利 = H*(营收*(1-进货率) - 人数*工资) - 24*房租
+  //   人数   = ceil(营收 / (工资 * 4.5))
+  let staff = 1, rev = 0;
+  for (let i = 0; i < 8; i++) {
+    rev = (dailyNet + 24 * hourlyRent + H * staff * wage) / (H * (1 - COGS_RATE));
+    staff = Math.max(1, Math.ceil(rev / (wage * REV_PER_WAGE)));
+  }
+  return { id, name, en, emoji, cat, catEn, cost, hours, openHours: H,
+           payDays: days, rev, wage, staff, monthlyRent, hourlyRent, dailyNetBase: dailyNet,
+           mgmt: mgmtHours(cost), managerSalary: managerSalary(cost), desc, descEn };
 });
 
+// revMult 营收系数 / rentMult 房租系数 / wageMult 当地工资水平
+// 大城市营收更高，但房租涨得比营收更快——这才是真实的商业地理
 export const CITIES = [
-  { id:'town',   name:'小镇',     en:'Small Town',      costMult:0.65, revMult:0.70, vol:0.6, desc:'租金便宜，客流也少。', descEn:'Cheap rent, thin foot traffic.' },
-  { id:'city',   name:'本市',     en:'Hometown',        costMult:1.00, revMult:1.00, vol:1.0, desc:'你最熟悉的地方。', descEn:'The city you know best.' },
-  { id:'capital',name:'省会城市', en:'Provincial Capital',costMult:1.35, revMult:1.45, vol:1.15,desc:'消费力更强的区域中心。', descEn:'A regional hub with real spending power.' },
-  { id:'tier1',  name:'一线城市', en:'Tier-1 City',     costMult:1.85, revMult:2.10, vol:1.35,desc:'寸土寸金，但客单价惊人。', descEn:'Brutal rents, but the ticket size is enormous.' },
-  { id:'ny',     name:'纽约',     en:'New York',        costMult:2.50, revMult:3.00, vol:1.6, desc:'如果你能在这里成功，你能在任何地方成功。', descEn:'If you can make it here, you can make it anywhere.' },
-  { id:'dubai',  name:'迪拜',     en:'Dubai',           costMult:3.20, revMult:4.00, vol:1.9, desc:'零税天堂与土豪之城，风险与暴利并存。', descEn:'Tax-free playground of the ultra-rich. Huge risk, huger upside.' },
+  { id:'town',   name:'小镇',     en:'Small Town',        costMult:0.62, revMult:0.72, rentMult:0.50, wageMult:0.75, vol:0.6, travelCost:0,     travelDays:0,
+    desc:'租金便宜，客流也少。', descEn:'Cheap rent, thin foot traffic.' },
+  { id:'city',   name:'本市',     en:'Hometown',          costMult:1.00, revMult:1.00, rentMult:1.00, wageMult:1.00, vol:1.0, travelCost:0,     travelDays:0,
+    desc:'你最熟悉的地方。', descEn:'The city you know best.' },
+  { id:'capital',name:'省会城市', en:'Provincial Capital',costMult:1.25, revMult:1.22, rentMult:1.40, wageMult:1.15, vol:1.15, travelCost:450,  travelDays:1,
+    desc:'消费力更强的区域中心，房租也更贵。', descEn:'A regional hub with real spending power — and dearer rent.' },
+  { id:'tier1',  name:'一线城市', en:'Tier-1 City',       costMult:1.65, revMult:1.55, rentMult:2.10, wageMult:1.35, vol:1.35, travelCost:1_600, travelDays:2,
+    desc:'客流强劲，但房租是小镇的四倍。', descEn:'Strong footfall, but rent is four times a small town.' },
+  { id:'ny',     name:'纽约',     en:'New York',          costMult:2.05, revMult:1.90, rentMult:2.90, wageMult:1.60, vol:1.6, travelCost:7_500, travelDays:3,
+    desc:'如果你能在这里成功，你能在任何地方成功——前提是先付得起房租。', descEn:'If you can make it here you can make it anywhere — if you can cover the rent.' },
+  { id:'dubai',  name:'迪拜',     en:'Dubai',             costMult:2.40, revMult:2.30, rentMult:3.20, wageMult:1.60, vol:1.9, travelCost:9_800, travelDays:3,
+    desc:'零税、高客单价，但商场铺位的租金冠绝全球。', descEn:'No tax and huge tickets, but mall rents like nowhere else.' },
 ];
 
 // ── 房产地区（各自对应一个会涨跌的房价指数）────────────────
@@ -269,10 +304,10 @@ export const JOBS = [
   { id:'trucker',  zh:'长途货车司机',  en:'Long-haul Trucker',   emoji:'🚚', wage:38,   exp:250,   car:true, descZh:'需要一辆车。一趟三天，路上全是风景和困意。', descEn:'Requires a vehicle. Three days out, all scenery and sleep debt.' },
   { id:'sales',    zh:'销售代表',      en:'Sales Rep',           emoji:'💼', wage:55,  exp:450, descZh:'底薪很低，提成才是本体。', descEn:'Low base, the commission is the job.' },
   { id:'coder',    zh:'软件工程师',    en:'Software Engineer',   emoji:'💻', wage:85,  exp:750, descZh:'一边写代码，一边看招聘网站。', descEn:'Writing code with the job board open in another tab.' },
-  { id:'analyst',  zh:'金融分析师',    en:'Financial Analyst',   emoji:'📊', wage:120,  exp:1_200, descZh:'终于坐到了离钱最近的位置。', descEn:'Finally seated close to where the money is.' },
-  { id:'manager',  zh:'部门经理',      en:'Department Manager',  emoji:'👔', wage:180,  exp:1_900, descZh:'开会的时间比干活多。', descEn:'More time in meetings than doing the work.' },
-  { id:'vp',       zh:'投行副总裁',    en:'Investment Bank VP',  emoji:'🏦', wage:320,exp:3_000, descZh:'年终奖比年薪多，代价是没有周末。', descEn:'The bonus beats the salary; the cost is your weekends.' },
-  { id:'ceo',      zh:'职业经理人 CEO',en:'Professional CEO',    emoji:'👑', wage:900,exp:4_500,descZh:'替别人打理帝国——直到你有自己的。', descEn:'Running someone else empire — until you build your own.' },
+  { id:'analyst',  zh:'金融分析师',    en:'Financial Analyst',   emoji:'📊', wage:115,  exp:1_200, descZh:'终于坐到了离钱最近的位置。', descEn:'Finally seated close to where the money is.' },
+  { id:'manager',  zh:'部门经理',      en:'Department Manager',  emoji:'👔', wage:165,  exp:1_900, descZh:'开会的时间比干活多。', descEn:'More time in meetings than doing the work.' },
+  { id:'vp',       zh:'投行副总裁',    en:'Investment Bank VP',  emoji:'🏦', wage:260,exp:3_000, descZh:'年终奖比年薪多，代价是没有周末。', descEn:'The bonus beats the salary; the cost is your weekends.' },
+  { id:'ceo',      zh:'职业经理人 CEO',en:'Professional CEO',    emoji:'👑', wage:650,exp:4_500,descZh:'替别人打理帝国——直到你有自己的。', descEn:'Running someone else empire — until you build your own.' },
 ];
 
 // ── 世界富豪榜（化名，财富与游戏内公司股价实时联动）──

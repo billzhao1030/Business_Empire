@@ -39,6 +39,7 @@ export const api = {
   takeJob: jobId => post('/api/job', { jobId }),
   hustle: () => post('/api/hustle', {}),
   treat: () => post('/api/treat', {}),
+  dayOff: () => post('/api/dayoff', {}),
   trip: (tripId, cls) => post('/api/trip', { tripId, cls }),
   trade: (symbol, side, qty) => post('/api/trade', { symbol, side, qty }),
   takeover: symbol => post('/api/takeover', { symbol }),

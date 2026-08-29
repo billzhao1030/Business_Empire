@@ -49,7 +49,23 @@ export default {
           <div class="tc-phase ${j.phase}" style="font-size:12px;font-weight:700">${t('phase.' + j.phase)}</div>
         </div>
 
-        <div style="margin-bottom:12px">${dayBar(j)}</div>
+        <div style="margin-bottom:10px">${dayBar(j)}</div>
+        <div style="display:flex;gap:12px;font-size:11px;margin-bottom:12px;flex-wrap:wrap">
+          <span class="dim2">${t('career.timeBudget')}:</span>
+          <span>🏬 ${t('career.mgmtTime')} <b class="mono ${j.mgmtHours > j.mgmtMax ? 'down' : ''}">${j.mgmtHours.toFixed(1)}h</b></span>
+          <span>💼 ${t('career.shiftTime')} <b class="mono">${j.shiftHours.toFixed(0)}h</b></span>
+          <span>🕐 ${t('career.freeTime')} <b class="mono">${j.freeHours.toFixed(1)}h</b></span>
+        </div>
+        ${!j.canJob ? `<div class="summary" style="border-color:var(--orange);color:var(--orange);font-size:11.5px;margin-bottom:10px">
+          👔 ${t('career.ownerNote', { n: j.mgmtHours.toFixed(1), max: j.mgmtMax })}</div>` : ''}
+        <div style="display:flex;gap:10px;align-items:center;font-size:11px;margin-bottom:10px;flex-wrap:wrap">
+          <span class="dim2">🔁 ${t('career.streak')} <b class="mono ${j.streak >= 5 ? 'down' : ''}">${j.streak} ${t('common.day')}</b></span>
+          <span class="dim2">😴 ${t('career.restQuality')} <b class="mono ${j.restQuality < 0.8 ? 'down' : 'up'}">${pctPlain(j.restQuality, 0)}</b></span>
+          ${j.onLeave ? `<span class="tag g">${t('career.onLeave')}</span>`
+            : `<button class="btn btn-xs" id="day-off">🛌 ${t('career.dayOff')}</button>`}
+        </div>
+        ${j.streak >= 5 ? `<div class="summary" style="border-color:var(--orange);color:var(--orange);font-size:11.5px;margin-bottom:10px">
+          ⚠️ ${t('career.streakWarn', { n: j.streak, q: Math.round(j.restQuality * 100) })}</div>` : ''}
 
         <div class="stamina" style="margin-bottom:6px">
           <span class="dim2" style="font-size:11px;font-weight:700;width:44px">${t('career.stamina')}</span>
@@ -201,6 +217,7 @@ export default {
     };
     if (j.otBusy) this.countdown(app, j.otRemainMs);
 
+    $('#day-off') && ($('#day-off').onclick = () => app.act(() => api.dayOff(), t('toast.success')).catch(() => {}));
     $('#do-treat') && ($('#do-treat').onclick = () => app.act(() => api.treat(), t('toast.success')).catch(() => {}));
     $$('[data-cls]').forEach(b => b.onclick = () => { flightCls = b.dataset.cls; this.render(root, app); });
     $$('[data-trip]').forEach(b => b.onclick = () => app.act(() => api.trip(b.dataset.trip, flightCls), t('toast.success')).catch(() => {}));
