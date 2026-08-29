@@ -232,7 +232,12 @@ addColumn('players','med_spent',      'REAL    NOT NULL DEFAULT 0');
 addColumn('players','trip_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','trips',          'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','trip_relief',    'REAL    NOT NULL DEFAULT 1');
+addColumn('players','work_streak',    'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','worked_today',   'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','streak_day',     'INTEGER NOT NULL DEFAULT -1');
+addColumn('players','off_day',        'INTEGER NOT NULL DEFAULT -1');
 addColumn('businesses','all_day',     'INTEGER NOT NULL DEFAULT 0');
+addColumn('businesses','manager',     'INTEGER NOT NULL DEFAULT 0');
 
 export function getMeta(key, def = null) {
   const row = db.prepare('SELECT value FROM meta WHERE key=?').get(key);

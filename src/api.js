@@ -92,6 +92,8 @@ export function getState(uid) {
       priceTier: b.price_tier, autoStaff: !!b.auto_staff, autoRepair: !!b.auto_repair,
       hours: r.hours, openHrs: r.openHrs, allDay: !!b.all_day, openNow: S.bizOpenNow(b, hour % 24),
       dailyNet: r.dailyNet, dailyRev: r.dailyRev, idleCost: r.idleCost, openCost: r.openCost,
+      monthlyRent: r.monthlyRent, cogs: r.cogs, mgmt: r.mgmt,
+      manager: !!b.manager, managerSalary: r.managerSalary,
       allDayCost: b.all_day ? null : r.allDayCost,
       allDayGain: b.all_day ? 0 : r.allDayGainPerHour * 24,
       demandTarget: S.demandTarget(b), monthRevenue: b.month_revenue, monthCost: b.month_cost,
@@ -166,14 +168,18 @@ export function getState(uid) {
       const hod = hour % 24, phase = S.dayPhase(hod), day = Math.floor(hour / 24);
       const otUsed = p.ot_day === day ? p.ot_hours : 0;
       const busy = p.ot_pending > 0 && hour < p.ot_until;
+      const tb = S.timeBudget(db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid));
       let block = null;
       if (!job) block = 'nojob';
+      else if (!tb.canJob) block = 'owner';
       else if (job.car && !carOwned) block = 'needcar';
       else if (phase === 'shift') block = 'shift';
       else if (busy) block = 'busy';
-      else if (otUsed >= S.OVERTIME_MAX_HOURS) block = 'cap';
+      else if (tb.otMax <= 0) block = 'nomgmt';
+      else if (otUsed >= tb.otMax) block = 'cap';
       else if (p.sick_until > hour) block = 'sick';
       else if (p.trip_until > hour) block = 'travel';
+      else if (p.off_day === day) block = 'leave';
       else if (p.stress >= S.STRESS_MAX_FOR_OT) block = 'stressed';
       else if (p.stamina < S.ST_MIN_FOR_OT) block = 'tired';
       return {
@@ -183,7 +189,12 @@ export function getState(uid) {
         stamina: p.stamina, staminaMax: S.STAMINA_MAX, efficiency: S.efficiency(p.stamina),
         phase, hod, wakeHour: S.WAKE_HOUR, sleepHour: S.SLEEP_HOUR,
         workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
-        otUsed, otMax: S.OVERTIME_MAX_HOURS, otMult: S.OVERTIME_MULT,
+        otUsed, otMax: tb.otMax, otMult: S.OVERTIME_MULT,
+        mgmtHours: tb.mgmt, freeHours: tb.free, shiftHours: tb.shift, canJob: tb.canJob,
+        streak: p.work_streak, restQuality: S.restQuality(p.work_streak),
+        streakStress: S.streakStress(p.work_streak) * 24,
+        onLeave: p.off_day === Math.floor(hour / 24),
+        awakeHours: S.AWAKE_HOURS, mgmtMax: S.MGMT_MAX_WITH_JOB,
         night: phase === 'sleep', nightMult: S.NIGHT_MULT,
         stress: p.stress, stressMax: S.STRESS_MAX, stressFactor: S.stressFactor(p.stress),
         sickChance: S.sickChance(p.stress),
@@ -191,13 +202,17 @@ export function getState(uid) {
         otBusy: busy, otPending: p.ot_pending, otUntil: p.ot_until,
         otRemainMs: busy ? Math.max(0, (p.ot_until - hour - M.hourProgress()) * M.MS_PER_GAME_HOUR) : 0,
         hustles: p.hustles, nextDayInHours: 24 - hod,
-        dailyWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + S.OVERTIME_MAX_HOURS * S.OVERTIME_MULT),
-        sustainableWage: (job ? job.wage : 0) * (S.WORK_HOURS_PER_DAY + 3 * S.OVERTIME_MULT),
+        dailyWage: (job ? job.wage : 0) * (tb.shift + tb.otMax * S.OVERTIME_MULT),
+        sustainableWage: (job ? job.wage : 0) * (tb.shift + Math.min(3, tb.otMax) * S.OVERTIME_MULT),
       };
     })(),
     health: (() => {
       const ill = p.sick_id ? S.ILL[p.sick_id] : null;
-      const trip = p.trip_id ? S.TRIP[p.trip_id] : null;
+      const bizTrip = p.trip_id && p.trip_id.startsWith('biz:');
+      const bizCity = bizTrip ? S.CITY[p.trip_id.slice(4)] : null;
+      const trip = bizTrip
+        ? (bizCity ? { id: 'biztrip', zh: '出差：' + bizCity.name, en: 'Business trip: ' + bizCity.en, emoji: '✈️' } : null)
+        : (p.trip_id ? S.TRIP[p.trip_id] : null);
       return {
         stress: p.stress, stressMax: S.STRESS_MAX, factor: S.stressFactor(p.stress),
         sickRiskPerDay: Math.min(1, S.sickChance(p.stress) * 24),
@@ -358,16 +373,29 @@ export function bizBuy(uid, { typeId, cityId, name }) {
   S.advancePlayer(uid);
   const def = S.BIZ[typeId], city = S.CITY[cityId];
   if (!def || !city) throw new Err('店铺类型或城市无效 / Invalid business or city');
-  const cost = Math.round(def.cost * city.costMult);
-  const p = P(uid);
-  if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
+  const p = P(uid), hour = curHour();
+  if (p.sick_until > hour) throw new Err('生着病没法去选址开店 / You are too ill to go and set up a shop');
+  if (p.trip_until > hour) throw new Err('你正在外地，回来再说 / You are already away');
+  const setup = Math.round(def.cost * city.costMult);
+  const travel = Math.round(city.travelCost || 0);
+  const cost = setup + travel;
+  if (p.cash < cost)
+    throw new Err(travel
+      ? `现金不足：装修 ${S.fmt(setup)} + 往返差旅 ${S.fmt(travel)} = ${S.fmt(cost)} / Need ${S.fmt(cost)} (setup + travel)`
+      : `现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
   p.cash -= cost;
   const nm = String(name || '').trim().slice(0, 24) || `${city.name}${def.name}`;
   db.prepare(`INSERT INTO businesses(user_id,type_id,name,city,city_mult,invested,created_hour,demand,staff,auto_staff)
               VALUES(?,?,?,?,?,?,?,?,?,1)`).run(uid, typeId, nm, cityId, city.revMult, cost, curHour(), 0.9 + Math.random() * 0.2, 2);
+  // 异地开店需要亲自跑一趟：付机票、在外面待几天，这期间不能上班
+  if (city.travelDays > 0) {
+    db.prepare('UPDATE players SET trip_until=?, trip_id=?, trip_relief=1 WHERE user_id=?')
+      .run(hour + city.travelDays * 24, 'biz:' + cityId, uid);
+    ledger(uid, 'trip', -travel, L('led.bizTrip', { city: NM(city), cost: travel, days: city.travelDays }), '✈️');
+  }
   savePlayer(p);
-  ledger(uid, 'biz', -cost, L('led.bizOpen', { name: nm, city: NM(city), type: NM(def), cost }), def.emoji);
-  return { ok: true, cost };
+  ledger(uid, 'biz', -setup, L('led.bizOpen', { name: nm, city: NM(city), type: NM(def), cost: setup }), def.emoji);
+  return { ok: true, cost, setup, travel, travelDays: city.travelDays || 0 };
 }
 
 export function bizAction(uid, { id, action, name, arg }) {
@@ -413,6 +441,14 @@ export function bizAction(uid, { id, action, name, arg }) {
     savePlayer(p);
     ledger(uid, 'biz', value, L('led.bizSell', { name: b.name, value }), '🤝');
     return { ok: true, value };
+  }
+  if (action === 'manager') {
+    const on = arg ? 1 : 0;
+    if (on && b.manager) throw new Err('已经雇了店长 / A manager is already in post');
+    db.prepare('UPDATE businesses SET manager=? WHERE id=?').run(on, b.id);
+    const sal = S.bizRates({ ...b, manager: 1 }, 0, 1).managerSalary;
+    ledger(uid, 'biz', 0, L(on ? 'led.bizManagerHire' : 'led.bizManagerFire', { name: b.name, sal }), '🧑‍💼');
+    return { ok: true };
   }
   if (action === 'allday') {
     if (b.all_day) throw new Err('已经是 24 小时营业 / Already open 24/7');
@@ -635,6 +671,7 @@ export function hustle(uid) {
 
   if (p.sick_until > hour) throw new Err('你正在生病，先把身体养好 / You are ill — recover first');
   if (p.trip_until > hour) throw new Err('你正在旅行中 / You are away on a trip');
+  if (p.off_day === Math.floor(hour / 24)) throw new Err('你今天请假了，好好休息 / You have taken the day off');
   if (p.stress >= S.STRESS_MAX_FOR_OT)
     throw new Err(`精神压力已达 ${Math.round(p.stress)}，实在提不起劲——去旅游散散心吧 / Stress is at ${Math.round(p.stress)} — take a trip before you break`);
   const phase = S.dayPhase(hod);
@@ -644,9 +681,13 @@ export function hustle(uid) {
   if (p.ot_pending > 0 && hour < p.ot_until)
     throw new Err('这一单加班还没干完 / Your current overtime hour is not finished yet');
 
+  const bizAll = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+  const tb = S.timeBudget(bizAll);
   const used = p.ot_day === day ? p.ot_hours : 0;
-  if (used >= S.OVERTIME_MAX_HOURS)
-    throw new Err(`今天已加班 ${S.OVERTIME_MAX_HOURS} 小时，到上限了 / Daily overtime limit (${S.OVERTIME_MAX_HOURS}h) reached`);
+  if (tb.otMax <= 0)
+    throw new Err(`店铺管理已经占满你的时间（每天 ${tb.mgmt.toFixed(1)} 小时），没空加班了 / Managing your businesses takes ${tb.mgmt.toFixed(1)}h a day — no time left`);
+  if (used >= tb.otMax)
+    throw new Err(`今天已加班 ${used} 小时，到上限了 / Daily overtime limit (${tb.otMax}h) reached`);
   if (p.stamina < S.ST_MIN_FOR_OT)
     throw new Err(`体力只剩 ${Math.round(p.stamina)}，太累了干不动，先睡一觉 / Too exhausted (stamina ${Math.round(p.stamina)}) — get some sleep first`);
 
@@ -654,11 +695,23 @@ export function hustle(uid) {
   const stamina = Math.max(0, p.stamina + (night ? S.ST_NIGHT : S.ST_OVERTIME));
   const stress = Math.min(S.STRESS_MAX, p.stress + (night ? S.STRESS_NIGHT : S.STRESS_OT));
   db.prepare(`UPDATE players SET stamina=?, stress=?, ot_pending=?, ot_until=?, ot_hours=?, ot_day=?,
-              hustles=hustles+1, last_hustle=? WHERE user_id=?`)
+              hustles=hustles+1, last_hustle=?, worked_today=1 WHERE user_id=?`)
     .run(stamina, stress, pay, hour + 1, used + 1, day, Date.now(), uid);
   ledger(uid, 'job', 0, L(night ? 'led.otNight' : 'led.otStart', { job: { zh: j.zh, en: j.en }, amt: pay }), j.emoji);
-  return { ok: true, pay, night, otUsed: used + 1, otMax: S.OVERTIME_MAX_HOURS,
+  return { ok: true, pay, night, otUsed: used + 1, otMax: tb.otMax,
            until: hour + 1, stamina, cash: p.cash };
+}
+
+// ── 请假：放自己一天，重置连轴转 ────────────────────────────
+export function dayOff(uid) {
+  S.advancePlayer(uid);
+  const p = P(uid), hour = curHour(), day = Math.floor(hour / 24);
+  if (p.off_day === day) throw new Err('今天已经在休息了 / Already resting today');
+  if (p.trip_until > hour) throw new Err('你正在旅行中 / You are away');
+  db.prepare(`UPDATE players SET off_day=?, work_streak=0, worked_today=0,
+              stress=MAX(0, stress-9), stamina=MIN(100, stamina+18) WHERE user_id=?`).run(day, uid);
+  ledger(uid, 'health', 0, L('led.dayOff'), '🛌');
+  return { ok: true };
 }
 
 // ── 看病 ────────────────────────────────────────────────────
@@ -742,7 +795,7 @@ export function deleteAccount(uid, { password }) {
 export function catalog() {
   const idx = Object.fromEntries(M.allAssets().filter(a => a.kind === 'index').map(a => [a.symbol, a.price]));
   return {
-    biz: BIZ_TYPES, cities: CITIES, regions: REGIONS,
+    biz: BIZ_TYPES, cities: CITIES, regions: REGIONS, cogsRate: S.COGS_RATE,
     items: ITEM_TYPES.map(i => ({ ...i, listPrice: i.index ? i.price * (idx[i.index] || 100) / 100 : i.price })),
     itemCats: ITEM_CATS, priceTiers: S.PRICE_TIERS, titles: S.TITLES, jobs: JOBS,
     regimes: M.REGIMES, hustleCooldown: S.HUSTLE_COOLDOWN_MS,

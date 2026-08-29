@@ -134,6 +134,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/job':         return send(res, 200, API.takeJob(uid, body));
       case '/api/hustle':      return send(res, 200, API.hustle(uid));
       case '/api/treat':       return send(res, 200, API.treat(uid));
+      case '/api/dayoff':      return send(res, 200, API.dayOff(uid));
       case '/api/trip':        return send(res, 200, API.bookTrip(uid, body));
       case '/api/richlist':    return send(res, 200, { list: API.richList(uid) });
       case '/api/overview':    return send(res, 200, API.marketOverview(uid));

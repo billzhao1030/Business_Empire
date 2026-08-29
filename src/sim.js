@@ -2,7 +2,8 @@
 import { db } from './db.js';
 import * as M from './market.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
-         ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours, COST_FIXED, COST_VAR, COST_WAGE } from './catalog-content.js';
+         ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours,
+         COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB } from './catalog-content.js';
 
 const { YEAR_HOURS, MONTH_HOURS, DAY_HOURS } = M;
 
@@ -75,7 +76,11 @@ export const WORK_HOURS_PER_DAY = WORK_END - WORK_START;
 export const OVERTIME_MAX_HOURS = 6;              // 每游戏日最多加班 6 小时
 export const OVERTIME_MULT = 1.6;                 // 加班费倍率
 export const STAMINA_MAX = 100;
-export const ST_SLEEP = 11, ST_SHIFT = -5, ST_OVERTIME = -9, ST_AWAKE = -1.5;
+export const ST_SLEEP = 8.5, ST_SHIFT = -5, ST_OVERTIME = -9, ST_AWAKE = -1.5;
+// 连轴转的代价：连续工作越久，睡眠越不解乏，压力越压不下去
+export const STREAK_FREE_DAYS = 3;          // 前三天不算累
+export function restQuality(streak) { return Math.max(0.42, 1 - 0.075 * Math.max(0, streak - STREAK_FREE_DAYS)); }
+export function streakStress(streak) { return Math.max(0, streak - 4) * 0.055; }   // 每小时
 export const ST_NIGHT = -20;                      // 熬夜加班的体力代价
 export const NIGHT_MULT = 2.2;                    // 夜班津贴
 export const ST_MIN_FOR_OT = 15;                  // 体力低于此值无法加班
@@ -83,7 +88,7 @@ export const ST_MIN_FOR_OT = 15;                  // 体力低于此值无法加
 // ── 精神压力 ────────────────────────────────────────────────
 export const STRESS_MAX = 100;
 export const STRESS_OT = 1.6, STRESS_NIGHT = 3.4;   // 加班 / 熬夜带来的压力
-export const STRESS_SLEEP = -1.4;                   // 睡眠缓解（每日约 -11）
+export const STRESS_SLEEP = -1.15;                  // 睡眠缓解（每日约 -9，且受休息质量折损）
 export const STRESS_DEBT_K = 75;                    // 负债率系数（超出 35% 的部分）
 export const STRESS_BURDEN_K = 42;                  // 月供占收入比系数
 export const LEV_SAFE = 0.35, BURDEN_SAFE = 0.35;   // 安全线以内不产生压力
@@ -135,8 +140,7 @@ export const PRICE_TIERS = [
   { v: 1, zh:'品质溢价', en:'Premium',        descZh:'客单价 +22%，客流下滑，短期利润更高', descEn:'Ticket +22%, traffic slips, higher near-term profit' },
   { v: 2, zh:'奢华定位', en:'Luxury Harvest', descZh:'客单价 +44%，客流大幅萎缩，长期会流失客户', descEn:'Ticket +44%, traffic collapses, customers churn over time' },
 ];
-export const STAFF_CAP_RATIO = 0.55;
-export const WAGE_RATIO = 0.25;
+export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB };
 
 export function bizHours(b) {
   const def = BIZ[b.type_id];
@@ -144,46 +148,64 @@ export function bizHours(b) {
 }
 export function bizOpenNow(b, hod) { return isOpenAt(bizHours(b), hod); }
 
-// 返回「营业时段内」的每小时数据；固定成本另计（24 小时都在烧）
+// 每营业小时的经营数据。房租等固定成本 24 小时都在烧，单独计。
 export function bizRates(b, pb = 0, prosp = 1) {
   const def = BIZ[b.type_id], city = CITY[b.city] || CITIES[1];
   if (!def) return { rev: 0, cost: 0, net: 0, potential: 0, capacity: 0, util: 1, recStaff: 0 };
   const tier = b.price_tier || 0;
   const priceMult = 1 + 0.22 * tier;
   const volumeMult = 1 - 0.15 * tier;
-  const lvR = levelRevMult(b.level), lvC = levelCostMult(b.level);
+  const lvR = levelRevMult(b.level), lvC = Math.pow(1.25, b.level - 1);   // 规模越大，场地越大、房租越贵
   const condFactor = 0.5 + 0.5 * b.condition;
 
   const baseRev = def.rev * city.revMult;
   const scale = lvR * (1 + 0.10 * b.marketing) * (1 + pb) * prosp;
   const volume = baseRev * scale * volumeMult * b.demand * condFactor;
   const potential = volume * priceMult;
-  const capPerStaff = baseRev * STAFF_CAP_RATIO * priceMult;
+
+  const wage = def.wage * city.wageMult;                        // 当地工资水平
+  const capPerStaff = wage * REV_PER_WAGE * priceMult;          // 一名员工能支撑的营收
   const staff = Math.max(0, b.staff | 0);
   const capacity = staff * capPerStaff;
   const rev = Math.min(potential, capacity);
   const util = potential > 0 ? Math.min(1, capacity / potential) : 1;
   const recStaff = Math.max(1, Math.ceil(potential / Math.max(capPerStaff, 1e-9)));
 
-  const wage = def.opc * city.revMult * COST_WAGE;
-  const wages = staff * wage;                                        // 只在营业时段发生
-  const fixed = def.opc * city.revMult * lvC * COST_FIXED * (1 + 0.06 * b.marketing);   // 24 小时都在烧
-  const varc = def.opc * city.revMult * lvC * COST_VAR * (baseRev > 0 ? rev / (baseRev * lvR * priceMult) : 0);
-  const openCost = (varc * (1 + 0.15 * (1 - b.condition))) + wages;  // 营业时才有
-  const idleCost = fixed * (1 + 0.15 * (1 - b.condition));           // 关门也要付
+  // 营业时才发生：进货成本 + 人工
+  const cogs = rev * COGS_RATE;
+  const wages = staff * wage;
+  const openCost = cogs + wages;
+  // 关门也要付：房租（含营销投放与店长工资）
+  const rentH = def.hourlyRent * city.rentMult * lvC * (1 + 0.10 * b.marketing) * (1 + 0.15 * (1 - b.condition));
+  const managerH = b.manager ? def.managerSalary * city.wageMult / (30 * 24) : 0;
+  const idleCost = rentH + managerH;
+
   const hrs = openHours(bizHours(b));
   const dailyNet = hrs * (rev - openCost) - 24 * idleCost;
-
-  // 改成 24 小时营业能多赚多少（用于给升级定价，保持与全局回本周期一致）
   const extraHrs = 24 - hrs;
   const allDayGainPerHour = extraHrs > 0 ? extraHrs * Math.max(0, rev - openCost) / 24 : 0;
-  const allDayCost = extraHrs > 0 ? Math.round(allDayGainPerHour * def.pay) : null;
+  const allDayCost = extraHrs > 0 ? Math.round(allDayGainPerHour * 24 * def.payDays) : null;
 
   return { rev, cost: openCost + idleCost, net: rev - openCost - idleCost, def, city,
-           potential, capacity, util, recStaff, wage, wages, fixed: idleCost, varc,
+           potential, capacity, util, recStaff, wage, wages, cogs,
+           rent: rentH, managerCost: managerH, fixed: idleCost, varc: cogs,
            openCost, idleCost, hours: bizHours(b), openHrs: hrs, dailyNet, dailyRev: hrs * rev,
+           monthlyRent: def.monthlyRent * city.rentMult * lvC, managerSalary: def.managerSalary * city.wageMult,
+           mgmt: b.manager ? MGMT_WITH_MANAGER : def.mgmt,
            allDayGainPerHour, allDayCost, capPerStaff, priceMult, volumeMult, tier };
 }
+
+// 你的时间：清醒 16 小时，先扣掉所有店铺的管理精力，剩下的才能拿去打工
+export function timeBudget(biz) {
+  let mgmt = 0;
+  for (const b of biz) mgmt += b.manager ? MGMT_WITH_MANAGER : (BIZ[b.type_id]?.mgmt || 0);
+  const free = Math.max(0, AWAKE_HOURS - mgmt);
+  const canJob = mgmt <= MGMT_MAX_WITH_JOB;
+  const shift = canJob ? Math.min(WORK_HOURS_PER_DAY, free) : 0;
+  const otMax = Math.max(0, Math.min(OVERTIME_MAX_HOURS, Math.floor(free - shift)));
+  return { mgmt, free, canJob, shift, otMax };
+}
+
 export function demandTarget(b) {
   const tier = b.price_tier || 0;
   return clamp((1 - 0.16 * tier) * (1 + 0.05 * b.marketing), 0.30, 2.20);
@@ -285,7 +307,8 @@ export function advancePlayer(userId) {
   const prosp = M.cityProsperity();
   const carOwned = items.some(it => ITEM[it.type_id]?.car);
   const job = JOB[p.job_id];
-  const working = !!job && (!job.car || carOwned);
+  const tb = timeBudget(biz);
+  const working = !!job && (!job.car || carOwned) && tb.canJob;
   const sRate = savingsRate(), oRate = overdraftRate();
   let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0;
   // 实业的日净利估算（用于衡量月供负担）
@@ -296,7 +319,8 @@ export function advancePlayer(userId) {
     // ── 作息：体力随睡眠恢复、随清醒与工作消耗 ──
     const hod = h % DAY_HOURS;
     const phase = dayPhase(hod);
-    p.stamina += phase === 'sleep' ? ST_SLEEP : ST_AWAKE;
+    const rq = restQuality(p.work_streak);
+    p.stamina += phase === 'sleep' ? ST_SLEEP * rq : ST_AWAKE;
 
     // ── 生病 / 旅游：这两种状态下没法上班 ──
     const sick = p.sick_until > h;
@@ -314,15 +338,27 @@ export function advancePlayer(userId) {
         p.stamina = clamp(p.stamina + tp.stamina, 0, STAMINA_MAX);
         ledger.push([h, 'trip', 0, L('led.tripBack', { trip: { zh: tp.zh, en: tp.en }, relief: Math.round(tp.relief * (p.trip_relief || 1)) }), tp.emoji]);
       }
-      p.trip_id = ''; p.trip_relief = 1;
+      p.trip_id = ''; p.trip_relief = 1; p.work_streak = 0;
     }
 
-    // ── 正常班（09:00–17:00，共 8 小时）──
-    if (working && phase === 'shift' && !sick && !traveling) {
+    // ── 连续工作天数：跨日时结算 ──
+    const dayIdx = Math.floor(h / DAY_HOURS);
+    if (p.streak_day !== dayIdx) {
+      if (p.streak_day >= 0) {
+        if (p.worked_today) p.work_streak += 1;
+        else { if (p.work_streak >= 2) p.stress = clamp(p.stress - 6, 0, STRESS_MAX); p.work_streak = 0; }
+      }
+      p.streak_day = dayIdx; p.worked_today = 0;
+    }
+    const onLeave = p.off_day === dayIdx;                 // 今天请假
+
+    // ── 正常班：可上工时长会被店铺管理精力挤占 ──
+    const shiftHod = hod - WORK_START;
+    if (working && !onLeave && phase === 'shift' && shiftHod < tb.shift && !sick && !traveling) {
       const eff = efficiency(p.stamina) * stressFactor(p.stress);
       const pay = job.wage * eff;
       p.cash += pay; p.job_exp += 1; p.job_hours += 1; p.job_income += pay; dayJob += pay;
-      p.stamina += ST_SHIFT;
+      p.stamina += ST_SHIFT; p.worked_today = 1;
     }
     // ── 加班结算：接单时已锁定报酬，这一工时在游戏里真正过完才到账 ──
     if (p.ot_pending > 0 && h >= p.ot_until) {
@@ -333,7 +369,8 @@ export function advancePlayer(userId) {
     p.stamina = clamp(p.stamina, 0, STAMINA_MAX);
 
     // ── 精神压力：负债、加班、透支推高；睡眠、旅游、低负债缓解 ──
-    let dStress = phase === 'sleep' ? STRESS_SLEEP : 0;
+    let dStress = phase === 'sleep' ? STRESS_SLEEP * rq : 0;
+    dStress += streakStress(p.work_streak);              // 连轴转本身就是压力源
     if (traveling) dStress -= 1.2;                       // 旅途中持续放松
     const debtNow = loans.reduce((a, l) => a + (l.status === 'active' ? l.balance : 0), 0);
     if (debtNow > 0) {
@@ -517,11 +554,13 @@ export function advancePlayer(userId) {
     db.prepare(`UPDATE players SET cash=?,bank=?,credit_score=?,last_hour=?,prestige=?,month_profit=?,
                 total_tax=?,total_dividend=?,missed_pay=?,peak_networth=?,bankrupt=?,
                 job_exp=?,job_hours=?,job_income=?,stamina=?,ot_pending=?,
-                stress=?,sick_until=?,sick_id=?,sick_treated=?,trip_until=?,trip_id=? WHERE user_id=?`)
+                stress=?,sick_until=?,sick_id=?,sick_treated=?,trip_until=?,trip_id=?,
+                work_streak=?,worked_today=?,streak_day=? WHERE user_id=?`)
       .run(p.cash, p.bank, p.credit_score, p.last_hour, p.prestige, p.month_profit,
            p.total_tax, p.total_dividend, p.missed_pay, p.peak_networth, p.bankrupt,
            p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending,
-           p.stress, p.sick_until, p.sick_id, p.sick_treated, p.trip_until, p.trip_id, userId);
+           p.stress, p.sick_until, p.sick_id, p.sick_treated, p.trip_until, p.trip_id,
+           p.work_streak, p.worked_today, p.streak_day, userId);
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);
