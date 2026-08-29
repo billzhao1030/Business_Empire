@@ -21,8 +21,22 @@ M.loadSpeed();
 M.bootTime();
 M.initAssets();
 M.loadSectorMom();
+{
+  // 启动时先收住离线的口子，再补算行情。关掉一整天回来，世界也只往前 7 天。
+  const skipped = M.clampOfflineGap();
+  if (skipped > 0) console.log(`\n  ⏳  离线超过 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，跳过 ${Math.round(skipped / 24)} 天不予模拟`);
+}
 M.advanceMarket();
-setInterval(() => { try { M.advanceMarket(); } catch (e) { console.error('[tick]', e.message); } }, 5_000);
+// 每次推进行情之前先把离线的口子收住：进程可能被挂起（合上笔记本），
+// 也可能整个关掉重开，两种情况都走这里。
+function tickWorld() {
+  const skipped = M.clampOfflineGap();
+  if (skipped > 0) {
+    console.log(`  ⏳  离线超过 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，跳过 ${Math.round(skipped / 24)} 天不予模拟`);
+  }
+  M.advanceMarket();
+}
+setInterval(() => { try { tickWorld(); } catch (e) { console.error('[tick]', e.message); } }, 5_000);
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
