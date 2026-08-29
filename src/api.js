@@ -6,6 +6,7 @@ import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 import * as CO from './company.js';
+import { RIVALS_GEN } from './catalog-rivals-gen.js';
 import { cityOf, cityEconomy, cityTravel, popText, LEGACY_CITIES } from './citybiz.js';
 import { FOUND_FEE, FOUND_MIN_SHOPS, INIT_SHARES, ROUNDS, ROUND, STAGES, STAGE,
          CO_SECTORS, CO_SECTOR, DIVIDEND_TAX, MIN_DIVIDEND, ILLIQUID,
@@ -94,7 +95,8 @@ export function getState(uid) {
     const r = S.bizRates(b, pbonus), def = S.BIZ[b.type_id], city = S.bizCity(b);
     return {
       id: b.id, typeId: b.type_id, name: b.name, emoji: def?.emoji, type: NM(def), cat: def?.cat, catEn: def?.catEn,
-      city: NM(city), cityId: b.city, level: b.level, marketing: b.marketing,
+      city: NM(city), cityId: b.city, cityFlag: city.flag || '', level: b.level, marketing: b.marketing,
+      companyId: b.company_id || 0,
       demand: b.demand, condition: b.condition, invested: b.invested, lifetime: b.lifetime_profit,
       revPerHour: r.rev, costPerHour: r.cost, netPerHour: r.net,
       potential: r.potential, capacity: r.capacity, util: r.util, recStaff: r.recStaff,
@@ -452,48 +454,64 @@ export function bizBuy(uid, { typeId, cityId, name, useCompany, coId }) {
   return { ok: true, cost, setup, travel, travelDays: city.travelDays || 0, company: !!co };
 }
 
+// 店铺归了公司，钱就该公司出、卖了也该公司收。
+// 扩建、翻新、营销、改 24 小时——凡是这家店的开销，都走公司账户。
+function purseFor(b, uid, p) {
+  const co = b.company_id ? CO.companyOf(uid, b.company_id) : null;
+  if (!co) return {
+    cash: p.cash, who: null, tag: { zh: '', en: '' },
+    short: amt => `现金不足，需要 ${S.fmt(amt)} / Need ${S.fmt(amt)}`,
+    pay: amt => { p.cash -= amt; savePlayer(p); },
+    take: amt => { p.cash += amt; savePlayer(p); },
+  };
+  return {
+    cash: co.cash, who: co.name,
+    short: amt => `「${co.name}」账上不够，需要 ${S.fmt(amt)}，现有 ${S.fmt(co.cash)} / ${co.name} needs ${S.fmt(amt)}, has ${S.fmt(co.cash)}`,
+    tag: { zh: co.name + '：', en: co.name + ' — ' },
+    pay: amt => db.prepare('UPDATE companies SET cash=cash-? WHERE id=?').run(amt, co.id),
+    take: amt => db.prepare('UPDATE companies SET cash=cash+? WHERE id=?').run(amt, co.id),
+  };
+}
+
 export function bizAction(uid, { id, action, name, arg }) {
   S.advancePlayer(uid);
   const b = db.prepare('SELECT * FROM businesses WHERE id=? AND user_id=?').get(num(id, 1), uid);
   if (!b) throw new Err('店铺不存在 / Business not found', 404);
   const def = S.BIZ[b.type_id], city = S.bizCity(b), p = P(uid);
+  const purse = purseFor(b, uid, p);
 
   if (action === 'upgrade') {
     if (b.level >= S.MAX_LEVEL) throw new Err('已达最高等级 / Max level reached');
     const cost = S.upgradeCost(def, city, b.level);
-    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
-    p.cash -= cost;
+    if (purse.cash < cost) throw new Err(purse.short(cost));
+    purse.pay(cost);
     db.prepare('UPDATE businesses SET level=level+1, invested=invested+? WHERE id=?').run(cost, b.id);
-    savePlayer(p);
-    ledger(uid, 'biz', -cost, L('led.bizUpgrade', { name: b.name, level: b.level + 1, cost }), '🏗️');
+    ledger(uid, 'biz', -cost, L('led.bizUpgrade', { by: purse.tag, name: b.name, level: b.level + 1, cost }), '🏗️');
     return { ok: true, cost, level: b.level + 1 };
   }
   if (action === 'marketing') {
     if (b.marketing >= S.MAX_MARKETING) throw new Err('营销投入已达上限 / Marketing maxed out');
     const cost = S.marketingCost(def, city, b.marketing);
-    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
-    p.cash -= cost;
+    if (purse.cash < cost) throw new Err(purse.short(cost));
+    purse.pay(cost);
     db.prepare('UPDATE businesses SET marketing=marketing+1, invested=invested+? WHERE id=?').run(Math.round(cost * 0.4), b.id);
-    savePlayer(p);
-    ledger(uid, 'biz', -cost, L('led.bizMarketing', { name: b.name, level: b.marketing + 1, cost }), '📣');
+    ledger(uid, 'biz', -cost, L('led.bizMarketing', { by: purse.tag, name: b.name, level: b.marketing + 1, cost }), '📣');
     return { ok: true, cost };
   }
   if (action === 'repair') {
     const cost = Math.round(def.cost * city.costMult * 0.22 * (1 - b.condition));
     if (cost <= 0) throw new Err('店铺状况良好 / Already in good condition');
-    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
-    p.cash -= cost;
+    if (purse.cash < cost) throw new Err(purse.short(cost));
+    purse.pay(cost);
     db.prepare('UPDATE businesses SET condition=1 WHERE id=?').run(b.id);
-    savePlayer(p);
-    ledger(uid, 'biz', -cost, L('led.bizRepair', { name: b.name, cost }), '🧹');
+    ledger(uid, 'biz', -cost, L('led.bizRepair', { by: purse.tag, name: b.name, cost }), '🧹');
     return { ok: true, cost };
   }
   if (action === 'sell') {
     const value = Math.round(b.invested * 0.65 * (0.6 + 0.4 * b.condition));
-    p.cash += value;
+    purse.take(value);                          // 公司的店卖了，钱回公司账上
     db.prepare('DELETE FROM businesses WHERE id=?').run(b.id);
-    savePlayer(p);
-    ledger(uid, 'biz', value, L('led.bizSell', { name: b.name, value }), '🤝');
+    ledger(uid, 'biz', value, L('led.bizSell', { by: purse.tag, name: b.name, value }), '🤝');
     return { ok: true, value };
   }
   if (action === 'manager') {
@@ -509,11 +527,10 @@ export function bizAction(uid, { id, action, name, arg }) {
     const pbonus2 = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
     const cost = S.bizRates(b, pbonus2, 1).allDayCost;
     if (!cost) throw new Err('该店铺已是全天营业 / Already open 24/7');
-    if (p.cash < cost) throw new Err(`现金不足，需要 ${S.fmt(cost)} / Need ${S.fmt(cost)}`);
-    p.cash -= cost;
+    if (purse.cash < cost) throw new Err(purse.short(cost));
+    purse.pay(cost);
     db.prepare('UPDATE businesses SET all_day=1, invested=invested+? WHERE id=?').run(cost, b.id);
-    savePlayer(p);
-    ledger(uid, 'biz', -cost, L('led.bizAllDay', { name: b.name, cost }), '🌃');
+    ledger(uid, 'biz', -cost, L('led.bizAllDay', { by: purse.tag, name: b.name, cost }), '🌃');
     return { ok: true, cost };
   }
   if (action === 'price') {
@@ -1263,24 +1280,81 @@ export function setSpeed(uid, { ms }) {
 }
 
 // ── 富豪榜：财富与游戏内公司股价实时联动 ────────────────────
+const ALL_RIVALS = [...RIVALS, ...RIVALS_GEN];
+
 export function richList(uid) {
   const live = new Map(M.allAssets().map(a => [a.symbol, a]));
   const mine = new Map(db.prepare('SELECT asset_id,qty FROM holdings WHERE user_id=? AND qty>0').all(uid)
     .map(h => { const a = M.assetById(h.asset_id); return [a?.symbol, h.qty / (a?.shares || 1)]; }));
-  const list = RIVALS.map(r => {
+  const list = ALL_RIVALS.map(r => {
     const a = r.symbol ? live.get(r.symbol) : null;
     const cap = a ? a.price * a.shares : 0;
-    const diluted = Math.max(0, 1 - (mine.get(r.symbol) || 0));   // 你买走的部分不再属于他
+    const yours = mine.get(r.symbol) || 0;
+    const diluted = Math.max(0, 1 - yours);   // 你买走的部分不再属于他
     const equity = cap * r.stake * diluted;
     return { id: r.id, zh: r.zh, en: r.en, emoji: r.emoji, bio: r.bio,
-      symbol: r.symbol, company: a ? { zh: a.zh, en: a.name } : null,
-      stake: r.stake, equity, other: r.other, value: equity + r.other, npc: true };
+      symbol: r.symbol, company: a ? { zh: a.zh, en: a.name } : null, sector: a ? a.sector : null,
+      stake: r.stake, yourStake: yours, takenOver: yours >= 0.999,
+      equity, other: r.other, value: equity + r.other, npc: true };
   });
   const me = S.computeNetWorth(uid);
   const p = P(uid);
-  list.push({ id: 'me', zh: p.nickname, en: p.nickname, emoji: S.titleOf(me.total).icon, value: me.total, npc: false });
+  list.push({ id: 'me', zh: p.nickname, en: p.nickname, emoji: S.titleOf(me.total).icon,
+    value: me.total, npc: false, companies: (me.companies || []).length });
   list.sort((a, b) => b.value - a.value);
-  return list.map((x, i) => ({ ...x, rank: i + 1 }));
+  const ranked = list.map((x, i) => ({ ...x, rank: i + 1 }));
+
+  // ── 你对这个世界做了什么 ──
+  const share = CO.playerSectorScale();
+  const caps = new Map();
+  for (const a of M.allAssets()) if (a.kind === 'stock') caps.set(a.sector, (caps.get(a.sector) || 0) + a.price * a.shares);
+  const pressure = [];
+  for (const [sec, e] of share) {
+    const own = e.players.filter(x => x.userId === uid);
+    if (!own.length) continue;
+    const cap = caps.get(sec) || 0;
+    const sh = e.scale / (e.scale + cap);
+    if (sh < CO.EROSION_MIN) continue;
+    pressure.push({ sector: sec, share: sh, annualDrag: sh * CO.EROSION_K,
+      removed: CO.erosionTotal(sec), names: own.map(x => x.name),
+      hitting: ranked.filter(r => r.sector === sec && r.npc).slice(0, 3).map(r => ({ zh: r.zh, en: r.en })) });
+  }
+  const stakes = ranked.filter(r => r.npc && r.yourStake > 0.001)
+    .map(r => ({ zh: r.zh, en: r.en, symbol: r.symbol, company: r.company,
+      yourStake: r.yourStake, takenOver: r.takenOver,
+      cost: r.stake * (live.get(r.symbol)?.price || 0) * (live.get(r.symbol)?.shares || 0) * r.yourStake }))
+    .sort((a, b) => b.yourStake - a.yourStake).slice(0, 12);
+
+  return { list: ranked, total: ranked.length,
+    impact: { pressure, stakes, erosionK: CO.EROSION_K, minShare: CO.EROSION_MIN } };
+}
+
+// ── 公司榜：全部上市公司 + 你自己的（含未上市，按估值折算）──
+export function companyBoard(uid) {
+  const rows = [];
+  for (const a of M.allAssets()) {
+    if (a.kind !== 'stock') continue;
+    const own = a.link && a.link.startsWith('co:') ? Number(a.link.slice(3)) : 0;
+    rows.push({ symbol: a.symbol, zh: a.zh, en: a.name, sector: a.sector,
+      cap: a.price * a.shares, price: a.price, change: a.prev_close ? a.price / a.prev_close - 1 : 0,
+      pe: a.eps > 0 ? a.price / a.eps : null, listed: true, coId: own, mine: false });
+  }
+  // 自己名下还没上市的公司，按估值排进来
+  const p = P(uid);
+  const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige), prosp = M.cityProsperity();
+  const myCoIds = new Set();
+  for (const co of CO.companiesOf(uid)) {
+    myCoIds.add(co.id);
+    if (co.stage === 'public') continue;
+    const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, co.id);
+    const v = CO.valuate(co, shops, pb, prosp, curHour());
+    rows.push({ symbol: co.ticker, zh: co.name, en: co.name_en || co.name,
+      sector: CO_SECTOR[co.sector]?.zh || co.sector, cap: v.value, price: null, change: 0,
+      pe: v.annual > 0 ? v.value / v.annual : null, listed: false, coId: co.id, mine: true });
+  }
+  for (const r of rows) if (r.coId && myCoIds.has(r.coId)) r.mine = true;
+  rows.sort((a, b) => b.cap - a.cap);
+  return { rows: rows.map((r, i) => ({ ...r, rank: i + 1 })), total: rows.length };
 }
 
 // ── 账号管理 ───────────────────────────────────────────────

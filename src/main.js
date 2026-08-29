@@ -38,6 +38,7 @@ function tickWorld() {
   }
   M.advanceMarket();
   CO.syncPublicFundamentals();   // 上市公司的股价要围着自己的经营基本面转
+  CO.applyMarketShare();         // 玩家的连锁做大了，同赛道的上市公司要让出份额
 }
 setInterval(() => { try { tickWorld(); } catch (e) { console.error('[tick]', e.message); } }, 5_000);
 
@@ -173,7 +174,8 @@ const server = http.createServer(async (req, res) => {
       case '/api/speed':       return send(res, 200, API.setSpeed(uid, body));
       case '/api/birthplace':  return send(res, 200, API.setBirthplace(uid, body));
       case '/api/trip':        return send(res, 200, API.bookTrip(uid, body));
-      case '/api/richlist':    return send(res, 200, { list: API.richList(uid) });
+      case '/api/richlist':    return send(res, 200, API.richList(uid));
+      case '/api/companyboard':return send(res, 200, API.companyBoard(uid));
       case '/api/overview':    return send(res, 200, API.marketOverview(uid));
       case '/api/account/delete': {
         const r = API.deleteAccount(uid, body);

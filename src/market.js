@@ -500,6 +500,12 @@ export function applyImpact(assetId, signedShares) {
 export function allAssets() { return assets(); }
 // 板块热度：创业公司的估值倍数也跟着自己赛道的轮动走
 export function sectorMomentum(sector) { return sectorMom[sector] || 0; }
+export { getMeta, setMeta };
+// 让引擎之外的模块也能往新闻里写一条（玩家挤压行业时用）
+export function pushNews(scope, target, headline, impact = 0) {
+  db.prepare('INSERT INTO news(hour,scope,target,headline,impact) VALUES(?,?,?,?,?)')
+    .run(currentGameHour(), scope, target, JSON.stringify(headline), impact);
+}
 export function loadSectorMom() { try { sectorMom = JSON.parse(getMeta('sector_mom', '{}')); } catch { sectorMom = {}; } }
 export function loadRumors() {
   try { catalyst = JSON.parse(getMeta('catalyst', 'null')); } catch { catalyst = null; }

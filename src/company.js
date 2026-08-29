@@ -241,6 +241,103 @@ export function syncPublicFundamentals() {
   M.invalidate();
 }
 
+// ── 市场份额：你做大了，别人就得让出位置 ────────────────────
+// 你的连锁开到一定规模，它抢的就是同一个赛道里那些上市公司的生意。
+// 折算方式：把你的年营收按典型的市销率折成一个「等效市值」，
+// 和该板块所有上市公司的总市值比，得出你占了多大份额；
+// 份额越高，那个板块的内在价值被侵蚀得越快。
+export const PS_MULTIPLE = 3;          // 年营收 → 等效市值
+export const EROSION_K = 0.55;         // 拿到 100% 份额时，对手每年掉多少内在价值
+export const EROSION_MIN = 0.004;      // 份额低于这个数就当没有影响
+const HOURS_PER_YEAR_E = 365 * 24;
+
+// 玩家在各个板块的等效规模（按 assets 里的板块名归类）
+export function playerSectorScale() {
+  const rows = db.prepare('SELECT * FROM companies').all();
+  if (!rows.length) return new Map();
+  const prosp = M.cityProsperity();
+  const out = new Map();               // sector → { scale, byUser: Map(uid → {scale, name}) }
+  for (const co of rows) {
+    const sec = CO_SECTOR_MAP[co.sector] || '日用消费';
+    const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(co.user_id, co.id);
+    if (!shops.length) continue;
+    const v = valuate(co, shops, prestigeBonusOf(co.user_id), prosp, M.currentGameHour());
+    const scale = Math.max(0, v.annualRev) * PS_MULTIPLE;
+    if (scale <= 0) continue;
+    const e = out.get(sec) || { scale: 0, players: [] };
+    e.scale += scale;
+    e.players.push({ userId: co.user_id, coId: co.id, name: co.name, scale });
+    out.set(sec, e);
+  }
+  return out;
+}
+
+// 每次世界结算时调用：把份额换算成对手内在价值的持续下压
+export function applyMarketShare() {
+  const mine = playerSectorShareGuard();
+  if (!mine) return [];
+  const { scales, hours } = mine;
+  if (!scales.size || hours <= 0) return [];
+  const caps = new Map();
+  for (const a of M.allAssets()) {
+    if (a.kind !== 'stock') continue;
+    caps.set(a.sector, (caps.get(a.sector) || 0) + a.price * a.shares);
+  }
+  const upd = db.prepare('UPDATE assets SET fair=? WHERE id=?');
+  const hits = [];
+  for (const [sec, e] of scales) {
+    const cap = caps.get(sec) || 0;
+    if (cap <= 0) continue;
+    const share = e.scale / (e.scale + cap);
+    if (share < EROSION_MIN) continue;
+    // 按真正过去了多少游戏小时来算。行情结算是每 5 秒现实时间跑一次，
+    // 但一次可能补上几十上百个游戏小时，只扣一小时的份是不对的。
+    const drag = -share * EROSION_K / HOURS_PER_YEAR_E * hours;
+    let removed = 0;
+    for (const a of M.allAssets()) {
+      if (a.kind !== 'stock' || a.sector !== sec) continue;
+      if (a.link && a.link.startsWith('co:')) continue;    // 玩家自己上市的公司不侵蚀自己
+      const was = a.fair;
+      a.fair = Math.max(1e-6, a.fair * Math.exp(drag));
+      removed += (was - a.fair) * a.shares;                // 从对手手里拿走了多少市值
+      upd.run(a.fair, a.id);
+    }
+    // 累计下来，玩家才看得见自己到底动了别人多少 —— 单看每小时那点变化是看不出来的
+    const key = 'erosion:' + sec;
+    const total = Number(M.getMeta(key, '0')) + removed;
+    M.setMeta(key, String(total));
+
+    // 跨过门槛时，世界会注意到你
+    const marks = [0.01, 0.05, 0.12, 0.25, 0.45];
+    const mk = 'erosion_mark:' + sec;
+    const seen = Number(M.getMeta(mk, '0'));
+    const now = marks.filter(x => share >= x).length;
+    if (now > seen) {
+      M.setMeta(mk, String(now));
+      const who = e.players[0]?.name || '';
+      M.pushNews('sector', sec, { zh: `${who} 在${sec}赛道的份额已经到了 ${(share * 100).toFixed(0)}%，行业格局正在改写`,
+        en: `${who} now holds ${(share * 100).toFixed(0)}% of ${sec} — the incumbents are being rewritten` },
+        -share * 0.25);
+    }
+    hits.push({ sector: sec, share, annualDrag: share * EROSION_K, players: e.players, removed: total });
+  }
+  if (hits.length) M.invalidate();
+  return hits;
+}
+
+// 距上次结算过去了多少游戏小时；顺便把玩家的板块规模一起取回来
+function playerSectorShareGuard() {
+  const now = M.currentGameHour();
+  const last = Number(M.getMeta('erosion_hour', '0'));
+  const hours = last ? Math.min(24 * 30, now - last) : 1;   // 首次只算一小时
+  if (hours <= 0) return null;
+  M.setMeta('erosion_hour', String(now));
+  return { scales: playerSectorScale(), hours };
+}
+
+// 你从某个板块的对手手里累计拿走了多少市值
+export function erosionTotal(sector) { return Number(M.getMeta('erosion:' + sector, '0')); }
+
 export { IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT };
 
 export { FOUND_FEE, INIT_SHARES, ROUNDS, ROUND, STAGE, CO_SECTOR, ILLIQUID };
