@@ -236,6 +236,13 @@ addColumn('players','work_streak',    'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','worked_today',   'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','streak_day',     'INTEGER NOT NULL DEFAULT -1');
 addColumn('players','off_day',        'INTEGER NOT NULL DEFAULT -1');
+addColumn('players','meal_id',        "TEXT    NOT NULL DEFAULT 'canteen'");
+addColumn('players','home_id',        "TEXT    NOT NULL DEFAULT 'shared'");
+addColumn('players','food_spent',     'REAL    NOT NULL DEFAULT 0');
+addColumn('players','rent_spent',     'REAL    NOT NULL DEFAULT 0');
+addColumn('players','lotto_spent',    'REAL    NOT NULL DEFAULT 0');
+addColumn('players','lotto_won',      'REAL    NOT NULL DEFAULT 0');
+addColumn('players','lotto_tickets',  'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses','all_day',     'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses','manager',     'INTEGER NOT NULL DEFAULT 0');
 
