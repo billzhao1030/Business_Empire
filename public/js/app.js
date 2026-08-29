@@ -176,7 +176,7 @@ export const app = {
       this.paintTop();
       if (this.state.offline && !prevOffline) showOfflineReport(this.state.offline, this);
       // 只做增量更新。绝不在后台整页重绘——那会把用户正在进行的操作结果冲掉
-      if (full) this.renderView();
+      if (full) this.renderView(true);
       else if (this.viewObj?.patch && !this.busy) this.viewObj.patch(this);
       this.setOnline(true);
       if (this.build && this.build !== this.state.build) {
@@ -236,12 +236,29 @@ export const app = {
     this.renderView();
   },
 
-  renderView() {
+  // 记住每个页面滚到哪儿了。以前 _scroll 只有读没有写，所以任何一次重绘
+  // ——包括在实业页点一下「投放营销」——都会把你弹回页面最顶上。
+  _scroll: {},
+  watchScroll() {
+    const root = $('#view');
+    if (!root || root._scrollWatched) return;
+    root._scrollWatched = true;
+    root.addEventListener('scroll', () => { this._scroll[this.view] = root.scrollTop; }, { passive: true });
+  },
+
+  renderView(keepScroll = false) {
     const v = VIEWS[this.view];
     this.viewObj = v;
     const root = $('#view');
-    root.scrollTop = this._scroll?.[this.view] ?? 0;
-    v.render(root, this);
+    this.watchScroll();
+    // 原地重绘（做完一个动作之后）保持不动；切换页面才回到上次的位置
+    const top = keepScroll ? root.scrollTop : (this._scroll[this.view] ?? 0);
+    const ret = v.render(root, this);
+    const put = () => { root.scrollTop = top; };
+    put();
+    // 视图可能是异步渲染的，等它画完再放一次
+    if (ret && typeof ret.then === 'function') ret.then(put).catch(() => {});
+    else requestAnimationFrame(put);
   },
 
   async act(fn, okMsg) {
@@ -298,7 +315,7 @@ $('#btn-logout').onclick = async () => {
 };
 onLangChange(() => {
   app.paintAuthTexts();
-  if (app.state) { app.paintNav(); app.paintTop(); app.renderView(); }
+  if (app.state) { app.paintNav(); app.paintTop(); app.renderView(true); }
 });
 // 任何未捕获的前端错误都要看得见，而不是「点了没反应」
 window.addEventListener('error', e => {

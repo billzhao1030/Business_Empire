@@ -1,7 +1,7 @@
 // 创业：注册公司、把店铺装进去、看估值、融资、分红
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, int, esc, toast } from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, int, esc, toast, keepScroll} from '../util.js';
 
 let data = null, sector = '服务', picked = null, divAmt = null, fundAmt = null;
 let coId = null, founding = false;      // 当前查看的公司；founding = 正在开新的一家
@@ -277,19 +277,19 @@ export default {
         if (r && r.co) coId = r.co.id;
         founding = false; picked = null;
         data = r && r.has !== undefined ? r : null;
-        await app.refresh(true); this.render(root, app);
+        await app.refresh(true); keepScroll(() => this.render(root, app));
       }
       catch (e) { toast(e.message.split(' / ')[0], 'err'); }
     };
     $$('[data-co]').forEach(b => b.onclick = () => {
-      coId = +b.dataset.co; founding = false; picked = null; data = null; this.render(root, app);
+      coId = +b.dataset.co; founding = false; picked = null; data = null; keepScroll(() => this.render(root, app));
     });
-    $('#co-new') && ($('#co-new').onclick = () => { founding = true; picked = null; this.render(root, app); });
-    $$('[data-sec]').forEach(b => b.onclick = () => { sector = b.dataset.sec; this.render(root, app); });
+    $('#co-new') && ($('#co-new').onclick = () => { founding = true; picked = null; keepScroll(() => this.render(root, app)); });
+    $$('[data-sec]').forEach(b => b.onclick = () => { sector = b.dataset.sec; keepScroll(() => this.render(root, app)); });
     $$('[data-shop]').forEach(b => b.onclick = () => {
       const id = +b.dataset.shop;
       picked.has(id) ? picked.delete(id) : picked.add(id);
-      this.render(root, app);
+      keepScroll(() => this.render(root, app));
     });
     const f = $('#co-found');
     if (f) f.onclick = () => {

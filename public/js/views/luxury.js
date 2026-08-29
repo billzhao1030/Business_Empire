@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, toast, modal, confirmBox, int } from '../util.js';
+import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, toast, modal, confirmBox, int, keepScroll} from '../util.js';
 import { sparkline } from '../chart.js';
 import market from './market.js';
 
@@ -99,7 +99,7 @@ export default {
     </div>`;
 
     $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; regionF = ''; this.render(root, app); });
-    $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; this.render(root, app); });
+    $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; keepScroll(() => this.render(root, app)); });
     $$('[data-buy]').forEach(b => b.onclick = () => app.act(() => api.itemBuy(b.dataset.buy), t('toast.success')).catch(() => {}));
     $$('[data-mort]').forEach(b => b.onclick = () => this.mortgageModal(app, b.dataset.mort));
     $$('[data-rent]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.rent, 'rent'), t('toast.success')).catch(() => {}));
@@ -170,7 +170,7 @@ export default {
     if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
     const root = document.getElementById('view');
     const top = root.scrollTop;
-    this.render(root, app);
+    keepScroll(() => this.render(root, app));
     root.scrollTop = top;
   }
 };

@@ -1,5 +1,5 @@
 import { t, nm } from '../i18n.js';
-import { $, $$, money, cls, esc, renderLedger, gDate, hoursAgo } from '../util.js';
+import { $, $$, money, cls, esc, renderLedger, gDate, hoursAgo, keepScroll} from '../util.js';
 
 let filter = '';
 
@@ -38,7 +38,7 @@ export default {
         </tr>`).join('') : `<tr><td colspan="4"><div class="empty"><p>${t('led.empty')}</p></div></td></tr>`}
       </tbody></table></div>
     </div>`;
-    $$('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; this.render(root, app); });
+    $$('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; keepScroll(() => this.render(root, app)); });
   },
 
   patch(app) {
@@ -48,7 +48,7 @@ export default {
     if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
     const root = document.getElementById('view');
     const top = root.scrollTop;
-    this.render(root, app);
+    keepScroll(() => this.render(root, app));
     root.scrollTop = top;
   }
 };

@@ -1,5 +1,5 @@
 import { t, nm } from '../i18n.js';
-import { $, $$, money, price, pct, pctPlain, qty as fq, cls, esc } from '../util.js';
+import { $, $$, money, price, pct, pctPlain, qty as fq, cls, esc, keepScroll} from '../util.js';
 import { donut } from '../chart.js';
 import market from './market.js';
 
@@ -82,7 +82,7 @@ export default {
     if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
     const root = document.getElementById('view');
     const top = root.scrollTop;
-    this.render(root, app);
+    keepScroll(() => this.render(root, app));
     root.scrollTop = top;
   }
 };

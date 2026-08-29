@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, durText, gDate } from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, durText, gDate, keepScroll} from '../util.js';
 import { WorldMap } from '../worldmap.js';
 
 let data = null, selected = null, hovered = null, nights = 5, cabin = 'economy', hotel = 'std', regionF = '';
@@ -173,9 +173,9 @@ export default {
       if (!id) return;
       selected = id;
       const known = data.places.find(x => x.id === id) || (results || []).find(x => x.id === id);
-      if (known && known.hotel) { picked = known; this.render(root, app); return; }
-      picked = null; this.render(root, app);
-      try { const r = await api.place(id); if (selected === r.id) { picked = r; this.render(root, app); } }
+      if (known && known.hotel) { picked = known; keepScroll(() => this.render(root, app)); return; }
+      picked = null; keepScroll(() => this.render(root, app));
+      try { const r = await api.place(id); if (selected === r.id) { picked = r; keepScroll(() => this.render(root, app)); } }
       catch (e) { toast(e.message.split(' / ')[0], 'err'); }
     };
     this.pick = pick;
@@ -210,7 +210,7 @@ export default {
       m.clampView(); m.draw(); };
     $('#wm-reset').onclick = () => { const m = this.map; m.zoom = 1; m.cx = 0.5; m.cy = 0.5; m.draw(); };
 
-    $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; this.render(root, app); });
+    $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; keepScroll(() => this.render(root, app)); });
     $$('[data-dest]').forEach(b => b.onclick = () => {
       const id = b.dataset.dest;
       const d = list.find(x => x.id === id) || data.places.find(x => x.id === id);
@@ -227,25 +227,25 @@ export default {
         clearTimeout(this._st);
         this._st = setTimeout(async () => {
           const q = query.trim();
-          if (!q) { results = null; this.render(root, app); return; }
+          if (!q) { results = null; keepScroll(() => this.render(root, app)); return; }
           if (searching) return;
           searching = true;
           try { results = (await api.citySearch(q, 40)).results; }
           catch { results = []; }
           finally { searching = false; }
           if (query.trim() === q) {
-            this.render(root, app);
+            keepScroll(() => this.render(root, app));
             const nb = $('#w-search'); if (nb) { nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); }
           }
         }, 220);
       };
     }
     const cl = $('#w-clear');
-    if (cl) cl.onclick = (e) => { e.preventDefault(); query = ''; results = null; this.render(root, app); };
-    $$('[data-cab]').forEach(b => b.onclick = () => { cabin = b.dataset.cab; this.render(root, app); });
-    $$('[data-hot]').forEach(b => b.onclick = () => { hotel = b.dataset.hot; this.render(root, app); });
+    if (cl) cl.onclick = (e) => { e.preventDefault(); query = ''; results = null; keepScroll(() => this.render(root, app)); };
+    $$('[data-cab]').forEach(b => b.onclick = () => { cabin = b.dataset.cab; keepScroll(() => this.render(root, app)); });
+    $$('[data-hot]').forEach(b => b.onclick = () => { hotel = b.dataset.hot; keepScroll(() => this.render(root, app)); });
     const rg = $('#w-nights');
-    if (rg) rg.oninput = () => { nights = +rg.value; this.render(root, app); };
+    if (rg) rg.oninput = () => { nights = +rg.value; keepScroll(() => this.render(root, app)); };
     const go = $('#w-go');
     if (go) go.onclick = async () => {
       go.disabled = true;
@@ -272,7 +272,7 @@ export default {
     data = null;
     const root = document.getElementById('view');
     const top = root.scrollTop;
-    await this.render(root, app);
+    await keepScroll(() => keepScroll(() => this.render(root, app)));
     root.scrollTop = top;
   },
 };

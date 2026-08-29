@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast } from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, keepScroll} from '../util.js';
 
 let timer = null, flightCls = 'economy';
 
@@ -366,7 +366,7 @@ export default {
     });
     $('#day-off') && ($('#day-off').onclick = () => app.act(() => api.dayOff(), t('toast.success')).catch(() => {}));
     $('#do-treat') && ($('#do-treat').onclick = () => app.act(() => api.treat(), t('toast.success')).catch(() => {}));
-    $$('[data-cls]').forEach(b => b.onclick = () => { flightCls = b.dataset.cls; this.render(root, app); });
+    $$('[data-cls]').forEach(b => b.onclick = () => { flightCls = b.dataset.cls; keepScroll(() => this.render(root, app)); });
     $$('[data-trip]').forEach(b => b.onclick = () => app.act(() => api.trip(b.dataset.trip, flightCls), t('toast.success')).catch(() => {}));
     $('#quit-job') && ($('#quit-job').onclick = () => app.act(() => api.takeJob(''), t('toast.success')).catch(() => {}));
     $$('[data-job]').forEach(b => b.onclick = () => app.act(() => api.takeJob(b.dataset.job), t('toast.success')).catch(() => {}));

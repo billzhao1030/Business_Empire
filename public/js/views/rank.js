@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, esc, durText, cls } from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, esc, durText, cls, keepScroll} from '../util.js';
 import market from './market.js';
 
 let tab = 'rich', impact = null, board = null, page = 0;
@@ -78,8 +78,8 @@ export default {
     </div>`}`;
     $$('tr[data-sym]').forEach(tr => tr.onclick = () => market.openDetail(tr.dataset.sym, app));
     $$('[data-rtab]').forEach(b => b.onclick = () => { tab = b.dataset.rtab; this.render(root, app); });
-    $('#rk-prev') && ($('#rk-prev').onclick = () => { page = Math.max(0, page - 1); this.render(root, app); });
-    $('#rk-next') && ($('#rk-next').onclick = () => { page++; this.render(root, app); });
+    $('#rk-prev') && ($('#rk-prev').onclick = () => { page = Math.max(0, page - 1); keepScroll(() => this.render(root, app)); });
+    $('#rk-next') && ($('#rk-next').onclick = () => { page++; keepScroll(() => this.render(root, app)); });
   },
 
   // ── 你对这个世界做了什么 ──────────────────────────────────
