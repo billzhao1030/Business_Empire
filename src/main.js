@@ -22,6 +22,7 @@ M.loadSpeed();
 M.bootTime();
 M.initAssets();
 M.loadSectorMom();
+M.loadRumors();
 {
   // 启动时先收住离线的口子，再补算行情。关掉一整天回来，世界也只往前 7 天。
   const skipped = M.clampOfflineGap();

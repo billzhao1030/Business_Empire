@@ -97,14 +97,36 @@ export default {
         </div></div>
     </div>
 
-    <div class="card"><div class="card-h"><h3>📰 ${t('dash.news')}</h3></div>
-      <div class="card-b" style="padding:6px 18px;max-height:260px;overflow:auto">
-        ${d.news.map(n => `<div class="news-item">
-          <span class="news-time">${gShort(n.hour).split(' ')[0]}</span>
-          <i class="news-dot" style="background:${n.impact >= 0 ? 'var(--up)' : 'var(--down)'}"></i>
-          <span style="flex:1">${newsLine(n.headline)} <span class="dim2 mono" style="font-size:10.5px">${pct(n.impact)}</span></span>
-        </div>`).join('')}
-      </div></div>`;
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="card-h"><h3>📰 ${t('dash.news')}</h3></div>
+        <div class="card-b" style="padding:6px 18px;max-height:280px;overflow:auto">
+          ${d.news.map(n => `<div class="news-item">
+            <span class="news-time">${gShort(n.hour).split(' ')[0]}</span>
+            <i class="news-dot" style="background:${n.impact >= 0 ? 'var(--up)' : 'var(--down)'}"></i>
+            <span style="flex:1">${newsLine(n.headline)} <span class="dim2 mono" style="font-size:10.5px">${pct(n.impact)}</span></span>
+          </div>`).join('')}
+        </div></div>
+
+      <div class="card"><div class="card-h"><h3>🕯️ ${t('mkt.rumors')}</h3>
+        <span class="sub">${t('mkt.rumorsSub')}</span></div>
+        <div class="card-b" style="padding:6px 18px;max-height:280px;overflow:auto">
+          ${(d.rumors || []).length ? d.rumors.map(n => `<div class="news-item rumor clickable" data-rsec="${esc(n.target)}" style="cursor:pointer">
+            <span class="news-time">${gShort(n.hour).split(' ')[0]}</span>
+            <i class="news-dot" style="background:var(--purple)"></i>
+            <span style="flex:1">${newsLine(n.headline)}
+              <span class="tag" style="margin-left:4px">${esc(nm({ zh: n.target, en: n.target }))}</span></span>
+          </div>`).join('')
+          : `<div class="dim2" style="font-size:11.5px;padding:14px 0">${t('mkt.rumorsNone')}</div>`}
+        </div>
+        <div class="card-b" style="padding:0 18px 14px"><div class="dim2" style="font-size:10.5px;line-height:1.7">${t('mkt.rumorsHint')}</div></div>
+      </div>
+    </div>`;
+
+    // 点传闻 → 直接筛出那个板块的股票
+    $$('[data-rsec]').forEach(b => b.onclick = async () => {
+      kind = 'stock'; sectorF = b.dataset.rsec;
+      await this.load(app); this.paint(root, app);
+    });
 
     $$('[data-kind]').forEach(b => b.onclick = async () => {
       kind = b.dataset.kind; sectorF = '';

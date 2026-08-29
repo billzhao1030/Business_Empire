@@ -1336,6 +1336,8 @@ export function marketOverview(uid) {
     index: { ...M.marketIndex(), history: bex ? M.history(bex.id, 300) : [], desc: bex?.desc || '' },
     macro: M.regimeState(),
     news: M.latestNews(20),
+    // 市场传闻：只说迹象，不说方向。看得懂就看得懂。
+    rumors: db.prepare("SELECT hour,target,headline FROM news WHERE scope='rumor' ORDER BY id DESC LIMIT 12").all(),
   };
 }
 

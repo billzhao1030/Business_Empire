@@ -194,6 +194,10 @@ button{cursor:pointer;border:none;background:none}
 .fu{animation:flashUp .8s ease-out} .fd{animation:flashDown .8s ease-out}
 
 /* ══ 分段控件 / 筛选 ══ */
+/* ══ 市场传闻 ══ */
+.news-item.rumor{border-left:2px solid rgba(167,139,250,.45);padding-left:9px;margin-left:-2px}
+.news-item.rumor:hover{background:rgba(167,139,250,.07)}
+
 /* ══ 职位阶梯 ══ */
 .ladder{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
 .ladder .rung{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:12px 11px;position:relative}
