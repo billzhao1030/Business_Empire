@@ -420,6 +420,8 @@ export function applyImpact(assetId, signedShares) {
 }
 
 export function allAssets() { return assets(); }
+// 板块热度：创业公司的估值倍数也跟着自己赛道的轮动走
+export function sectorMomentum(sector) { return sectorMom[sector] || 0; }
 export function loadSectorMom() { try { sectorMom = JSON.parse(getMeta('sector_mom', '{}')); } catch { sectorMom = {}; } }
 // 各城市商圈繁荣度：直接影响该城市所有店铺的营收
 export function cityProsperity() {

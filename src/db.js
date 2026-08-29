@@ -122,6 +122,35 @@ CREATE TABLE IF NOT EXISTS businesses (
 );
 CREATE INDEX IF NOT EXISTS idx_biz_user ON businesses(user_id);
 
+-- 自己创办的公司：装着你的店铺，有估值，能融资，最终能上市
+CREATE TABLE IF NOT EXISTS companies (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  name_en       TEXT NOT NULL DEFAULT '',
+  ticker        TEXT NOT NULL,
+  sector        TEXT NOT NULL DEFAULT '消费',
+  stage         TEXT NOT NULL DEFAULT 'private',
+  founded_hour  INTEGER NOT NULL,
+  cash          REAL NOT NULL DEFAULT 0,          -- 公司账上的钱，和你个人的钱是两笔
+  shares        REAL NOT NULL DEFAULT 1000000,    -- 总股本
+  player_shares REAL NOT NULL DEFAULT 1000000,    -- 创始人持股
+  round_n       INTEGER NOT NULL DEFAULT 0,
+  raised        REAL NOT NULL DEFAULT 0,          -- 累计融资额
+  last_val      REAL NOT NULL DEFAULT 0,
+  peak_val      REAL NOT NULL DEFAULT 0,
+  round_val     REAL NOT NULL DEFAULT 0,          -- 上一轮的投后估值
+  rate_fast     REAL NOT NULL DEFAULT 0,          -- 利润的快线（5 天半衰）
+  rate_slow     REAL NOT NULL DEFAULT 0,          -- 利润的慢线（30 天半衰）
+  growth        REAL NOT NULL DEFAULT 0,          -- 年化增长率
+  lifetime_profit REAL NOT NULL DEFAULT 0,
+  dividends_paid  REAL NOT NULL DEFAULT 0,
+  asset_id      INTEGER NOT NULL DEFAULT 0,       -- 上市后对应 assets.id
+  ipo_hour      INTEGER NOT NULL DEFAULT 0,
+  ipo_price     REAL NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_co_user ON companies(user_id);
+
 -- 奢侈品 / 房产 / 收藏
 CREATE TABLE IF NOT EXISTS items (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,6 +241,7 @@ addColumn('businesses', 'staff',       'INTEGER NOT NULL DEFAULT 2');
 addColumn('businesses', 'auto_staff',  'INTEGER NOT NULL DEFAULT 1');
 addColumn('businesses', 'auto_repair', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses', 'understaffed','REAL    NOT NULL DEFAULT 0');
+addColumn('businesses', 'company_id', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('items', 'region',    "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'index_sym', "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'units',     'REAL NOT NULL DEFAULT 0');

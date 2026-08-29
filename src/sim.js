@@ -1,5 +1,6 @@
 // 玩家经济引擎：实业经营、银行利息、股息、税收、贷款/房贷、房产指数、随机事件
 import { db } from './db.js';
+import { stepGrowth, valuate, stakeValue, companyOf } from './company.js';
 import * as M from './market.js';
 import { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
@@ -81,32 +82,39 @@ export const STAMINA_MAX = 100;
 export const ST_SLEEP = 8.5, ST_SHIFT = -5, ST_OVERTIME = -9, ST_AWAKE = -1.5;
 // 连轴转的代价：连续工作越久，睡眠越不解乏，压力越压不下去
 export const STREAK_FREE_DAYS = 3;          // 前三天不算累
-export function restQuality(streak) { return Math.max(0.50, 1 - 0.060 * Math.max(0, streak - STREAK_FREE_DAYS)); }
-export function streakStress(streak) { return Math.max(0, streak - 6) * 0.032; }   // 每小时
+export function restQuality(streak) { return Math.max(0.58, 1 - 0.055 * Math.max(0, streak - STREAK_FREE_DAYS)); }
+// 连轴转的压力有上限：一直不休息会难受，但不会无限往上叠到崩溃
+export function streakStress(streak) { return Math.min(0.30, Math.max(0, streak - 6) * 0.022); }   // 每小时
 export const ST_NIGHT = -20;                      // 熬夜加班的体力代价
 export const NIGHT_MULT = 2.2;                    // 夜班津贴
 export const ST_MIN_FOR_OT = 15;                  // 体力低于此值无法加班
 
 // ── 精神压力 ────────────────────────────────────────────────
 export const STRESS_MAX = 100;
-export const STRESS_OT = 1.6, STRESS_NIGHT = 3.4;   // 加班 / 熬夜带来的压力
-export const STRESS_SLEEP = -1.15;                  // 睡眠缓解（每日约 -9，且受休息质量折损）
-export const STRESS_DEBT_K = 75;                    // 负债率系数（超出 35% 的部分）
-export const STRESS_BURDEN_K = 42;                  // 月供占收入比系数
+export const STRESS_OT = 1.25, STRESS_NIGHT = 2.6;  // 加班 / 熬夜带来的压力
+export const STRESS_SLEEP = -1.25;                  // 睡眠缓解（每日约 -10，且受休息质量折损）
+// 负债和月供是压力源，但要有天花板：背着房贷过日子是常态，不是精神崩溃。
+export const STRESS_DEBT_K = 26;                    // 负债率系数（超出 35% 的部分）
+export const STRESS_DEBT_CAP = 0.38;                // 每小时最多贡献这么多
+export const STRESS_BURDEN_K = 20;                  // 月供占收入比系数
+export const STRESS_BURDEN_CAP = 0.45;
+// 越紧绷，一觉睡下去回落得越多。有了这一项压力才会收敛到一个水平，
+// 而不是只要压力源不断就一路涨到 100 然后卡在那儿。
+export const STRESS_RELIEF_SCALE = 45;
 export const LEV_SAFE = 0.35, BURDEN_SAFE = 0.35;   // 安全线以内不产生压力
-export const STRESS_MAX_FOR_OT = 78;                // 压力过高时干不动加班
-export const SICK_FLOOR = 55;                       // 低于此压力不会生病
+export const STRESS_MAX_FOR_OT = 85;                // 压力过高时干不动加班
+export const SICK_FLOOR = 62;                       // 低于此压力不会生病
 export { ILLNESSES, TRIPS, FLIGHT_CLASSES };
 export const ILL = Object.fromEntries(ILLNESSES.map(i => [i.id, i]));
 export const TRIP = Object.fromEntries(TRIPS.map(t => [t.id, t]));
 
 // 压力对产出的折损：50 以下无感，往上线性衰减到 0.7
 export function stressFactor(stress) {
-  return stress <= 50 ? 1 : Math.max(0.7, 1 - (stress - 50) / 167);
+  return stress <= 55 ? 1 : Math.max(0.72, 1 - (stress - 55) / 200);
 }
 // 每小时生病概率
 export function sickChance(stress) {
-  return stress <= SICK_FLOOR ? 0 : Math.min(0.012, (stress - SICK_FLOOR) * 0.00028);
+  return stress <= SICK_FLOOR ? 0 : Math.min(0.008, (stress - SICK_FLOOR) * 0.00020);
 }
 export function pickIllness(stress) {
   const pool = ILLNESSES.filter(i => stress >= i.minStress);
@@ -290,10 +298,20 @@ export function computeNetWorth(userId) {
   const biz = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(userId);
   const pbonus = prestigeBonus(prestigeOf(userId) + p.prestige);
   const prosp = M.cityProsperity();
+  // 装进公司的店铺，账面值算在股权里，不能再单独计一次
+  const co = companyOf(userId);
   let bizValue = 0, bizNetPerHour = 0;
   for (const b of biz) {
+    if (co && b.company_id === co.id) continue;
     bizValue += b.invested * 0.80 * (0.65 + 0.35 * b.condition);
     bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net;
+  }
+  let equity = 0, coVal = null;
+  if (co) {
+    const shops = biz.filter(b => b.company_id === co.id);
+    coVal = valuate(co, shops, pbonus, prosp, M.currentGameHour());
+    equity = stakeValue(co, coVal);
+    for (const b of shops) bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net * (co.player_shares / co.shares);
   }
   const items = db.prepare('SELECT * FROM items WHERE user_id=?').all(userId);
   let itemValueSum = 0;
@@ -305,9 +323,12 @@ export function computeNetWorth(userId) {
   for (const l of db.prepare("SELECT * FROM loans WHERE user_id=? AND status='active'").all(userId)) {
     debt += l.balance; if (l.kind === 'mortgage') mortgage += l.balance;
   }
-  const total = p.cash + p.bank + depValue + portfolio + bizValue + itemValueSum - debt;
+  const total = p.cash + p.bank + depValue + portfolio + bizValue + itemValueSum + equity - debt;
   return { cash: p.cash, bank: p.bank, deposits: depValue, portfolio, business: bizValue,
-           items: itemValueSum, debt, mortgage, total, bizNetPerHour,
+           items: itemValueSum, equity, debt, mortgage, total, bizNetPerHour,
+           company: co ? { id: co.id, name: co.name, ticker: co.ticker, stage: co.stage,
+             value: coVal.value, stake: co.player_shares / co.shares, equity, cash: co.cash,
+             growth: coVal.growth, shops: coVal.shops } : null,
            counts: { biz: biz.length, items: items.length, holdings: holdings.length } };
 }
 
@@ -355,6 +376,9 @@ export function advancePlayer(userId) {
   const sRate = savingsRate(), oRate = overdraftRate();
   let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0, dayFood = 0, dayFare = 0;
   const bizCommute = biz.some(b => !b.manager);          // 亲自看店，也得每天出门
+  // 装进公司的店铺，利润归公司账上，不再直接进你口袋
+  const co = db.prepare('SELECT * FROM companies WHERE user_id=?').get(userId) || null;
+  let coDayNet = 0;
   // 实业的日净利估算（用于衡量月供负担）
   let dayIncomeRate = 0;
   for (const b of biz) dayIncomeRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
@@ -437,7 +461,7 @@ export function advancePlayer(userId) {
     p.stamina = clamp(p.stamina, 0, STAMINA_MAX);
 
     // ── 精神压力：负债、加班、透支推高；睡眠、旅游、低负债缓解 ──
-    let dStress = phase === 'sleep' ? STRESS_SLEEP * rq : 0;
+    let dStress = phase === 'sleep' ? STRESS_SLEEP * rq * (1 + p.stress / STRESS_RELIEF_SCALE) : 0;
     dStress += streakStress(p.work_streak);              // 连轴转本身就是压力源
     dStress += meal.stress + home.stress;                // 吃不好、住不好，人是会垮的
     if (traveling) dStress -= 1.2;                       // 旅途中持续放松
@@ -445,12 +469,12 @@ export function advancePlayer(userId) {
     if (debtNow > 0) {
       const nwNow = Math.max(1, quickNetWorth(p, biz, items, holdings, assetsById, loans, deposits) + debtNow);
       const lev = debtNow / nwNow;                       // 负债率：欠得越多越焦虑
-      if (lev > LEV_SAFE) dStress += (lev - LEV_SAFE) * STRESS_DEBT_K / 24;
+      if (lev > LEV_SAFE) dStress += Math.min(STRESS_DEBT_CAP, (lev - LEV_SAFE) * STRESS_DEBT_K / 24);
       // 月供压力：还款额占收入的比重才是真正压垮人的东西
       const monthlyPay = loans.reduce((a, l) => a + (l.status === 'active' ? l.payment : 0), 0);
       const monthlyIncome = Math.max(1, (dayIncomeRate + (working ? job.wage * WORK_HOURS_PER_DAY : 0)) * 30);
       const burden = monthlyPay / monthlyIncome;
-      if (burden > BURDEN_SAFE) dStress += Math.min(2.5, (burden - BURDEN_SAFE) * STRESS_BURDEN_K / 24);
+      if (burden > BURDEN_SAFE) dStress += Math.min(STRESS_BURDEN_CAP, (burden - BURDEN_SAFE) * STRESS_BURDEN_K / 24);
     }
     if (p.cash < 0) dStress += 0.35;                     // 透支的焦虑
     if (pb > 0.10) dStress -= pb * 1.2;                  // 房子、车、艺术品带来的生活质量
@@ -483,11 +507,20 @@ export function advancePlayer(userId) {
       b.month_revenue += rev; b.month_cost += cost;
       b.lifetime_profit += (rev - cost);
       dayRev += rev; dayCost += cost;
-      p.cash += (rev - cost); p.month_profit += (rev - cost);
+      const net = rev - cost;
+      if (co && b.company_id === co.id) { co.cash += net; co.lifetime_profit += net; coDayNet += net; }
+      else p.cash += net;
+      p.month_profit += net;
       if (b.auto_repair && b.condition < 0.72) {
         const rc = r.def.cost * r.city.costMult * 0.22 * (1 - b.condition);
         if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
       }
+    }
+    // 公司的利润跑速：快慢两条线一拉开，就是在增长
+    if (co) {
+      let coRate = 0;
+      for (const b of biz) if (b.company_id === co.id) coRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
+      stepGrowth(co, coRate * 365);
     }
     if (p.bank > 0) { const i = p.bank * sRate / YEAR_HOURS; p.bank += i; dayInterest += i; }
     if (p.cash < 0) { const i = -p.cash * oRate / YEAR_HOURS; p.cash -= i; dayOverdraft += i; }
@@ -658,6 +691,9 @@ export function advancePlayer(userId) {
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);
+    if (co) db.prepare(`UPDATE companies SET cash=?,rate_fast=?,rate_slow=?,growth=?,
+                        lifetime_profit=? WHERE id=?`)
+      .run(co.cash, co.rate_fast, co.rate_slow, co.growth, co.lifetime_profit, co.id);
     const ui = db.prepare('UPDATE items SET value=? WHERE id=?');
     for (const it of items) ui.run(it.value, it.id);
     const ul = db.prepare('UPDATE loans SET balance=?,months_left=?,next_due=?,paid_total=?,status=? WHERE id=?');
