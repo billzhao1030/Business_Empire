@@ -21,9 +21,9 @@ export const RATES = {
 };
 export const START_CASH = 0;
 
-// 离线结算上限：最多只补算这么多游戏小时（默认 7 个游戏日）
-// 市场行情仍会照常推进整段时间——只是你的生意最多累积一周的收益
-export const OFFLINE_CAP_HOURS = Math.max(24, Number(process.env.OFFLINE_CAP_DAYS || 7) * 24);
+// 离线上限（默认 7 个游戏日）。世界本身就被 M.clampOfflineGap() 卡在这个范围内，
+// 所以这里通常不会再触发——留着是为了兜住多人存档里某个玩家格外久没上线的情况。
+export const OFFLINE_CAP_HOURS = M.OFFLINE_CAP_HOURS;
 
 // ── 利率随央行政策利率浮动 ────────────────────────────────
 export function savingsRate()  { return Math.max(0.002, M.policyRate() * 0.85); }

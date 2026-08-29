@@ -53,10 +53,13 @@ function buildOfflineReport(uid, p, hour, nwNow) {
                                             ABS(amount) DESC LIMIT 5`).all(uid, fromHour, hour);
     const elapsedHours = hour - p.last_seen_hour;
     const settledHours = Math.min(elapsedHours, S.OFFLINE_CAP_HOURS);
+    // 如果不设上限，这段现实时间本该推进多少游戏小时
+    const wouldHaveHours = Math.floor(awayMs / M.MS_PER_GAME_HOUR);
     report = {
       awayMs, awayRealHours: awayMs / 3.6e6, awayRealDays: awayMs / 8.64e7,
-      gameHours: elapsedHours, settledHours,
-      capped: elapsedHours > S.OFFLINE_CAP_HOURS,
+      gameHours: elapsedHours, settledHours, wouldHaveHours,
+      skippedHours: Math.max(0, wouldHaveHours - elapsedHours),
+      capped: wouldHaveHours > elapsedHours + 1,
       capHours: S.OFFLINE_CAP_HOURS, capDays: S.OFFLINE_CAP_HOURS / 24,
       fromHour: p.last_seen_hour, toHour: hour,
       fromDate: M.gameDate(p.last_seen_hour).text, toDate: M.gameDate(hour).text,

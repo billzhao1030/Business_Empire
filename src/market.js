@@ -39,6 +39,22 @@ const MAX_DETAIL_TICKS = 600;      // 单次补算的最大精细步数
 export const START_HOD = 8;        // 世界起点落在早上 8:00
 export const WARMUP_HOURS = 720 + START_HOD;   // 预热 30 个游戏日，让一开局就有完整历史行情
 
+// 离线上限：现实里离开多久都行，世界最多往前走这么多游戏小时（默认 7 个游戏日）。
+// 只卡住收益是不够的——那样日历照样跳掉好几个月，回来一看已经是明年了。
+export const OFFLINE_CAP_HOURS = Math.max(24, Number(process.env.OFFLINE_CAP_DAYS || 7) * 24);
+
+// 把超出上限的那段现实时间直接抹掉：时间原点往前推，游戏时钟就退回到
+// 「上次结算 + 7 天」。时钟、行情、玩家结算三者从此说的是同一件事。
+export function clampOfflineGap() {
+  const mh = Number(getMeta('market_hour', '0'));
+  if (!mh) return 0;                                   // 世界还没初始化
+  const raw = Math.max(0, Math.floor((Date.now() - bootTime()) / MS_PER_GAME_HOUR));
+  const skip = raw - mh - OFFLINE_CAP_HOURS;
+  if (skip <= 0) return 0;
+  setMeta('epoch_ms', String(Number(getMeta('epoch_ms')) + skip * MS_PER_GAME_HOUR));
+  return skip;
+}
+
 export function bootTime() {
   let t = getMeta('epoch_ms');
   if (!t) { t = String(Date.now()); setMeta('epoch_ms', t); setMeta('ms_per_hour', MS_PER_GAME_HOUR); }
