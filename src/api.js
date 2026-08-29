@@ -4,7 +4,7 @@ import * as M from './market.js';
 import * as S from './sim.js';
 import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
-         ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, LOTTERIES } from './catalog-content.js';
+         ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
 
 const { RATES, L } = S;
@@ -172,7 +172,8 @@ export function getState(uid) {
       const hod = hour % 24, phase = S.dayPhase(hod), day = Math.floor(hour / 24);
       const otUsed = p.ot_day === day ? p.ot_hours : 0;
       const busy = p.ot_pending > 0 && hour < p.ot_until;
-      const tb = S.timeBudget(db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid));
+      const tb = S.timeBudget(db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid),
+        { mealHours: S.mealOf(p).hours || 0, commuteHours: S.commuteOf(p, carOwned).hours || 0 });
       let block = null;
       if (!job) block = 'nojob';
       else if (!tb.canJob) block = 'owner';
@@ -195,6 +196,7 @@ export function getState(uid) {
         workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
         otUsed, otMax: tb.otMax, otMult: S.OVERTIME_MULT,
         mgmtHours: tb.mgmt, freeHours: tb.free, shiftHours: tb.shift, canJob: tb.canJob,
+        choreHours: tb.chores, mealHours: tb.meal, commuteHours: tb.commute,
         streak: p.work_streak, restQuality: S.restQuality(p.work_streak),
         streakStress: S.streakStress(p.work_streak) * 24,
         onLeave: p.off_day === Math.floor(hour / 24),
@@ -235,14 +237,19 @@ export function getState(uid) {
     living: (() => {
       const ownsEstate = db.prepare("SELECT COUNT(*) c FROM items i WHERE i.user_id=? AND i.type_id LIKE 'est_%'").get(uid).c > 0;
       const meal = S.mealOf(p), home = S.homeOf(p, ownsEstate);
+      const commute = S.commuteOf(p, carOwned);
       const dailyWage = (job ? job.wage : 0) * 8;
+      // 通勤费只在出门的日子花：一周按上五天算
+      const commuteDays = 22;
       return {
-        meal: { ...meal }, home: { ...home }, ownsEstate,
-        meals: MEALS, homes: HOMES,
+        meal: { ...meal }, home: { ...home }, commute: { ...commute }, ownsEstate, carOwned,
+        meals: MEALS, homes: HOMES, commutes: COMMUTES,
         monthlyFood: meal.cost * 30, monthlyRent: home.rent,
-        monthlyCost: meal.cost * 30 + home.rent,
+        monthlyCommute: commute.cost * commuteDays, commuteDays,
+        choreHours: (meal.hours || 0) + (commute.hours || 0),
+        monthlyCost: meal.cost * 30 + home.rent + commute.cost * commuteDays,
         monthlyWage: dailyWage * 30,
-        foodSpent: p.food_spent, rentSpent: p.rent_spent,
+        foodSpent: p.food_spent, rentSpent: p.rent_spent, transitSpent: p.transit_spent,
         lotteries: LOTTERIES.map(l => ({ id: l.id, emoji: l.emoji, zh: l.zh, en: l.en, price: l.price,
           maxBuy: l.maxBuy, descZh: l.descZh, descEn: l.descEn,
           topOdds: l.tiers[0][0], jackpot: l.jackpotBase ? jackpotOf(l) : l.tiers[0][1],
@@ -703,7 +710,8 @@ export function hustle(uid) {
     throw new Err('这一单加班还没干完 / Your current overtime hour is not finished yet');
 
   const bizAll = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
-  const tb = S.timeBudget(bizAll);
+  const tb = S.timeBudget(bizAll,
+    { mealHours: S.mealOf(p).hours || 0, commuteHours: S.commuteOf(p, S.hasCar(uid)).hours || 0 });
   const used = p.ot_day === day ? p.ot_hours : 0;
   if (tb.otMax <= 0)
     throw new Err(`店铺管理已经占满你的时间（每天 ${tb.mgmt.toFixed(1)} 小时），没空加班了 / Managing your businesses takes ${tb.mgmt.toFixed(1)}h a day — no time left`);
@@ -724,7 +732,7 @@ export function hustle(uid) {
 }
 
 // ── 生活方式：吃什么、住哪儿 ────────────────────────────────
-export function setLiving(uid, { mealId, homeId }) {
+export function setLiving(uid, { mealId, homeId, commuteId }) {
   S.advancePlayer(uid);
   if (mealId) {
     if (!S.MEAL[mealId]) throw new Err('伙食档位无效 / Invalid meal plan');
@@ -737,6 +745,15 @@ export function setLiving(uid, { mealId, homeId }) {
     db.prepare('UPDATE players SET home_id=? WHERE user_id=?').run(homeId, uid);
     const h = S.HOME[homeId];
     ledger(uid, 'living', 0, L('led.setHome', { home: { zh: h.zh, en: h.en }, rent: h.rent }), h.emoji);
+  }
+  if (commuteId) {
+    const c = S.COMMUTE[commuteId];
+    if (!c) throw new Err('通勤方式无效 / Invalid commute');
+    if (c.needsCar) {
+      if (!S.hasCar(uid)) throw new Err('你还没有车 / You do not own a car yet');
+    }
+    db.prepare('UPDATE players SET commute_id=? WHERE user_id=?').run(commuteId, uid);
+    ledger(uid, 'living', 0, L('led.setCommute', { way: { zh: c.zh, en: c.en }, cost: c.cost }), c.emoji);
   }
   return { ok: true };
 }
@@ -925,7 +942,7 @@ export function deleteAccount(uid, { password }) {
   try { A.login(u.username, password); } catch { throw new Err('密码错误 / Wrong password', 403); }
   db.exec('BEGIN');
   try {
-    for (const t of ['holdings','businesses','items','loans','deposits','ledger','networth','players','sessions'])
+    for (const t of ['holdings','businesses','items','loans','deposits','ledger','networth','visits','players','sessions'])
       db.prepare(`DELETE FROM ${t} WHERE user_id=?`).run(uid);
     db.prepare('DELETE FROM users WHERE id=?').run(uid);
     db.exec('COMMIT');
@@ -1007,7 +1024,7 @@ export function resetSave(uid, opts = {}) {
   };
   db.exec('BEGIN');
   try {
-    for (const t of ['holdings', 'businesses', 'items', 'loans', 'deposits', 'ledger', 'networth'])
+    for (const t of ['holdings', 'businesses', 'items', 'loans', 'deposits', 'ledger', 'networth', 'visits'])
       db.prepare(`DELETE FROM ${t} WHERE user_id=?`).run(uid);
     db.prepare('DELETE FROM players WHERE user_id=?').run(uid);
     db.exec('COMMIT');

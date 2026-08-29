@@ -5,7 +5,7 @@ import { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours,
          COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB,
-         MEALS, HOMES, LOTTERIES } from './catalog-content.js';
+         MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 
 const { YEAR_HOURS, MONTH_HOURS, DAY_HOURS } = M;
 
@@ -142,9 +142,10 @@ export const PRICE_TIERS = [
   { v: 1, zh:'品质溢价', en:'Premium',        descZh:'客单价 +22%，客流下滑，短期利润更高', descEn:'Ticket +22%, traffic slips, higher near-term profit' },
   { v: 2, zh:'奢华定位', en:'Luxury Harvest', descZh:'客单价 +44%，客流大幅萎缩，长期会流失客户', descEn:'Ticket +44%, traffic collapses, customers churn over time' },
 ];
-export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB, MEALS, HOMES, LOTTERIES };
+export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB, MEALS, HOMES, COMMUTES, LOTTERIES };
 export const MEAL = Object.fromEntries(MEALS.map(m => [m.id, m]));
 export const HOME = Object.fromEntries(HOMES.map(h => [h.id, h]));
+export const COMMUTE = Object.fromEntries(COMMUTES.map(c => [c.id, c]));
 export const LOTTO = Object.fromEntries(LOTTERIES.map(l => [l.id, l]));
 export { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE };
 export function birthOf(p) { return DEST[p.birth_id] || DEST[DEFAULT_HOME]; }
@@ -169,7 +170,12 @@ export function tripQuote(dest, nights, cabinId, hotelId, home) {
 export const OWNED_HOME = { id:'owned', emoji:'🏡', zh:'自有住房', en:'Your own home',
   rent:0, stress:-0.10, stamina:0.08, prestige:0 };
 export function homeOf(p, ownsEstate) { return ownsEstate ? OWNED_HOME : (HOME[p.home_id] || HOMES[0]); }
-export function mealOf(p) { return MEAL[p.meal_id] || MEALS[2]; }
+export function mealOf(p) { return MEAL[p.meal_id] || MEAL.canteen; }
+// 没车的时候「自己开车」不成立，退回走路
+export function commuteOf(p, carOwned) {
+  const c = COMMUTE[p.commute_id] || COMMUTES[0];
+  return (c.needsCar && !carOwned) ? COMMUTES[0] : c;
+}
 
 export function bizHours(b) {
   const def = BIZ[b.type_id];
@@ -224,15 +230,18 @@ export function bizRates(b, pb = 0, prosp = 1) {
            allDayGainPerHour, allDayCost, capPerStaff, priceMult, volumeMult, tier };
 }
 
-// 你的时间：清醒 16 小时，先扣掉所有店铺的管理精力，剩下的才能拿去打工
-export function timeBudget(biz) {
+// 你的时间：清醒 16 小时，先扣掉店铺管理、做饭和通勤，剩下的才能拿去打工
+export function timeBudget(biz, opts = {}) {
   let mgmt = 0;
   for (const b of biz) mgmt += b.manager ? MGMT_WITH_MANAGER : (BIZ[b.type_id]?.mgmt || 0);
-  const free = Math.max(0, AWAKE_HOURS - mgmt);
+  const meal = Math.max(0, opts.mealHours || 0);        // 自己做饭要占掉的时间
+  const commute = Math.max(0, opts.commuteHours || 0);  // 路上耗掉的时间
+  const chores = meal + commute;
+  const free = Math.max(0, AWAKE_HOURS - mgmt - chores);
   const canJob = mgmt <= MGMT_MAX_WITH_JOB;
   const shift = canJob ? Math.min(WORK_HOURS_PER_DAY, free) : 0;
   const otMax = Math.max(0, Math.min(OVERTIME_MAX_HOURS, Math.floor(free - shift)));
-  return { mgmt, free, canJob, shift, otMax };
+  return { mgmt, meal, commute, chores, free, canJob, shift, otMax };
 }
 
 export function demandTarget(b) {
@@ -336,13 +345,16 @@ export function advancePlayer(userId) {
   const prosp = M.cityProsperity();
   const carOwned = items.some(it => ITEM[it.type_id]?.car);
   let job = JOB[p.job_id];
-  const tb = timeBudget(biz);
-  const working = !!job && (!job.car || carOwned) && tb.canJob;
-  const sRate = savingsRate(), oRate = overdraftRate();
-  let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0, dayFood = 0;
   const ownsEstate = items.some(it => ITEM[it.type_id]?.cat === 'estate');
   const home = homeOf(p, ownsEstate);
   let meal = mealOf(p);
+  const commute = commuteOf(p, carOwned);
+  // 做饭和通勤都是实打实的时间，先从一天里扣掉，剩下的才轮得到加班
+  const tb = timeBudget(biz, { mealHours: meal.hours || 0, commuteHours: commute.hours || 0 });
+  const working = !!job && (!job.car || carOwned) && tb.canJob;
+  const sRate = savingsRate(), oRate = overdraftRate();
+  let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0, dayFood = 0, dayFare = 0;
+  const bizCommute = biz.some(b => !b.manager);          // 亲自看店，也得每天出门
   // 实业的日净利估算（用于衡量月供负担）
   let dayIncomeRate = 0;
   for (const b of biz) dayIncomeRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
@@ -396,8 +408,11 @@ export function advancePlayer(userId) {
 
     // ── 连续工作天数：跨日时结算 ──
     const dayIdx = Math.floor(h / DAY_HOURS);
+    let wentOut = 0;
     if (p.streak_day !== dayIdx) {
       if (p.streak_day >= 0) {
+        // 昨天出没出门：上了班，或者要亲自看店
+        wentOut = (p.worked_today || (bizCommute && !sick && !traveling)) ? 1 : 0;
         if (p.worked_today) p.work_streak += 1;
         else { if (p.work_streak >= 2) p.stress = clamp(p.stress - 6, 0, STRESS_MAX); p.work_streak = 0; }
       }
@@ -485,12 +500,21 @@ export function advancePlayer(userId) {
         else { p.meal_id = 'skip'; meal = MEAL.skip;
           ledger.push([h, 'living', 0, L('led.cantAfford'), '🚱']); }
       }
+      // 通勤：出门的日子才花钱，路上也确实耗体力
+      if (wentOut && commute.cost > 0) {
+        if (payFrom(p, commute.cost)) { p.transit_spent += commute.cost; dayFare += commute.cost; }
+      }
+      if (wentOut) {
+        p.stamina = clamp(p.stamina + (commute.stamina || 0), 0, STAMINA_MAX);
+        p.stress = clamp(p.stress + (commute.stress || 0), 0, STRESS_MAX);
+      }
       if (dayFood > 0) ledger.push([h, 'living', -dayFood, L('led.food', { meal: { zh: meal.zh, en: meal.en }, amt: dayFood }), meal.emoji]);
+      if (dayFare > 0) ledger.push([h, 'living', -dayFare, L('led.commute', { way: { zh: commute.zh, en: commute.en }, amt: dayFare }), commute.emoji]);
       if (dayJob > 0) ledger.push([h, 'job', dayJob, L('led.jobDay', { job: { zh: job.zh, en: job.en }, amt: dayJob }), job.emoji]);
       if (dayRev > 0) ledger.push([h, 'biz', dayRev - dayCost, L('led.bizDay', { rev: dayRev, cost: dayCost }), '🏬']);
       if (dayInterest > 0.005) ledger.push([h, 'interest', dayInterest, L('led.interest'), '🏦']);
       if (dayOverdraft > 0.005) ledger.push([h, 'overdraft', -dayOverdraft, L('led.overdraft'), '⚠️']);
-      dayRev = dayCost = dayInterest = dayOverdraft = dayJob = dayFood = 0;
+      dayRev = dayCost = dayInterest = dayOverdraft = dayJob = dayFood = dayFare = 0;
     }
 
     for (const d of deposits) {
@@ -621,13 +645,15 @@ export function advancePlayer(userId) {
                 total_tax=?,total_dividend=?,missed_pay=?,peak_networth=?,bankrupt=?,
                 job_exp=?,job_hours=?,job_income=?,stamina=?,ot_pending=?,
                 stress=?,sick_until=?,sick_id=?,sick_treated=?,trip_until=?,trip_id=?,
-                work_streak=?,worked_today=?,streak_day=?,meal_id=?,food_spent=?,rent_spent=?,job_id=?,
+                work_streak=?,worked_today=?,streak_day=?,meal_id=?,food_spent=?,rent_spent=?,
+                commute_id=?,transit_spent=?,job_id=?,
                 trip_relief=?,trip_stam=?,trip_nights=?,trip_spent2=? WHERE user_id=?`)
       .run(p.cash, p.bank, p.credit_score, p.last_hour, p.prestige, p.month_profit,
            p.total_tax, p.total_dividend, p.missed_pay, p.peak_networth, p.bankrupt,
            p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending,
            p.stress, p.sick_until, p.sick_id, p.sick_treated, p.trip_until, p.trip_id,
-           p.work_streak, p.worked_today, p.streak_day, p.meal_id, p.food_spent, p.rent_spent, p.job_id,
+           p.work_streak, p.worked_today, p.streak_day, p.meal_id, p.food_spent, p.rent_spent,
+           p.commute_id, p.transit_spent, p.job_id,
            p.trip_relief, p.trip_stam, p.trip_nights, p.trip_spent2, userId);
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);

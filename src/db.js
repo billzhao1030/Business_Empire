@@ -255,6 +255,8 @@ addColumn('players','meal_id',        "TEXT    NOT NULL DEFAULT 'canteen'");
 addColumn('players','home_id',        "TEXT    NOT NULL DEFAULT 'shared'");
 addColumn('players','food_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','rent_spent',     'REAL    NOT NULL DEFAULT 0');
+addColumn('players','commute_id',     "TEXT    NOT NULL DEFAULT 'walk'");
+addColumn('players','transit_spent',  'REAL    NOT NULL DEFAULT 0');
 addColumn('players','lotto_spent',    'REAL    NOT NULL DEFAULT 0');
 addColumn('players','lotto_won',      'REAL    NOT NULL DEFAULT 0');
 addColumn('players','lotto_tickets',  'INTEGER NOT NULL DEFAULT 0');
