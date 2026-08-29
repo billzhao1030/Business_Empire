@@ -104,6 +104,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/ping' || p === '/api/health')
       return send(res, 200, { ok: true, name: 'business-empire', port: PORT, build: BUILD_ID, msPerHour: M.MS_PER_GAME_HOUR,
+        speedMin: M.SPEED_MIN_MS, speedMax: M.SPEED_MAX_MS, speedDefault: M.SPEED_DEFAULT,
+        scale: API.scale(),
         hour: M.currentGameHour(), date: M.gameDate(M.currentGameHour()) });
 
     // ── 需要登录 ──

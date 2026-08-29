@@ -1,6 +1,6 @@
 import { api, token, setToken } from './api.js';
 import { t, nm, lang, setLang, onLangChange } from './i18n.js';
-import { $, $$, money, moneyFull, price, pct, cls, esc, toast, closeAllModals, gDate } from './util.js';
+import { $, $$, money, moneyFull, price, pct, cls, esc, toast, closeAllModals, gDate, realPace } from './util.js';
 import { showOfflineReport } from './offline.js';
 import { chooseBirthplace } from './birthplace.js';
 
@@ -35,6 +35,7 @@ export const app = {
       const ping = await (await fetch('/api/ping')).json();
       this.serverBuild = ping.build;
       this.hourMinutes = (ping.msPerHour || 60000) / 60000;
+      this.scale = ping.scale || null;
     } catch {}
     this.paintAuthTexts();
     if (token) {
@@ -65,8 +66,12 @@ export const app = {
     fields[2].querySelector('input').placeholder = t('auth.nickPh');
     $('#auth-submit').textContent = t('auth.enter');
     const f = a.querySelector('.auth-foot');
-    f.children[0].innerHTML = t('auth.foot1');
-    f.children[1].textContent = t('auth.foot2', { m: this.hourMinutes ?? 1 });
+    const sc = this.scale || { markets: 257, biz: 36, items: 114, destinations: 41 };
+    const stat = (v, k) => `<div><b>${v}</b><span>${t('auth.' + k)}</span></div>`;
+    f.innerHTML = `<div class="auth-stats">
+        ${stat('$0', 'sStart')}${stat(sc.markets, 'sMarkets')}${stat(sc.biz, 'sBiz')}
+        ${stat(sc.items, 'sItems')}${stat(sc.destinations, 'sPlaces')}
+      </div><div class="auth-note">${t('auth.foot2')}</div>`;
   },
 
   async enter() {
@@ -245,7 +250,7 @@ $$('#speed-switch button').forEach(b => b.onclick = async () => {
     const r = await api.speed(+b.dataset.ms);
     $$('#speed-switch button').forEach(x => x.classList.toggle('active', +x.dataset.ms === r.msPerHour));
     app._lastTotal = null;                       // 流速变了，重新对齐时钟
-    toast(t('speed.changed', { m: r.minutes < 1 ? Math.round(r.minutes * 60) + 's' : r.minutes + ' min' }), 'ok');
+    toast(t('speed.changed', { m: realPace(r.msPerHour) }), 'ok');
     await app.refresh(true);
   } catch (e) { toast(e.message, 'err'); }
 });

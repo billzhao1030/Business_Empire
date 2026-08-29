@@ -950,6 +950,18 @@ export function deleteAccount(uid, { password }) {
   return { ok: true };
 }
 
+// 目录规模：登录页的数字从这里来，改了内容就不会说谎
+export function scale() {
+  return {
+    markets: M.allAssets().length,
+    stocks: M.allAssets().filter(a => a.kind === 'stock').length,
+    biz: BIZ_TYPES.length,
+    items: ITEM_TYPES.length,
+    jobs: JOBS.length,
+    destinations: DESTINATIONS.length,
+  };
+}
+
 // ── 其它 ────────────────────────────────────────────────────
 export function catalog() {
   const idx = Object.fromEntries(M.allAssets().filter(a => a.kind === 'index').map(a => [a.symbol, a.price]));

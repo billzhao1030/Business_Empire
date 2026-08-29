@@ -144,3 +144,9 @@ export function renderLedger(detail) {
 export function newsLine(headline) {
   try { const o = JSON.parse(headline); return esc(nm(o)); } catch { return esc(headline); }
 }
+
+// 一个游戏小时对应多久现实时间：12s / 1 min / 5 min
+export function realPace(ms) {
+  const mins = (ms || 60000) / 60000;
+  return mins < 1 ? Math.round(mins * 60) + 's' : (Number.isInteger(mins) ? mins : mins.toFixed(1)) + ' min';
+}

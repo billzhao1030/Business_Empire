@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, durText, hoursAgo, renderLedger, newsLine, gShort, toast } from '../util.js';
+import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, durText, hoursAgo, renderLedger, newsLine, gShort, toast, realPace } from '../util.js';
 import { PriceChart, donut, sparkline } from '../chart.js';
 
 let chart = null, sparks = null;
@@ -87,7 +87,7 @@ export default {
     <div class="grid" style="grid-template-columns:1.9fr 1fr;margin-bottom:16px">
       <div class="card">
         <div class="card-h"><h3>${t('dash.trend')}</h3>
-          <div class="right"><span class="sub">${t('dash.hint')}</span></div></div>
+          <div class="right"><span class="sub">${t('dash.hint', { m: realPace(app.state.now.realMsPerHour) })}</span></div></div>
         <div class="card-b" style="padding:8px 12px 4px"><div id="nw-chart" style="height:230px"></div></div>
       </div>
       <div class="card">

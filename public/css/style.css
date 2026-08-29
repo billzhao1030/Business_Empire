@@ -62,7 +62,7 @@ button{cursor:pointer;border:none;background:none}
 .auth-bg::after{content:"";position:absolute;inset:0;opacity:.25;
   background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
   background-size:46px 46px;mask-image:radial-gradient(ellipse at center,#000 10%,transparent 72%)}
-.auth-card{position:relative;width:min(430px,100%);background:rgba(18,26,43,.82);backdrop-filter:blur(18px);
+.auth-card{position:relative;width:min(468px,100%);background:rgba(18,26,43,.82);backdrop-filter:blur(18px);
   border:1px solid var(--line);border-radius:20px;padding:34px 32px 26px;box-shadow:0 24px 70px rgba(0,0,0,.6)}
 .auth-brand{text-align:center;margin-bottom:22px}
 .auth-logo{font-size:44px;line-height:1;filter:drop-shadow(0 4px 14px rgba(245,185,66,.4))}
@@ -78,8 +78,13 @@ button{cursor:pointer;border:none;background:none}
   padding:11px 13px;transition:.18s;outline:none}
 .field input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,185,66,.13)}
 .auth-err{color:var(--down);font-size:12px;min-height:18px;margin-bottom:6px}
-.auth-foot{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);text-align:center;font-size:11.5px;color:var(--dim);line-height:1.9}
+.auth-foot{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);text-align:center;font-size:11px;color:var(--dim);line-height:1.7}
 .auth-foot b{color:var(--gold)}
+.auth-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px}
+.auth-stats div{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 2px}
+.auth-stats b{display:block;font-size:14px;font-weight:800;line-height:1.25;font-variant-numeric:tabular-nums}
+.auth-stats span{display:block;font-size:9.5px;color:var(--dim);letter-spacing:.2px;white-space:nowrap}
+.auth-note{font-size:10.5px;line-height:1.75;color:var(--dim2,var(--dim));opacity:.85}
 
 /* ══ 按钮 ══ */
 .btn{padding:9px 16px;border-radius:var(--r2);font-weight:600;font-size:13px;transition:.16s;
