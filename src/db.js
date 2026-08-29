@@ -246,6 +246,7 @@ addColumn('businesses', 'auto_staff',  'INTEGER NOT NULL DEFAULT 1');
 addColumn('businesses', 'auto_repair', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses', 'understaffed','REAL    NOT NULL DEFAULT 0');
 addColumn('businesses', 'company_id', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('companies', 'rate_vslow', 'REAL NOT NULL DEFAULT 0');
 addColumn('items', 'region',    "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'index_sym', "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'units',     'REAL NOT NULL DEFAULT 0');

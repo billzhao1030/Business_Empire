@@ -135,6 +135,61 @@ export default {
       </div>
     </div>
 
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>🔔 ${d.listed ? t('co.listed') : t('co.ipo')}</h3>
+        <span class="sub">${t('co.ipoSub')}</span>
+        ${d.listed ? `<div class="right"><button class="btn btn-xs btn-ghost" id="co-market">${t('co.goMarket')}</button></div>` : ''}</div>
+      <div class="card-b">
+        ${d.listed ? `
+          <div class="grid" style="grid-template-columns:repeat(5,1fr);gap:11px">
+            <div class="stat" style="padding:12px 14px"><label>${t('co.ticker')}</label>
+              <div class="v mono" style="font-size:19px">${d.listed.symbol}</div></div>
+            <div class="stat" style="padding:12px 14px"><label>${t('co.sharePrice')}</label>
+              <div class="v mono" style="font-size:19px">${moneyFull(d.listed.price)}</div>
+              <div class="d ${d.listed.change >= 0 ? 'up' : 'down'}">${pct(d.listed.change)}</div></div>
+            <div class="stat" style="padding:12px 14px"><label>${t('co.sinceIpo')}</label>
+              <div class="v mono ${d.listed.sinceIpo >= 0 ? 'up' : 'down'}" style="font-size:19px">${pct(d.listed.sinceIpo)}</div>
+              <div class="d">${t('co.ipoPrice')} ${moneyFull(d.listed.ipoPrice)}</div></div>
+            <div class="stat" style="padding:12px 14px"><label>${t('co.peRatio')}</label>
+              <div class="v mono" style="font-size:19px">${d.listed.pe ? d.listed.pe.toFixed(1) : '—'}</div></div>
+            <div class="stat" style="padding:12px 14px"><label>${t('co.marketCap')}</label>
+              <div class="v mono" style="font-size:19px">${money(d.listed.marketCap)}</div></div>
+          </div>
+          <div class="dim2" style="font-size:11px;margin-top:10px;line-height:1.7">${t('co.founderNote')}</div>`
+        : !d.ipo ? '' : `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            ${d.ipo.ok ? `<span class="tag g">${t('co.ipoReady')}</span>` : `<span class="tag">${t('co.ipoNotYet')}</span>`}
+          </div>
+          ${d.ipo.ok ? `
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:16px">
+            <div class="summary">
+              <div><span>${t('co.valuation')}</span><span class="mono">${moneyFull(v.value)}</span></div>
+              <div><span>${t('co.ipoDisc')}</span><span class="mono ${d.ipo.disc >= 1 ? 'up' : ''}">${pctPlain(d.ipo.disc, 0)}
+                <span class="dim2" style="font-weight:400">${d.ipo.disc >= 1 ? t('co.ipoPremium') : t('co.ipoDiscount')}</span></span></div>
+              <div><span>${t('co.ipoPrice')}</span><span class="mono gold">${moneyFull(d.ipo.price)}</span></div>
+              <div><span>${t('co.ipoFloat')}</span><span class="mono">${pctPlain(d.ipo.float, 0)}</span></div>
+              <div><span>${t('co.ipoFee')}</span><span class="mono down">-${money(d.ipo.fee)}</span></div>
+              <div class="tot"><span>${t('co.ipoRaise')}</span><span class="mono up">${moneyFull(d.ipo.net)}</span></div>
+            </div>
+            <div>
+              <div class="summary" style="margin-bottom:12px">
+                <div><span>${t('co.ipoCap')}</span><span class="mono gold">${money(d.ipo.marketCap)}</span></div>
+                <div class="tot"><span>${t('co.stakeAfter')}</span>
+                  <span class="mono">${pctPlain(d.ipo.stakeBefore, 1)} → <b>${pctPlain(d.ipo.stakeAfter, 1)}</b></span></div>
+              </div>
+              <button class="btn btn-primary btn-block" id="co-ipo">🔔 ${t('co.ipoBtn', { amt: money(d.ipo.net) })}</button>
+            </div>
+          </div>
+          <div class="dim2" style="font-size:10.5px;margin-top:10px;line-height:1.7">${t('co.ipoNote')}</div>`
+          : `<div class="summary" style="border-color:var(--orange)">
+              <div><span>${t('co.ipoNeedRounds')}</span><span class="mono">${d.ipo.rounds} / ${d.ipo.needRounds}</span></div>
+              <div><span>${t('co.ipoNeedVal')}</span><span class="mono">${money(v.value)} / ${money(d.ipo.needVal)}</span></div>
+              <div><span>${t('co.ipoNeedShops')}</span><span class="mono">${v.shops} / ${d.ipo.needShops}</span></div>
+              ${d.ipo.needProfit ? `<div><span>${t('co.ipoNeedProfit')}</span><span class="mono down">${money(v.annual)}</span></div>` : ''}
+            </div>`}`}
+      </div>
+    </div>
+
     <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
       <div class="card">
         <div class="card-h"><h3>💵 ${t('co.dividend')}</h3><span class="sub">${t('co.dividendSub', { p: pctPlain(d.dividendTax, 0) })}</span></div>
@@ -214,6 +269,8 @@ export default {
       again(() => api.coFound(name, $('#co-name-en').value.trim(), ticker, sector, [...picked]));
     };
     $('#co-raise') && ($('#co-raise').onclick = () => again(() => api.coRaise()));
+    $('#co-ipo') && ($('#co-ipo').onclick = () => again(() => api.coIpo()));
+    $('#co-market') && ($('#co-market').onclick = () => app.go('market'));
     const dv = $('#co-div'), fd = $('#co-fund');
     if (dv) dv.oninput = () => { divAmt = dv.value; };
     if (fd) fd.oninput = () => { fundAmt = fd.value; };

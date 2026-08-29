@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, DB_PATH } from './db.js';
+import * as CO from './company.js';
 import * as A from './auth.js';
 import * as M from './market.js';
 import * as S from './sim.js';
@@ -35,6 +36,7 @@ function tickWorld() {
     console.log(`  ⏳  离线超过 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，跳过 ${Math.round(skipped / 24)} 天不予模拟`);
   }
   M.advanceMarket();
+  CO.syncPublicFundamentals();   // 上市公司的股价要围着自己的经营基本面转
 }
 setInterval(() => { try { tickWorld(); } catch (e) { console.error('[tick]', e.message); } }, 5_000);
 
@@ -150,6 +152,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/company/dividend': return send(res, 200, API.payDividend(uid, body));
       case '/api/company/fund':     return send(res, 200, API.fundCompany(uid, body));
       case '/api/company/rename':   return send(res, 200, API.renameCompany(uid, body));
+      case '/api/company/ipo':      return send(res, 200, API.listCompany(uid));
       case '/api/biz/action':  return send(res, 200, API.bizAction(uid, body));
       case '/api/bank':        return send(res, 200, API.bank(uid, body));
       case '/api/item/buy':    return send(res, 200, API.itemBuy(uid, body));
