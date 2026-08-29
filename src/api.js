@@ -90,9 +90,12 @@ export function getState(uid) {
   const offline = buildOfflineReport(uid, p, hour, nw.total);
   const live = new Map(M.allAssets().map(a => [a.id, a]));
   const pbonus = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+  // 界面上的数字必须和结算用的是同一套参数：商圈繁荣度、宏观周期、旺季，一个都不能少
+  const env = S.bizEnv();
+  const prosp = M.cityProsperity();
 
   const businesses = db.prepare('SELECT * FROM businesses WHERE user_id=? ORDER BY id').all(uid).map(b => {
-    const r = S.bizRates(b, pbonus), def = S.BIZ[b.type_id], city = S.bizCity(b);
+    const r = S.bizRates(b, pbonus, prosp[b.city] || 1, env.macro, env.month), def = S.BIZ[b.type_id], city = S.bizCity(b);
     return {
       id: b.id, typeId: b.type_id, name: b.name, emoji: def?.emoji, type: NM(def), cat: def?.cat, catEn: def?.catEn,
       city: NM(city), cityId: b.city, cityFlag: city.flag || '', level: b.level, marketing: b.marketing,
@@ -109,6 +112,11 @@ export function getState(uid) {
       allDayCost: b.all_day ? null : r.allDayCost,
       allDayGain: b.all_day ? 0 : r.allDayGainPerHour * 24,
       demandTarget: S.demandTarget(b), monthRevenue: b.month_revenue, monthCost: b.month_cost,
+      // 这行生意的脾气：界面上要能看出为什么两家同价的店表现完全不同
+      trait: def ? { catId: def.catId, catEmoji: def.catEmoji, cogs: def.cogs, cyc: def.cyc,
+                     vol: def.vol, wear: def.wear, mktg: def.mktg, labor: def.labor,
+                     season: def.season, payDays: def.payDays } : null,
+      cycMult: r.cycMult, seasonMult: r.seasonMult,
       upgradeCost: b.level < S.MAX_LEVEL ? S.upgradeCost(def, city, b.level) : null,
       marketingCost: b.marketing < S.MAX_MARKETING ? S.marketingCost(def, city, b.marketing) : null,
       repairCost: Math.round(def.cost * city.costMult * 0.22 * (1 - b.condition)),
@@ -1014,7 +1022,8 @@ function coState(uid, coId) {
   };
 }
 function shopBrief(b, pb, prosp) {
-  const r = S.bizRates(b, pb, prosp[b.city] || 1);
+  const env = S.bizEnv();
+  const r = S.bizRates(b, pb, prosp[b.city] || 1, env.macro, env.month);
   const def = S.BIZ[b.type_id], city = S.bizCity(b);
   return { id: b.id, name: b.name, emoji: def?.emoji || '🏬', typeZh: def?.name, typeEn: def?.en,
     city: b.city, cityZh: city?.name, cityEn: city?.en, level: b.level, invested: b.invested,
@@ -1410,7 +1419,7 @@ export function scale() {
 export function catalog() {
   const idx = Object.fromEntries(M.allAssets().filter(a => a.kind === 'index').map(a => [a.symbol, a.price]));
   return {
-    biz: BIZ_TYPES, cities: CITIES, regions: REGIONS, cogsRate: S.COGS_RATE,
+    biz: BIZ_TYPES, bizCats: S.BIZ_CATS, cities: CITIES, regions: REGIONS, cogsRate: S.COGS_RATE,
     items: ITEM_TYPES.map(i => ({ ...i, listPrice: i.index ? i.price * (idx[i.index] || 100) / 100 : i.price })),
     itemCats: ITEM_CATS, priceTiers: S.PRICE_TIERS, titles: S.TITLES, jobs: JOBS,
     regimes: M.REGIMES, hustleCooldown: S.HUSTLE_COOLDOWN_MS,

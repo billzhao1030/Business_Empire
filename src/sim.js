@@ -6,6 +6,7 @@ import { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours,
          COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB,
+         BIZ_CATS, seasonMult as seasonMultOf,
          MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 
 const { YEAR_HOURS, MONTH_HOURS, DAY_HOURS } = M;
@@ -154,7 +155,7 @@ export const PRICE_TIERS = [
   { v: 1, zh:'品质溢价', en:'Premium',        descZh:'客单价 +22%，客流下滑，短期利润更高', descEn:'Ticket +22%, traffic slips, higher near-term profit' },
   { v: 2, zh:'奢华定位', en:'Luxury Harvest', descZh:'客单价 +44%，客流大幅萎缩，长期会流失客户', descEn:'Ticket +44%, traffic collapses, customers churn over time' },
 ];
-export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB, MEALS, HOMES, COMMUTES, LOTTERIES };
+export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB, MEALS, HOMES, COMMUTES, LOTTERIES, BIZ_CATS };
 export const MEAL = Object.fromEntries(MEALS.map(m => [m.id, m]));
 export const HOME = Object.fromEntries(HOMES.map(h => [h.id, h]));
 export const COMMUTE = Object.fromEntries(COMMUTES.map(c => [c.id, c]));
@@ -226,7 +227,14 @@ export function bizCity(b) {
   return CITY[b.city] || CITIES[1];
 }
 
-export function bizRates(b, pb = 0, prosp = 1) {
+// 此刻的宏观环境：界面上显示的营收，必须和结算时用的是同一套参数
+export function bizEnv() {
+  const h = M.currentGameHour();
+  return { macro: M.regimeState().demand ?? 1, month: M.gameDate(h).month };
+}
+
+// macro：宏观周期的需求系数（繁荣 1.18 / 衰退 0.88）；month：游戏内月份，用来算旺季
+export function bizRates(b, pb = 0, prosp = 1, macro = 1, month = 0) {
   const def = BIZ[b.type_id], city = bizCity(b);
   if (!def) return { rev: 0, cost: 0, net: 0, potential: 0, capacity: 0, util: 1, recStaff: 0 };
   const tier = b.price_tier || 0;
@@ -235,25 +243,31 @@ export function bizRates(b, pb = 0, prosp = 1) {
   const lvR = levelRevMult(b.level), lvC = Math.pow(1.25, b.level - 1);   // 规模越大，场地越大、房租越贵
   const condFactor = 0.5 + 0.5 * b.condition;
 
+  // 周期敏感度：药房几乎不动，钢厂和夜店跟着大盘上天入地；
+  // 当铺、二手店、汽修的 cyc 是负的——经济一差，他们的生意反而来了
+  const cycMult = Math.max(0.25, 1 + (macro - 1) * (def.cyc ?? 1));
+  const seasonMult = month ? seasonOf(def, month) : 1;          // 冰淇淋的七月，滑雪场的一月
+  const mktgMult = 1 + 0.10 * b.marketing * (def.mktg ?? 1);    // 投广告对奶茶店有用，对废品站没用
+
   const baseRev = def.rev * city.revMult;
-  const scale = lvR * (1 + 0.10 * b.marketing) * (1 + pb) * prosp;
+  const scale = lvR * mktgMult * (1 + pb) * prosp * cycMult * seasonMult;
   const volume = baseRev * scale * volumeMult * b.demand * condFactor;
   const potential = volume * priceMult;
 
   const wage = def.wage * city.wageMult;                        // 当地工资水平
-  const capPerStaff = wage * REV_PER_WAGE * priceMult;          // 一名员工能支撑的营收
+  const capPerStaff = wage * (def.revPerWage ?? REV_PER_WAGE) * priceMult;   // 一名员工能支撑的营收
   const staff = Math.max(0, b.staff | 0);
   const capacity = staff * capPerStaff;
   const rev = Math.min(potential, capacity);
   const util = potential > 0 ? Math.min(1, capacity / potential) : 1;
   const recStaff = Math.max(1, Math.ceil(potential / Math.max(capPerStaff, 1e-9)));
 
-  // 营业时才发生：进货成本 + 人工
-  const cogs = rev * COGS_RATE;
+  // 营业时才发生：进货成本 + 人工。酒吧两成、超市七成——这是行业之间最根本的差别
+  const cogs = rev * (def.cogs ?? COGS_RATE);
   const wages = staff * wage;
   const openCost = cogs + wages;
   // 关门也要付：房租（含营销投放与店长工资）
-  const rentH = def.hourlyRent * city.rentMult * lvC * (1 + 0.10 * b.marketing) * (1 + 0.15 * (1 - b.condition));
+  const rentH = def.hourlyRent * city.rentMult * lvC * mktgMult * (1 + 0.15 * (1 - b.condition));
   const managerH = b.manager ? def.managerSalary * city.wageMult / (30 * 24) : 0;
   const idleCost = rentH + managerH;
 
@@ -269,7 +283,8 @@ export function bizRates(b, pb = 0, prosp = 1) {
            openCost, idleCost, hours: bizHours(b), openHrs: hrs, dailyNet, dailyRev: hrs * rev,
            monthlyRent: def.monthlyRent * city.rentMult * lvC, managerSalary: def.managerSalary * city.wageMult,
            mgmt: b.manager ? MGMT_WITH_MANAGER : def.mgmt,
-           allDayGainPerHour, allDayCost, capPerStaff, priceMult, volumeMult, tier };
+           allDayGainPerHour, allDayCost, capPerStaff, priceMult, volumeMult, tier,
+           cycMult, seasonMult, macro, month };
 }
 
 // 你的时间：清醒 16 小时，先扣掉店铺管理、做饭和通勤，剩下的才能拿去打工
@@ -284,6 +299,14 @@ export function timeBudget(biz, opts = {}) {
   const shift = canJob ? Math.min(WORK_HOURS_PER_DAY, free) : 0;
   const otMax = Math.max(0, Math.min(OVERTIME_MAX_HOURS, Math.floor(free - shift)));
   return { mgmt, meal, commute, chores, free, canJob, shift, otMax };
+}
+
+// 旺季：冰淇淋的七月，滑雪场的一月，殡仪馆没有旺季
+export function seasonOf(def, month) { return seasonMultOf(def.season, month); }
+export function seasonLabel(def) {
+  if (!def?.season) return null;
+  const [peak, amp] = def.season;
+  return { peak, amp, low: ((peak + 5) % 12) + 1 };
 }
 
 export function demandTarget(b) {
@@ -332,6 +355,7 @@ export function computeNetWorth(userId) {
   const biz = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(userId);
   const pbonus = prestigeBonus(prestigeOf(userId) + p.prestige);
   const prosp = M.cityProsperity();
+  const env = bizEnv();
   // 装进公司的店铺，账面值算在股权里，不能再单独计一次
   const cos = companiesOf(userId);
   const coIds = new Set(cos.map(c => c.id));
@@ -339,7 +363,7 @@ export function computeNetWorth(userId) {
   for (const b of biz) {
     if (coIds.has(b.company_id)) continue;
     bizValue += b.invested * 0.80 * (0.65 + 0.35 * b.condition);
-    bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net;
+    bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1, env.macro, env.month).net;
   }
   let equity = 0;
   const coList = [];
@@ -348,7 +372,7 @@ export function computeNetWorth(userId) {
     const v = valuate(c, shops, pbonus, prosp, M.currentGameHour());
     const e = stakeValue(c, v);
     equity += e;
-    for (const b of shops) bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net * (c.player_shares / c.shares);
+    for (const b of shops) bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1, env.macro, env.month).net * (c.player_shares / c.shares);
     coList.push({ id: c.id, name: c.name, ticker: c.ticker, stage: c.stage,
       value: v.value, stake: c.player_shares / c.shares, equity: e, cash: c.cash,
       growth: v.growth, shops: v.shops });
@@ -419,11 +443,16 @@ export function advancePlayer(userId) {
   const co = cos[0] || null;                        // 门店维护那一段沿用的默认引用
   // 实业的日净利估算（用于衡量月供负担）
   let dayIncomeRate = 0;
-  for (const b of biz) dayIncomeRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
+  const env0 = bizEnv();
+  for (const b of biz) dayIncomeRate += bizRates(b, pb, prosp[b.city] || 1, env0.macro, env0.month).dailyNet;
+
+  // 宏观周期的需求系数：繁荣时人人多花钱，衰退时先砍掉不必要的
+  const macroDemand = M.regimeState().demand ?? 1;
 
   for (let h = from + 1; h <= target; h++) {
     // ── 作息：体力随睡眠恢复、随清醒与工作消耗 ──
     const hod = h % DAY_HOURS;
+    const month = M.gameDate(h).month;          // 旺季按游戏内月份走
     const phase = dayPhase(hod);
     const rq = restQuality(p.work_streak);
     // 吃得好不好、住得好不好，直接体现在恢复上
@@ -530,12 +559,16 @@ export function advancePlayer(userId) {
     for (const b of biz) {
       const city = bizCity(b);
       const pr = prosp[b.city] || 1;
-      const r0 = bizRates(b, pb, pr);
+      const def0 = BIZ[b.type_id];
+      const r0 = bizRates(b, pb, pr, macroDemand, month);
       const tgt = demandTarget(b) * (r0.util < 0.98 ? 0.90 : 1);
-      b.demand = clamp(b.demand + (tgt - b.demand) * 0.005 + M.gauss() * 0.010 * city.vol, 0.30, 2.30);
-      b.condition = clamp(b.condition - 0.00015, 0.20, 1);
-      if (b.auto_staff) { const rec = bizRates(b, pb, pr).recStaff; if (rec !== b.staff) b.staff = rec; }
-      const r = bizRates(b, pb, pr);
+      // 行业自己的波动：服装看季节脸色跳得厉害，殡葬业一年到头一个样
+      b.demand = clamp(b.demand + (tgt - b.demand) * 0.005
+                       + M.gauss() * 0.010 * city.vol * (def0?.vol ?? 1), 0.30, 2.30);
+      // 折旧：汽修厂的举升机和软件公司的服务器，磨损速度不是一回事
+      b.condition = clamp(b.condition - 0.00015 * (def0?.wear ?? 1), 0.20, 1);
+      if (b.auto_staff) { const rec = bizRates(b, pb, pr, macroDemand, month).recStaff; if (rec !== b.staff) b.staff = rec; }
+      const r = bizRates(b, pb, pr, macroDemand, month);
       b.understaffed = r.util;
       // 只有营业时段才有营收与人工；房租之类的固定成本 24 小时都在烧
       const open = bizOpenNow(b, hod);
@@ -563,7 +596,7 @@ export function advancePlayer(userId) {
     if (cos.length) {
       const rate = new Map();
       for (const b of biz) if (b.company_id && coById.has(b.company_id))
-        rate.set(b.company_id, (rate.get(b.company_id) || 0) + bizRates(b, pb, prosp[b.city] || 1).dailyNet);
+        rate.set(b.company_id, (rate.get(b.company_id) || 0) + bizRates(b, pb, prosp[b.city] || 1, macroDemand, month).dailyNet);
       for (const c of cos) stepGrowth(c, (rate.get(c.id) || 0) * 365);
     }
     if (p.bank > 0) { const i = p.bank * sRate / YEAR_HOURS; p.bank += i; dayInterest += i; }
