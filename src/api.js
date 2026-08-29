@@ -5,6 +5,7 @@ import * as S from './sim.js';
 import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, LOTTERIES } from './catalog-content.js';
+import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
 
 const { RATES, L } = S;
 class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
@@ -156,7 +157,10 @@ export function getState(uid) {
 
   return {
     build: process.env.BE_BUILD || '',
-    now: { hour, date: M.gameDate(hour), progress: M.hourProgress(), realMsPerHour: M.MS_PER_GAME_HOUR },
+    birth: (() => { const h = S.birthOf(p); return { id: h.id, zh: h.zh, en: h.en, flag: h.flag,
+      country: h.country, countryEn: h.countryEn, chosen: !!p.birth_id }; })(),
+    now: { hour, date: M.gameDate(hour), progress: M.hourProgress(), realMsPerHour: M.MS_PER_GAME_HOUR,
+      speedMin: M.SPEED_MIN_MS, speedMax: M.SPEED_MAX_MS, speedDefault: M.SPEED_DEFAULT },
     player: {
       nickname: p.nickname, cash: p.cash, bank: p.bank, creditScore: p.credit_score,
       prestige, prestigeBonus: S.prestigeBonus(prestige), totalTax: p.total_tax,
@@ -210,9 +214,10 @@ export function getState(uid) {
       const ill = p.sick_id ? S.ILL[p.sick_id] : null;
       const bizTrip = p.trip_id && p.trip_id.startsWith('biz:');
       const bizCity = bizTrip ? S.CITY[p.trip_id.slice(4)] : null;
+      const dst = !bizTrip && p.trip_id ? S.DEST[p.trip_id] : null;
       const trip = bizTrip
         ? (bizCity ? { id: 'biztrip', zh: '出差：' + bizCity.name, en: 'Business trip: ' + bizCity.en, emoji: '✈️' } : null)
-        : (p.trip_id ? S.TRIP[p.trip_id] : null);
+        : (dst ? { id: dst.id, zh: dst.zh, en: dst.en, emoji: dst.flag } : null);
       return {
         stress: p.stress, stressMax: S.STRESS_MAX, factor: S.stressFactor(p.stress),
         sickRiskPerDay: Math.min(1, S.sickChance(p.stress) * 24),
@@ -223,8 +228,6 @@ export function getState(uid) {
         trip: trip ? { id: trip.id, zh: trip.zh, en: trip.en, emoji: trip.emoji,
           untilHour: p.trip_until, hoursLeft: Math.max(0, p.trip_until - hour) } : null,
         medSpent: p.med_spent, tripSpent: p.trip_spent, trips: p.trips,
-        trips_catalog: TRIPS.map(t => ({ ...t, price: { economy: S.tripCost(t, 'economy'),
-          business: S.tripCost(t, 'business'), first: S.tripCost(t, 'first'), private: S.tripCost(t, 'private') } })),
         classes: FLIGHT_CLASSES,
         hasJet: db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c > 0,
       };
@@ -813,27 +816,85 @@ export function treat(uid) {
   return { ok: true, cost, until, days: ill.treatDays };
 }
 
-// ── 旅游 ────────────────────────────────────────────────────
-export function bookTrip(uid, { tripId, cls }) {
+// ── 世界地图：订机票出发 ────────────────────────────────────
+export function bookTrip(uid, { destId, nights, cabin, hotel }) {
   S.advancePlayer(uid);
   const p = P(uid), hour = curHour();
-  const trip = S.TRIP[tripId];
-  if (!trip) throw new Err('线路不存在 / Trip not found');
+  const d = S.DEST[destId];
+  if (!d) throw new Err('目的地不存在 / Destination not found');
   if (p.sick_until > hour) throw new Err('生着病就别出门了 / Not while you are ill');
   if (p.trip_until > hour) throw new Err('你已经在旅途中了 / You are already travelling');
-  const fc = FLIGHT_CLASSES.find(c => c.id === (cls || 'economy')) || FLIGHT_CLASSES[0];
-  if (fc.needJet && !db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c)
+  const c = S.CABIN[cabin] || CABINS[0];
+  if (c.needJet && !db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c)
     throw new Err('你还没有私人飞机 / You do not own a private jet');
-  const cost = S.tripCost(trip, fc.id);
-  if (p.cash < cost) throw new Err(`需要现金 ${S.fmt(cost)} / Needs ${S.fmt(cost)} in cash`);
-  p.cash -= cost;
-  const prestige = trip.prestige * fc.prestige;
-  db.prepare(`UPDATE players SET cash=?, prestige=prestige+?, trip_until=?, trip_id=?, trip_relief=?,
+  const home = S.birthOf(p);
+  if (d.id === home.id) throw new Err('这就是你的家乡 / That is where you already live');
+  const q = S.tripQuote(d, num(nights, 1, 60), c.id, hotel, home);
+  if (p.cash < q.total)
+    throw new Err(`现金不足：机票 ${S.fmt(q.air)} + 住宿 ${S.fmt(q.stay)} + 花销 ${S.fmt(q.daily)} = ${S.fmt(q.total)} / Need ${S.fmt(q.total)}`);
+  p.cash -= q.total;
+  db.prepare(`UPDATE players SET cash=?, prestige=prestige+?, trip_until=?, trip_id=?,
+              trip_relief=?, trip_stam=?, trip_nights=?, trip_spent2=?,
               trip_spent=trip_spent+?, trips=trips+1 WHERE user_id=?`)
-    .run(p.cash, prestige, hour + trip.days * 24, trip.id, fc.relief, cost, uid);
-  ledger(uid, 'trip', -cost, L('led.tripGo', { trip: { zh: trip.zh, en: trip.en },
-    cls: { zh: fc.zh, en: fc.en }, cost, days: trip.days }), trip.emoji);
-  return { ok: true, cost, days: trip.days, until: hour + trip.days * 24 };
+    .run(p.cash, q.prestige, hour + q.hours, d.id, q.relief, q.stamina, q.nights, q.total, q.total, uid);
+  ledger(uid, 'trip', -q.total, L('led.tripGo2', { place: { zh: d.zh, en: d.en }, flag: d.flag,
+    nights: q.nights, cabin: { zh: q.cabin.zh, en: q.cabin.en }, hotel: { zh: q.hotel.zh, en: q.hotel.en },
+    air: q.air, stay: q.stay, daily: q.daily, total: q.total, hours: Math.round(d.hours) }), d.flag);
+  return { ok: true, ...q, until: hour + q.hours, place: d.zh };
+}
+
+// 世界地图数据 + 我的足迹
+export function worldMap(uid) {
+  const p = P(uid);
+  const home = S.birthOf(p);
+  const rows = db.prepare('SELECT * FROM visits WHERE user_id=?').all(uid);
+  const visited = Object.fromEntries(rows.map(r => [r.place_id, r]));
+  const countries = new Set(rows.map(r => S.DEST[r.place_id]?.country).filter(Boolean));
+  const regions = new Set(rows.map(r => S.DEST[r.place_id]?.region).filter(Boolean));
+  return {
+    home, chosen: !!p.birth_id,
+    homeOptions: HOMES_AVAILABLE().map(d => ({ id: d.id, zh: d.zh, en: d.en, flag: d.flag,
+      country: d.country, countryEn: d.countryEn, lon: d.lon, lat: d.lat, region: d.region,
+      descZh: d.descZh, descEn: d.descEn, hotel: d.hotel, spend: d.spend })),
+    regions: REGIONS_W,
+    cabins: CABINS, hotels: HOTELS,
+    hasJet: db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c > 0,
+    places: DESTINATIONS.filter(d => d.id !== home.id).map(d => {
+      const rt = routeOf(home, d);
+      return { ...d, km: rt.km, flight: rt.fare, hours: rt.hours,
+        visit: visited[d.id] ? { times: visited[d.id].times, nights: visited[d.id].nights,
+          spent: visited[d.id].spent, firstHour: visited[d.id].first_hour, lastHour: visited[d.id].last_hour } : null };
+    }),
+    footprint: {
+      places: rows.length, total: DESTINATIONS.length - 1,
+      countries: countries.size, totalCountries: new Set(DESTINATIONS.filter(d => d.id !== home.id).map(d => d.country)).size,
+      regions: regions.size, totalRegions: REGIONS_W.length,
+      nights: rows.reduce((a, r) => a + r.nights, 0),
+      trips: rows.reduce((a, r) => a + r.times, 0),
+      spent: rows.reduce((a, r) => a + r.spent, 0),
+      list: rows.map(r => ({ ...S.DEST[r.place_id], times: r.times, nights: r.nights, spent: r.spent,
+        firstHour: r.first_hour, lastHour: r.last_hour }))
+        .filter(x => x.id).sort((a, b) => a.firstHour - b.firstHour),
+    },
+  };
+}
+
+// 选择出生地（只能选一次）
+export function setBirthplace(uid, { id }) {
+  const p = P(uid);
+  if (p.birth_id) throw new Err('出生地已经确定了 / Your birthplace is already set');
+  const d = S.DEST[id];
+  if (!d || !d.home) throw new Err('这里不能作为出生地 / Not available as a birthplace');
+  db.prepare('UPDATE players SET birth_id=? WHERE user_id=?').run(id, uid);
+  ledger(uid, 'start', 0, L('led.birth', { place: { zh: d.zh, en: d.en },
+    country: { zh: d.country, en: d.countryEn }, flag: d.flag }), d.flag);
+  return { ok: true, home: d };
+}
+
+// 游戏速度
+export function setSpeed(uid, { ms }) {
+  const v = M.setSpeed(num(ms, M.SPEED_MIN_MS, M.SPEED_MAX_MS));
+  return { ok: true, msPerHour: v, minutes: v / 60000 };
 }
 
 // ── 富豪榜：财富与游戏内公司股价实时联动 ────────────────────
@@ -920,24 +981,6 @@ export function marketOverview(uid) {
     breadth, sectors,
     gainers: rank.slice(0, 8), losers: rank.slice(-8).reverse(),
     index: { ...M.marketIndex(), history: bex ? M.history(bex.id, 300) : [], desc: bex?.desc || '' },
-    living: (() => {
-      const ownsEstate = db.prepare("SELECT COUNT(*) c FROM items i WHERE i.user_id=? AND i.type_id LIKE 'est_%'").get(uid).c > 0;
-      const meal = S.mealOf(p), home = S.homeOf(p, ownsEstate);
-      const dailyWage = (job ? job.wage : 0) * 8;
-      return {
-        meal: { ...meal }, home: { ...home }, ownsEstate,
-        meals: MEALS, homes: HOMES,
-        monthlyFood: meal.cost * 30, monthlyRent: home.rent,
-        monthlyCost: meal.cost * 30 + home.rent,
-        monthlyWage: dailyWage * 30,
-        foodSpent: p.food_spent, rentSpent: p.rent_spent,
-        lotteries: LOTTERIES.map(l => ({ id: l.id, emoji: l.emoji, zh: l.zh, en: l.en, price: l.price,
-          maxBuy: l.maxBuy, descZh: l.descZh, descEn: l.descEn,
-          topOdds: l.tiers[0][0], jackpot: l.jackpotBase ? jackpotOf(l) : l.tiers[0][1],
-          tiers: l.tiers.map(([o, pz]) => ({ odds: o, prize: pz === 'JACKPOT' ? jackpotOf(l) : pz, isJackpot: pz === 'JACKPOT' })) })),
-        lottoSpent: p.lotto_spent, lottoWon: p.lotto_won, lottoTickets: p.lotto_tickets,
-      };
-    })(),
     macro: M.regimeState(),
     news: M.latestNews(20),
   };
