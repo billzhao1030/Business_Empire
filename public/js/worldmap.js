@@ -1,120 +1,329 @@
-// 手绘风格世界地图（等距圆柱投影），零依赖
-const LAND = [
-  // 北美洲
-  [[-168,65],[-160,71],[-140,70],[-125,70],[-100,72],[-80,73],[-62,60],[-55,47],[-66,45],[-70,42],[-76,35],[-81,25],[-97,26],[-105,20],[-110,23],[-115,30],[-124,40],[-130,55],[-140,60],[-152,59],[-166,55],[-168,65]],
-  // 格陵兰
-  [[-45,60],[-30,70],[-25,75],[-35,83],[-55,82],[-60,75],[-52,65],[-45,60]],
-  // 南美洲
-  [[-81,10],[-72,12],[-60,10],[-52,5],[-35,-5],[-38,-13],[-48,-25],[-58,-35],[-62,-42],[-68,-52],[-75,-52],[-73,-45],[-71,-30],[-70,-18],[-75,-5],[-81,0],[-81,10]],
-  // 非洲
-  [[-17,15],[-10,28],[10,37],[25,32],[35,31],[43,12],[51,12],[42,-2],[40,-15],[35,-25],[25,-34],[18,-34],[12,-18],[9,4],[-8,5],[-17,15]],
-  // 欧亚大陆
-  [[-10,36],[0,44],[12,45],[20,40],[30,36],[45,40],[50,30],[60,25],[68,23],[78,8],[80,15],[88,22],[95,16],[100,13],[106,10],[110,20],[120,23],[122,31],[122,40],[130,43],[136,55],[146,60],[160,60],[170,66],[180,68],[180,73],[140,76],[100,77],[80,73],[60,70],[40,68],[30,70],[25,71],[10,63],[5,60],[-5,58],[-10,50],[-10,36]],
-  // 英国
-  [[-5,50],[-3,53],[-5,58],[-2,58],[0,54],[1,52],[-5,50]],
-  // 日本
-  [[130,32],[135,34],[140,36],[142,41],[145,44],[141,45],[138,37],[133,34],[130,32]],
-  // 东南亚群岛
-  [[95,6],[105,2],[112,-3],[118,-8],[125,-9],[132,-4],[141,-3],[141,-9],[130,-9],[120,-10],[110,-8],[100,-1],[95,6]],
-  // 菲律宾
-  [[120,18],[124,13],[126,8],[122,6],[120,12],[120,18]],
-  // 澳大利亚
-  [[114,-22],[122,-18],[130,-12],[137,-12],[143,-11],[146,-19],[153,-25],[153,-32],[150,-38],[143,-39],[135,-35],[129,-32],[120,-34],[115,-34],[114,-22]],
-  // 塔斯马尼亚
-  [[145,-41],[148,-41],[148,-43],[145,-43],[145,-41]],
-  // 新西兰
-  [[172,-34],[178,-38],[177,-41],[174,-41],[172,-44],[168,-47],[166,-45],[170,-42],[172,-34]],
-  // 马达加斯加
-  [[43,-12],[50,-15],[47,-25],[44,-20],[43,-12]],
-  // 南极洲
-  [[-180,-70],[-140,-74],[-100,-73],[-60,-63],[-20,-70],[20,-70],[60,-67],[100,-66],[140,-67],[180,-72],[180,-88],[-180,-88],[-180,-70]],
-];
-
+// 真实矢量世界地图：Natural Earth 1:50m 国界数据（公有领域）
+// 支持拖拽平移、滚轮缩放、国家高亮与命中检测。零依赖，数据本地加载。
 const CSSVAR = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-export function drawWorld(canvas, opts) {
-  const { places, home, selected, visited, hovered } = opts;
-  const w = canvas.parentElement?.clientWidth || canvas.clientWidth || 860;
-  const h = Math.round(w * 0.50);
-  const r = window.devicePixelRatio || 1;
-  canvas.width = w * r; canvas.height = h * r;
-  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(r, 0, 0, r, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  // 投影：纬度限制在 ±85，避免极地拉伸
-  const X = lon => (lon + 180) / 360 * w;
-  const Y = lat => (85 - Math.max(-85, Math.min(85, lat))) / 170 * h;
-
-  // 海洋
-  const og = ctx.createLinearGradient(0, 0, 0, h);
-  og.addColorStop(0, CSSVAR('--bg2')); og.addColorStop(1, CSSVAR('--bg'));
-  ctx.fillStyle = og; ctx.fillRect(0, 0, w, h);
-
-  // 经纬网
-  ctx.strokeStyle = CSSVAR('--line'); ctx.lineWidth = 0.6; ctx.globalAlpha = 0.55;
-  for (let lon = -180; lon <= 180; lon += 30) { ctx.beginPath(); ctx.moveTo(X(lon), 0); ctx.lineTo(X(lon), h); ctx.stroke(); }
-  for (let lat = -60; lat <= 80; lat += 30) { ctx.beginPath(); ctx.moveTo(0, Y(lat)); ctx.lineTo(w, Y(lat)); ctx.stroke(); }
-  ctx.globalAlpha = 1;
-  // 赤道
-  ctx.strokeStyle = CSSVAR('--line2'); ctx.setLineDash([4, 5]);
-  ctx.beginPath(); ctx.moveTo(0, Y(0)); ctx.lineTo(w, Y(0)); ctx.stroke(); ctx.setLineDash([]);
-
-  // 陆地
-  for (const poly of LAND) {
-    ctx.beginPath();
-    poly.forEach(([lon, lat], i) => i ? ctx.lineTo(X(lon), Y(lat)) : ctx.moveTo(X(lon), Y(lat)));
-    ctx.closePath();
-    ctx.fillStyle = CSSVAR('--panel2'); ctx.fill();
-    ctx.strokeStyle = CSSVAR('--line2'); ctx.lineWidth = 1; ctx.stroke();
-  }
-
-  // 从家出发的航线
-  const hx = X(home.lon), hy = Y(home.lat);
-  const target = places.find(p => p.id === (hovered || selected));
-  if (target) {
-    const tx = X(target.lon), ty = Y(target.lat);
-    ctx.beginPath(); ctx.moveTo(hx, hy);
-    const mx = (hx + tx) / 2, my = (hy + ty) / 2 - Math.abs(tx - hx) * 0.18 - 18;
-    ctx.quadraticCurveTo(mx, my, tx, ty);
-    ctx.strokeStyle = CSSVAR('--gold'); ctx.lineWidth = 1.6; ctx.setLineDash([5, 4]);
-    ctx.stroke(); ctx.setLineDash([]);
-  }
-
-  // 目的地圆点
+// ── TopoJSON 解码（约 40 行，够用即可）──────────────────────
+function decodeArcs(topo) {
+  const { scale: [sx, sy], translate: [tx, ty] } = topo.transform;
+  return topo.arcs.map(arc => {
+    let x = 0, y = 0;
+    return arc.map(([dx, dy]) => { x += dx; y += dy; return [x * sx + tx, y * sy + ty]; });
+  });
+}
+function ringOf(arcs, indices) {
   const pts = [];
-  for (const p of places) {
-    const x = X(p.lon), y = Y(p.lat);
-    const been = !!visited[p.id];
-    const isSel = p.id === selected, isHov = p.id === hovered;
-    const rad = isSel || isHov ? 6 : been ? 5 : 3.6;
-    if (been) { ctx.beginPath(); ctx.arc(x, y, rad + 5, 0, 7); ctx.fillStyle = CSSVAR('--up') + '33'; ctx.fill(); }
-    ctx.beginPath(); ctx.arc(x, y, rad, 0, 7);
-    ctx.fillStyle = been ? CSSVAR('--up') : isSel || isHov ? CSSVAR('--gold') : CSSVAR('--dim');
-    ctx.fill();
-    ctx.strokeStyle = CSSVAR('--bg'); ctx.lineWidth = 1.4; ctx.stroke();
-    pts.push({ id: p.id, x, y, r: Math.max(9, rad + 5) });
+  for (const idx of indices) {
+    const rev = idx < 0;
+    const a = arcs[rev ? ~idx : idx];
+    const seg = rev ? a.slice().reverse() : a;
+    for (let i = pts.length ? 1 : 0; i < seg.length; i++) pts.push(seg[i]);
   }
-  // 家
-  ctx.beginPath(); ctx.arc(hx, hy, 8, 0, 7); ctx.fillStyle = CSSVAR('--gold') + '44'; ctx.fill();
-  ctx.beginPath(); ctx.arc(hx, hy, 4.5, 0, 7); ctx.fillStyle = CSSVAR('--gold'); ctx.fill();
-  ctx.font = '600 10.5px ' + CSSVAR('--sans');
-  ctx.fillStyle = CSSVAR('--gold'); ctx.textAlign = 'center';
-  ctx.fillText('🏠 ' + home.zh, hx, hy + 18);
+  return pts;
+}
+function featuresOf(topo, objName) {
+  const arcs = decodeArcs(topo);
+  return topo.objects[objName].geometries.map(g => {
+    const polys = g.type === 'Polygon' ? [g.arcs] : g.type === 'MultiPolygon' ? g.arcs : [];
+    return { id: g.id, name: g.properties?.name || '', rings: polys.map(p => p.map(r => ringOf(arcs, r))) };
+  }).filter(f => f.rings.length);
+}
 
-  // 悬停/选中标签
-  const lab = pts.find(q => q.id === (hovered || selected));
-  if (lab && target) {
-    const text = `${target.flag} ${target.zh}`;
-    ctx.font = '700 11.5px ' + CSSVAR('--sans');
-    const tw = ctx.measureText(text).width + 14;
-    let lx = Math.min(Math.max(lab.x - tw / 2, 4), w - tw - 4), ly = lab.y - 26;
-    if (ly < 4) ly = lab.y + 12;
-    ctx.fillStyle = CSSVAR('--panel'); ctx.strokeStyle = CSSVAR('--line2'); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(lx, ly, tw, 20, 6); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = CSSVAR('--txt'); ctx.textAlign = 'left';
-    ctx.fillText(text, lx + 7, ly + 14);
+// 等距圆柱投影：经纬度 → 归一化世界坐标 [0,1]
+const PX = lon => (lon + 180) / 360;
+const PY = lat => (90 - lat) / 180;
+
+let CACHE = null;
+export async function loadGeo() {
+  if (CACHE) return CACHE;
+  const topo = await (await fetch('/data/countries-50m.json')).json();
+  const feats = featuresOf(topo, 'countries');
+  for (const f of feats) {
+    const path = new Path2D();
+    let minx = 2, maxx = -1, miny = 2, maxy = -1;
+    // 逐块统计：国名要标在最大的那块陆地上。若取整个国家的包围盒中心，
+    // 跨换日线的（俄罗斯、新西兰、斐济）和带海外领地的（法国、葡萄牙、荷兰）
+    // 会把国名甩到大洋正中间。
+    let best = 0, bx = 0.5, by = 0.5, mbox = null;
+    for (const poly of f.rings) {
+      let px0 = 2, px1 = -1, py0 = 2, py1 = -1, a2 = 0, sx = 0, sy = 0;
+      poly.forEach((ring, ri) => {
+        // 换日线展开：把经度接续成连续曲线，否则跨 ±180° 的国家（俄罗斯远东、
+        // 斐济）会被画成横贯整幅地图的一条长条。
+        const pts = [];
+        let prev = null;
+        for (const [lon, lat] of ring) {
+          let x = PX(lon);
+          if (prev !== null) {
+            while (x - prev > 0.5) x -= 1;
+            while (prev - x > 0.5) x += 1;
+          }
+          prev = x;
+          pts.push([x, PY(lat)]);
+        }
+        let rx0 = 2, rx1 = -1;
+        for (const [x, y] of pts) {
+          if (x < rx0) rx0 = x; if (x > rx1) rx1 = x;
+          if (y < miny) miny = y; if (y > maxy) maxy = y;
+        }
+        if (rx0 < minx) minx = rx0; if (rx1 > maxx) maxx = rx1;
+        // 展开后落在世界之外的部分，用 ±1 的副本补回来（画布裁剪掉多余的一份）
+        for (let k = -1; k <= 1; k++) {
+          if (rx0 + k >= 1 || rx1 + k <= 0) continue;
+          pts.forEach(([x, y], i) => (i ? path.lineTo(x + k, y) : path.moveTo(x + k, y)));
+          path.closePath();
+        }
+        if (ri) return;                                  // 只按外环算面积与形心
+        for (const [x, y] of pts) {
+          if (x < px0) px0 = x; if (x > px1) px1 = x;
+          if (y < py0) py0 = y; if (y > py1) py1 = y;
+        }
+        for (let i = 0, n = pts.length; i < n; i++) {
+          const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % n];
+          const c = x1 * y2 - x2 * y1;
+          a2 += c; sx += (x1 + x2) * c; sy += (y1 + y2) * c;
+        }
+      });
+      const area = Math.abs(a2) / 2;
+      if (area > best) {
+        best = area;
+        mbox = [px0, py0, px1, py1];
+        bx = a2 ? sx / (3 * a2) : (px0 + px1) / 2;
+        by = a2 ? sy / (3 * a2) : (py0 + py1) / 2;
+        // 形心可能落在凹形国家（挪威、克罗地亚）之外，越界就退回该块的中心
+        if (bx < px0 || bx > px1 || by < py0 || by > py1) { bx = (px0 + px1) / 2; by = (py0 + py1) / 2; }
+      }
+    }
+    bx -= Math.floor(bx);                                 // 展开后的形心绕回 [0,1)
+    f.path = path; f.box = [minx, miny, maxx, maxy];
+    f.mainBox = mbox || f.box;
+    f.cx = bx; f.cy = by; f.area = best;
   }
-  return { pts, w, h };
+  CACHE = feats;
+  return feats;
+}
+
+// 大圆航线：按球面插值，跨越换日线时自动断开
+function greatCircle(a, b, n = 96) {
+  const rad = Math.PI / 180;
+  const lo1 = a.lon * rad, la1 = a.lat * rad, lo2 = b.lon * rad, la2 = b.lat * rad;
+  const d = 2 * Math.asin(Math.sqrt(Math.sin((la2 - la1) / 2) ** 2 +
+    Math.cos(la1) * Math.cos(la2) * Math.sin((lo2 - lo1) / 2) ** 2));
+  if (!d || !isFinite(d)) return [];
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const f = i / n;
+    const A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
+    const y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
+    const z = A * Math.sin(la1) + B * Math.sin(la2);
+    out.push([Math.atan2(y, x) / rad, Math.atan2(z, Math.hypot(x, y)) / rad]);
+  }
+  return out;
+}
+
+export class WorldMap {
+  constructor(el, opts = {}) {
+    this.el = el;
+    this.onSelect = opts.onSelect || (() => {});
+    this.onHover = opts.onHover || (() => {});
+    this.ratio = opts.ratio || 0.52;
+    this.zoom = 1; this.cx = 0.5; this.cy = 0.5;     // 视图中心（世界坐标）
+    this.places = []; this.home = null; this.selected = null; this.hovered = null; this.visited = {};
+    this.canvas = document.createElement('canvas');
+    this.canvas.style.display = 'block';
+    this.canvas.style.cursor = 'grab';
+    this.el.appendChild(this.canvas);
+    this._bind();
+  }
+  setData(d) { Object.assign(this, d); this.draw(); }
+  async ready() { this.geo = await loadGeo(); this.draw(); }
+
+  size() {
+    const w = this.el.clientWidth || 900;
+    return { w, h: Math.round(w * this.ratio) };
+  }
+  toScreen(lon, lat) {
+    const { w, h } = this.size();
+    const s = w * this.zoom, sh = s / 2;           // 等距圆柱：高 = 宽/2
+    return [w / 2 + (PX(lon) - this.cx) * s, h / 2 + (PY(lat) - this.cy) * sh];
+  }
+  toWorld(px, py) {
+    const { w, h } = this.size();
+    const s = w * this.zoom, sh = s / 2;
+    return { x: this.cx + (px - w / 2) / s, y: this.cy + (py - h / 2) / sh };
+  }
+  clampView() {
+    const half = 0.5 / this.zoom;
+    this.cx = Math.min(1 - half, Math.max(half, this.cx));
+    const { w, h } = this.size();
+    const vh = (h / (w * this.zoom / 2)) / 2;      // 视口在世界纵向坐标中占的半高
+    this.cy = Math.min(1 - vh, Math.max(vh, this.cy));
+    if (this.zoom <= 1) { this.cx = 0.5; this.cy = 0.5; }
+  }
+  zoomAt(factor, px, py) {
+    const before = this.toWorld(px, py);
+    this.zoom = Math.min(14, Math.max(1, this.zoom * factor));
+    const after = this.toWorld(px, py);
+    this.cx += before.x - after.x; this.cy += before.y - after.y;
+    this.clampView(); this.draw();
+  }
+  _bind() {
+    const cv = this.canvas;
+    let drag = null, moved = 0;
+    cv.addEventListener('mousedown', e => { drag = { x: e.clientX, y: e.clientY, cx: this.cx, cy: this.cy }; moved = 0; cv.style.cursor = 'grabbing'; });
+    window.addEventListener('mouseup', () => { if (drag) { drag = null; cv.style.cursor = 'grab'; } });
+    cv.addEventListener('mousemove', e => {
+      const r = cv.getBoundingClientRect();
+      if (drag) {
+        const { w } = this.size(), s = w * this.zoom;
+        moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
+        this.cx = drag.cx - (e.clientX - drag.x) / s;
+        this.cy = drag.cy - (e.clientY - drag.y) / (s / 2);
+        this.clampView(); this.draw();
+        return;
+      }
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const hit = this._hitPlace(mx, my);
+      const id = hit ? hit.id : null;
+      if (id !== this.hovered) { this.hovered = id; cv.style.cursor = id ? 'pointer' : 'grab'; this.onHover(id); this.draw(); }
+      this._mouse = [mx, my];
+    });
+    cv.addEventListener('mouseleave', () => { if (this.hovered) { this.hovered = null; this.onHover(null); this.draw(); } this._mouse = null; });
+    cv.addEventListener('wheel', e => { e.preventDefault(); this.zoomAt(e.deltaY < 0 ? 1.22 : 1 / 1.22, e.offsetX, e.offsetY); }, { passive: false });
+    cv.addEventListener('dblclick', e => this.zoomAt(1.9, e.offsetX, e.offsetY));
+    cv.addEventListener('click', e => {
+      if (moved > 5) return;
+      const r = cv.getBoundingClientRect();
+      const hit = this._hitPlace(e.clientX - r.left, e.clientY - r.top);
+      if (hit) this.onSelect(hit.id, hit);
+      else {
+        const wpt = this.toWorld(e.clientX - r.left, e.clientY - r.top);
+        this.onSelect(null, { lon: wpt.x * 360 - 180, lat: 90 - wpt.y * 180 });
+      }
+    });
+  }
+  _hitPlace(mx, my) {
+    let best = null, bd = 18 * 18;
+    for (const p of this.places) {
+      const [x, y] = this.toScreen(p.lon, p.lat);
+      const d = (x - mx) ** 2 + (y - my) ** 2;
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+  }
+
+  draw() {
+    if (!this.geo) return;
+    const { w, h } = this.size();
+    const r = window.devicePixelRatio || 1;
+    const cv = this.canvas;
+    cv.width = w * r; cv.height = h * r;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+
+    // 海洋
+    const og = ctx.createLinearGradient(0, 0, 0, h);
+    og.addColorStop(0, CSSVAR('--bg2')); og.addColorStop(1, CSSVAR('--bg'));
+    ctx.fillStyle = og; ctx.fillRect(0, 0, w, h);
+
+    const s = w * this.zoom, sh = s / 2;
+    const ox = w / 2 - this.cx * s, oy = h / 2 - this.cy * sh;
+
+    // 经纬网
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+    ctx.strokeStyle = CSSVAR('--line'); ctx.lineWidth = 0.6; ctx.globalAlpha = 0.45;
+    const step = this.zoom > 6 ? 5 : this.zoom > 3 ? 10 : 30;
+    for (let lon = -180; lon <= 180; lon += step) { const x = ox + PX(lon) * s; if (x > -5 && x < w + 5) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); } }
+    for (let lat = -80; lat <= 80; lat += step) { const y = oy + PY(lat) * sh; if (y > -5 && y < h + 5) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); } }
+    ctx.globalAlpha = 1;
+
+    // 陆地：用变换一次性绘制矢量路径
+    ctx.save();
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    ctx.translate(ox, oy); ctx.scale(s, sh);
+    ctx.lineWidth = 1 / s * 1.2;
+    const landFill = CSSVAR('--panel2'), border = CSSVAR('--line2');
+    const hovCountry = this._hoverCountry;
+    for (const f of this.geo) {
+      ctx.fillStyle = f === hovCountry ? CSSVAR('--panel3') : landFill;
+      ctx.fill(f.path);
+    }
+    ctx.strokeStyle = border;
+    for (const f of this.geo) ctx.stroke(f.path);
+    ctx.restore();
+
+    // 赤道
+    ctx.strokeStyle = CSSVAR('--line2'); ctx.setLineDash([5, 6]); ctx.globalAlpha = .6;
+    const ey = oy + PY(0) * sh;
+    ctx.beginPath(); ctx.moveTo(0, ey); ctx.lineTo(w, ey); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+
+    // 国家名（放大后显示）
+    if (this.zoom >= 2.2) {
+      ctx.font = `600 ${Math.min(13, 8 + this.zoom * 0.5)}px ${CSSVAR('--sans')}`;
+      ctx.fillStyle = CSSVAR('--dim2'); ctx.textAlign = 'center';
+      for (const f of this.geo) {
+        if (f.area * this.zoom < 0.0008) continue;
+        const x = ox + f.cx * s, y = oy + f.cy * sh;
+        if (x < 0 || x > w || y < 0 || y > h) continue;
+        ctx.fillText(f.name, x, y);
+      }
+    }
+
+    // 航线
+    const target = this.places.find(p => p.id === (this.hovered || this.selected));
+    if (this.home && target) {
+      const pts = greatCircle(this.home, target);
+      ctx.beginPath();
+      let prev = null;
+      for (const [lon, lat] of pts) {
+        const x = ox + PX(lon) * s, y = oy + PY(lat) * sh;
+        if (prev && Math.abs(x - prev) > w * 0.6) ctx.moveTo(x, y); else prev === null ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        prev = x;
+      }
+      ctx.strokeStyle = CSSVAR('--gold'); ctx.lineWidth = 1.8; ctx.setLineDash([6, 4]);
+      ctx.globalAlpha = .9; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+
+    // 目的地
+    const labelZoom = this.zoom >= 1.8;
+    for (const p of this.places) {
+      const [x, y] = this.toScreen(p.lon, p.lat);
+      if (x < -20 || x > w + 20 || y < -20 || y > h + 20) continue;
+      const been = !!this.visited[p.id];
+      const act = p.id === this.selected || p.id === this.hovered;
+      const rad = act ? 6.5 : been ? 5 : 3.8;
+      if (been) { ctx.beginPath(); ctx.arc(x, y, rad + 5, 0, 7); ctx.fillStyle = CSSVAR('--up') + '30'; ctx.fill(); }
+      if (act) { ctx.beginPath(); ctx.arc(x, y, rad + 7, 0, 7); ctx.fillStyle = CSSVAR('--gold') + '33'; ctx.fill(); }
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, 7);
+      ctx.fillStyle = been ? CSSVAR('--up') : act ? CSSVAR('--gold') : CSSVAR('--dim');
+      ctx.fill(); ctx.strokeStyle = CSSVAR('--bg'); ctx.lineWidth = 1.5; ctx.stroke();
+      if (labelZoom || act) {
+        ctx.font = `700 ${act ? 12 : 10.5}px ${CSSVAR('--sans')}`;
+        ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = CSSVAR('--bg');
+        const txt = (p.flag || '') + ' ' + (p.label || p.zh || p.en || '');
+        ctx.strokeText(txt, x, y - rad - 6); ctx.fillStyle = act ? CSSVAR('--gold') : CSSVAR('--txt');
+        ctx.fillText(txt, x, y - rad - 6);
+      }
+    }
+
+    // 家
+    if (this.home) {
+      const [hx, hy] = this.toScreen(this.home.lon, this.home.lat);
+      ctx.beginPath(); ctx.arc(hx, hy, 10, 0, 7); ctx.fillStyle = CSSVAR('--gold') + '3a'; ctx.fill();
+      ctx.beginPath(); ctx.arc(hx, hy, 5, 0, 7); ctx.fillStyle = CSSVAR('--gold'); ctx.fill();
+      ctx.strokeStyle = CSSVAR('--bg'); ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.font = `700 11.5px ${CSSVAR('--sans')}`; ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = CSSVAR('--bg');
+      const t = '🏠 ' + (this.home.label || this.home.zh || this.home.en || '');
+      ctx.strokeText(t, hx, hy + 20); ctx.fillStyle = CSSVAR('--gold'); ctx.fillText(t, hx, hy + 20);
+    }
+    ctx.restore();
+
+    // 缩放指示
+    ctx.font = `600 10.5px ${CSSVAR('--mono')}`; ctx.textAlign = 'left';
+    ctx.fillStyle = CSSVAR('--dim2');
+    ctx.fillText(`${this.zoom.toFixed(1)}×`, 10, h - 10);
+  }
 }

@@ -176,6 +176,10 @@ node -v && node server.js     # 然后打开 http://localhost:8020
 
 去过的地方会记进**人生足迹**：第一次抵达的日期、去过几次、住了多少晚、花了多少钱。
 
+地图本身是**真实矢量世界地图**：Natural Earth 1:50m 公有领域数据，241 个国家与地区的
+实际海岸线与国界，可拖动平移、滚轮缩放至 14 倍，放大后显示国名。数据随游戏离线打包，
+运行期间不向任何外部服务器发请求。
+
 ### ⏱️ 游戏速度
 
 顶栏右侧五档调速，从最慢 **5 分钟 = 1 游戏小时** 到最快 **12 秒 = 1 游戏小时**（相差 25 倍）。
@@ -417,6 +421,16 @@ meaningful from the first second.
 **Change it:** `GAME_HOUR_MS=120000 node server.js`.
 **Reset:** the About page in-game, or delete `data/game.db*`.
 
+
+---
+
+## 致谢
+
+世界地图使用 **[Natural Earth](https://www.naturalearthdata.com/)** 1:50m Admin 0 国界数据
+（公有领域，无任何使用限制），经 [world-atlas](https://github.com/topojson/world-atlas)
+打包为 TopoJSON 随游戏分发。其余引擎、美术、文案与数据均为本项目原创。
+
+游戏运行期间不联网：地图、257 个标的和所有资源全部由你本机提供。
 
 ---
 
