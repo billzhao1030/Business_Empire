@@ -8,8 +8,9 @@ const stClass = s => s >= 60 ? 'st-good' : s >= 25 ? 'st-mid' : 'st-low';
 const stressCls = v => v < 30 ? 'st-good' : v < 60 ? 'st-mid' : 'st-low';
 const stressLabel = v => t(v < 25 ? 'life.calm' : v < 50 ? 'life.mild' : v < 70 ? 'life.tense' : v < 88 ? 'life.heavy' : 'life.crisis');
 
-function dayBar(j) {
-  // 24 小时作息条
+function dayBar(j, live) {
+  // 24 小时作息条。游标位置由 app.paintClock() 每 250ms 推一次，
+  // 跟顶栏的钟走的是同一个时间源，所以两者永远对得上。
   const segs = [];
   for (let h = 0; h < 24; h++) {
     const kind = (h >= j.sleepHour || h < j.wakeHour) ? 'sleep'
@@ -18,9 +19,15 @@ function dayBar(j) {
     else segs.push({ kind, n: 1, from: h });
   }
   const label = { sleep: lang === 'zh' ? '睡眠' : 'Sleep', shift: lang === 'zh' ? '正常班' : 'Shift', free: lang === 'zh' ? '可加班' : 'Overtime' };
-  return `<div class="daybar" style="position:relative">
-    ${segs.map(sg => `<div class="dseg-${sg.kind}" style="flex:${sg.n}">${sg.n >= 4 ? label[sg.kind] : ''}</div>`).join('')}
-    <div class="now" style="left:${(j.hod / 24) * 100}%"></div>
+  // 首帧就用实时值定位，免得渲染出来先跳一下
+  const at = live != null ? live : j.hod;
+  // 游标要放在 .daybar 外面：.daybar 是 overflow:hidden 的（为了圆角），
+  // 放在里面的话游标上方那个时刻标签会被裁掉。
+  return `<div class="daybar-wrap">
+    <div class="daybar" id="daybar">
+      ${segs.map(sg => `<div class="dseg-${sg.kind}" data-from="${sg.from}" data-n="${sg.n}" style="flex:${sg.n}">${sg.n >= 4 ? label[sg.kind] : ''}</div>`).join('')}
+    </div>
+    <div class="now" id="daybar-now" style="left:${(at / 24) * 100}%"><i id="daybar-time"></i></div>
   </div>
   <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--dim2);margin-top:3px">
     <span>00:00</span><span>${String(j.workStart).padStart(2, '0')}:00</span>
@@ -88,7 +95,7 @@ export default {
           <div class="tc-phase ${j.phase}" style="font-size:12px;font-weight:700">${t('phase.' + j.phase)}</div>
         </div>
 
-        <div style="margin-bottom:10px">${dayBar(j)}</div>
+        <div style="margin:20px 0 10px">${dayBar(j, app.liveHod ? app.liveHod() : null)}</div>
         <div style="display:flex;gap:12px;font-size:11px;margin-bottom:12px;flex-wrap:wrap">
           <span class="dim2">${t('career.timeBudget')}:</span>
           <span>🏬 ${t('career.mgmtTime')} <b class="mono ${j.mgmtHours > j.mgmtMax ? 'down' : ''}">${j.mgmtHours.toFixed(1)}h</b></span>
