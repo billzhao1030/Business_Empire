@@ -5,7 +5,8 @@ import * as S from './sim.js';
 import * as A from './auth.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, SECTOR_EN, JOBS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
-import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
+import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE,
+         destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES } from './catalog-world.js';
 
 const { RATES, L } = S;
 class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
@@ -856,7 +857,7 @@ export function bookTrip(uid, { destId, nights, cabin, hotel }) {
     .run(p.cash, q.prestige, hour + q.hours, d.id, q.relief, q.stamina, q.nights, q.total, q.total, uid);
   ledger(uid, 'trip', -q.total, L('led.tripGo2', { place: { zh: d.zh, en: d.en }, flag: d.flag,
     nights: q.nights, cabin: { zh: q.cabin.zh, en: q.cabin.en }, hotel: { zh: q.hotel.zh, en: q.hotel.en },
-    air: q.air, stay: q.stay, daily: q.daily, total: q.total, hours: Math.round(d.hours) }), d.flag);
+    air: q.air, stay: q.stay, daily: q.daily, total: q.total, hours: Math.round(q.flightHours) }), d.flag);
   return { ok: true, ...q, until: hour + q.hours, place: d.zh };
 }
 
@@ -866,10 +867,12 @@ export function worldMap(uid) {
   const home = S.birthOf(p);
   const rows = db.prepare('SELECT * FROM visits WHERE user_id=?').all(uid);
   const visited = Object.fromEntries(rows.map(r => [r.place_id, r]));
-  const countries = new Set(rows.map(r => S.DEST[r.place_id]?.country).filter(Boolean));
-  const regions = new Set(rows.map(r => S.DEST[r.place_id]?.region).filter(Boolean));
+  const countries = new Set(rows.map(r => destOf(r.place_id)?.country).filter(Boolean));
+  const regions = new Set(rows.map(r => destOf(r.place_id)?.region).filter(Boolean));
   return {
     home, chosen: !!p.birth_id,
+    atlas: { cities: CITY_COUNT, countries: COUNTRIES.size, total: TOTAL_PLACES,
+             birthMinPop: BIRTH_MIN_POP, alias: Object.fromEntries(CITY_ALIAS) },
     homeOptions: HOMES_AVAILABLE().map(d => ({ id: d.id, zh: d.zh, en: d.en, flag: d.flag,
       country: d.country, countryEn: d.countryEn, lon: d.lon, lat: d.lat, region: d.region,
       descZh: d.descZh, descEn: d.descEn, hotel: d.hotel, spend: d.spend })),
@@ -883,25 +886,66 @@ export function worldMap(uid) {
           spent: visited[d.id].spent, firstHour: visited[d.id].first_hour, lastHour: visited[d.id].last_hour } : null };
     }),
     footprint: {
-      places: rows.length, total: DESTINATIONS.length - 1,
-      countries: countries.size, totalCountries: new Set(DESTINATIONS.filter(d => d.id !== home.id).map(d => d.country)).size,
+      places: rows.length, total: TOTAL_PLACES - 1,
+      countries: countries.size, totalCountries: COUNTRIES.size,
       regions: regions.size, totalRegions: REGIONS_W.length,
       nights: rows.reduce((a, r) => a + r.nights, 0),
       trips: rows.reduce((a, r) => a + r.times, 0),
       spent: rows.reduce((a, r) => a + r.spent, 0),
-      list: rows.map(r => ({ ...S.DEST[r.place_id], times: r.times, nights: r.nights, spent: r.spent,
+      list: rows.map(r => ({ ...destOf(r.place_id), times: r.times, nights: r.nights, spent: r.spent,
         firstHour: r.first_hour, lastHour: r.last_hour }))
         .filter(x => x.id).sort((a, b) => a.firstHour - b.firstHour),
     },
   };
 }
 
+// 图集里任意一座城市：算好航线，够格就能订
+export const BIRTH_MIN_POP = 20_000;
+export const TOTAL_PLACES = CITY_COUNT - CITY_ALIAS.size + DESTINATIONS.length;
+
+function placePayload(uid, d) {
+  const p = P(uid), home = S.birthOf(p);
+  const rt = routeOf(home, d);
+  const v = db.prepare('SELECT * FROM visits WHERE user_id=? AND place_id=?').get(uid, d.id);
+  return { ...d, km: rt.km, flight: rt.fare, hours: rt.hours, isHome: d.id === home.id,
+    visit: v ? { times: v.times, nights: v.nights, spent: v.spent, firstHour: v.first_hour, lastHour: v.last_hour } : null };
+}
+
+// 地图上点中某座城市：返回它的完整资料与航线
+export function place(uid, { id }) {
+  const d = destOf(id);
+  if (!d) throw new Err('找不到这个地方 / No such place');
+  return placePayload(uid, d);
+}
+
+// 搜索城市：中英文都能搜
+export function citySearch(uid, { q, limit }) {
+  const home = S.birthOf(P(uid));
+  const hits = searchCities(q, Math.min(60, Math.max(1, limit | 0) || 30));
+  return { results: hits.map(c => {
+    const d = destOf(CITY_ALIAS.get(c.id) || c.id);
+    if (d.id === home.id) return null;                 // 家乡不是目的地
+    const rt = routeOf(home, d);
+    return { id: d.id, zh: d.zh, en: d.en, flag: d.flag, country: d.country, countryEn: d.countryEn,
+      region: d.region, lon: d.lon, lat: d.lat, pop: c.pop, km: rt.km, flight: rt.fare, hours: rt.hours };
+  }).filter(Boolean) };
+}
+
+// 在地图上落 pin：吸附到最近的城市
+export function nearest(uid, { lon, lat, minPop }) {
+  const c = nearestCity(Number(lon) || 0, Number(lat) || 0, minPop === undefined ? 0 : (minPop | 0));
+  if (!c) throw new Err('这附近没有城市 / No city near there');
+  return placePayload(uid, destOf(CITY_ALIAS.get(c.id) || c.id));
+}
+
 // 选择出生地（只能选一次）
 export function setBirthplace(uid, { id }) {
   const p = P(uid);
   if (p.birth_id) throw new Err('出生地已经确定了 / Your birthplace is already set');
-  const d = S.DEST[id];
-  if (!d || !d.home) throw new Err('这里不能作为出生地 / Not available as a birthplace');
+  const d = destOf(id);
+  if (!d) throw new Err('找不到这个地方 / No such place');
+  if (!d.home && !(d.atlas && d.pop >= BIRTH_MIN_POP))
+    throw new Err('这里太小了，换个大一点的城市 / Too small to start a life in — pick a larger town');
   db.prepare('UPDATE players SET birth_id=? WHERE user_id=?').run(id, uid);
   ledger(uid, 'start', 0, L('led.birth', { place: { zh: d.zh, en: d.en },
     country: { zh: d.country, en: d.countryEn }, flag: d.flag }), d.flag);

@@ -4,6 +4,15 @@ import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, durText, 
 import { WorldMap } from '../worldmap.js';
 
 let data = null, selected = null, hovered = null, nights = 5, cabin = 'economy', hotel = 'std', regionF = '';
+// 图集里的城市不在 data.places 里，选中时单独去服务端要一份
+let picked = null, query = '', results = null, searching = false;
+
+// 1,145,000 → 114.5 万 / 1.1M
+function popText(n) {
+  if (!n) return '—';
+  if (lang === 'en') return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : (n / 1e3).toFixed(0) + 'k';
+  return n >= 1e4 ? (n / 1e4).toFixed(n >= 1e6 ? 0 : 1) + ' 万' : String(n);
+}
 
 export default {
   async render(root, app) {
@@ -11,8 +20,9 @@ export default {
     if (!data) { root.innerHTML = `<div class="card"><div class="card-b"><div class="empty"><p>${t('common.loading')}</p></div></div></div>`; return; }
     const s = app.state, fp = data.footprint;
     const visited = Object.fromEntries(data.places.filter(p => p.visit).map(p => [p.id, p.visit]));
-    const list = data.places.filter(p => !regionF || p.region === regionF);
-    const sel = data.places.find(p => p.id === selected);
+    const featured = data.places.filter(p => !regionF || p.region === regionF);
+    const list = results || featured;
+    const sel = (picked && picked.id === selected) ? picked : data.places.find(p => p.id === selected);
     const away = s.health.trip;
 
     root.innerHTML = `
@@ -51,10 +61,19 @@ export default {
     <div class="grid" style="grid-template-columns:1.35fr 1fr;margin-bottom:16px">
       <div class="card">
         <div class="card-h"><h3>✈️ ${t('world.destinations')}</h3>
+          <span class="sub">${t('world.atlasCount', { n: data.atlas.cities.toLocaleString(), c: data.atlas.countries })}</span>
           <div class="right"><div class="chips">
             <button class="chip ${!regionF ? 'active' : ''}" data-reg="">${t('mkt.all')}</button>
             ${data.regions.map(r => `<button class="chip ${regionF === r.id ? 'active' : ''}" data-reg="${r.id}">${r.emoji} ${esc(nm(r))}</button>`).join('')}
           </div></div></div>
+        <div style="padding:10px 12px 0">
+          <input id="w-search" type="search" placeholder="${t('world.searchPh')}" value="${esc(query)}"
+            style="width:100%;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-size:12.5px">
+          ${results ? `<div class="dim2" style="font-size:11px;margin-top:6px">${results.length
+              ? t('world.searchHits', { n: results.length, q: esc(query) })
+              : t('world.searchNone', { q: esc(query) })} · <a href="#" id="w-clear" class="gold">${t('world.searchClear')}</a></div>`
+            : `<div class="dim2" style="font-size:11px;margin-top:6px">${t('world.featured')}</div>`}
+        </div>
         <div style="max-height:460px;overflow:auto">
           ${list.map(p => `<div class="item-row clickable ${p.id === selected ? 'sel' : ''}" data-dest="${p.id}" style="cursor:pointer">
             <div class="ico">${p.flag}</div>
@@ -65,8 +84,9 @@ export default {
               <div class="i-sub">
                 <span>${int(p.km)} km</span>
                 <span>✈️ ${p.hours}h</span>
-                <span>🏨 ${money(p.hotel)}/${t('world.night')}</span>
-                <span class="up">😌 -${p.relief}/${t('world.night')}</span>
+                ${p.hotel ? `<span>🏨 ${money(p.hotel)}/${t('world.night')}</span>` : ''}
+                ${p.relief ? `<span class="up">😌 -${p.relief}/${t('world.night')}</span>`
+                  : p.pop ? `<span class="dim2">👥 ${t('world.pop', { n: popText(p.pop) })}</span>` : ''}
               </div>
             </div>
             <div class="i-act"><b class="mono">${money(p.flight)}</b></div>
@@ -77,7 +97,9 @@ export default {
       <div class="card">
         <div class="card-h"><h3>🎫 ${t('world.book')}</h3></div>
         <div class="card-b">
-          ${!sel ? `<div class="empty" style="padding:36px 12px"><div class="e-ico">🗺️</div><p>${t('world.pick')}</p></div>` : (() => {
+          ${!sel ? `<div class="empty" style="padding:36px 12px"><div class="e-ico">🗺️</div><p>${t('world.pick')}</p></div>`
+            : sel.isHome || sel.id === data.home.id ? `<div class="empty" style="padding:36px 12px"><div class="e-ico">🏠</div>
+                <h4>${sel.flag} ${esc(nm(sel))}</h4><p>${t('world.isHome')}</p></div>` : (() => {
             const c = data.cabins.find(x => x.id === cabin) || data.cabins[0];
             const ht = data.hotels.find(x => x.id === hotel) || data.hotels[1];
             const n = Math.max(sel.minNights || 1, nights);
@@ -145,11 +167,23 @@ export default {
       </div>
     </div>`;
 
-    // 地图：真实矢量国界 + 拖拽平移 + 滚轮缩放
+    // 选中一个地方：精选目的地直接用，图集城市去服务端取一份完整资料
+    const pick = async (id) => {
+      if (!id) return;
+      selected = id;
+      const known = data.places.find(x => x.id === id) || (results || []).find(x => x.id === id);
+      if (known && known.hotel) { picked = known; this.render(root, app); return; }
+      picked = null; this.render(root, app);
+      try { const r = await api.place(id); if (selected === r.id) { picked = r; this.render(root, app); } }
+      catch (e) { toast(e.message.split(' / ')[0], 'err'); }
+    };
+    this.pick = pick;
+
+    // 地图：真实矢量国界 + 7,330 座城市 + 拖拽平移 + 滚轮缩放
     const holder = $('#wmap');
     if (!this.map || this.map.el !== holder) {
       this.map = new WorldMap(holder, {
-        onSelect: (id) => { if (id) { selected = id; this.render(root, app); } },
+        onSelect: (id) => { if (id) this.pick(id); },
         onHover: () => {},
       });
       this.map.ready();
@@ -158,7 +192,8 @@ export default {
     this.map.setData({
       places: data.places.map(p => ({ ...p, label: nm(p) })),
       home: { ...data.home, label: nm(data.home) },
-      selected, visited,
+      selected, visited, lang,
+      aliasSkip: new Set(Object.keys(data.atlas.alias)),   // 精选目的地由上面那层画
     });
     if (this.map.geo) this.map.draw();
     $('#wm-in').onclick = () => this.map.zoomAt(1.5, this.map.size().w / 2, this.map.size().h / 2);
@@ -170,12 +205,36 @@ export default {
 
     $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; this.render(root, app); });
     $$('[data-dest]').forEach(b => b.onclick = () => {
-      selected = b.dataset.dest;
-      const d = data.places.find(x => x.id === selected);
+      const id = b.dataset.dest;
+      const d = list.find(x => x.id === id) || data.places.find(x => x.id === id);
       if (d && this.map) { this.map.zoom = Math.max(this.map.zoom, 2.6);
         this.map.cx = (d.lon + 180) / 360; this.map.cy = (90 - d.lat) / 180; this.map.clampView(); }
-      this.render(root, app);
+      this.pick(id);
     });
+
+    // ── 搜索：全世界 7,330 座城市，中英文都能搜 ──
+    const sb = $('#w-search');
+    if (sb) {
+      sb.oninput = () => {
+        query = sb.value;
+        clearTimeout(this._st);
+        this._st = setTimeout(async () => {
+          const q = query.trim();
+          if (!q) { results = null; this.render(root, app); return; }
+          if (searching) return;
+          searching = true;
+          try { results = (await api.citySearch(q, 40)).results; }
+          catch { results = []; }
+          finally { searching = false; }
+          if (query.trim() === q) {
+            this.render(root, app);
+            const nb = $('#w-search'); if (nb) { nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); }
+          }
+        }, 220);
+      };
+    }
+    const cl = $('#w-clear');
+    if (cl) cl.onclick = (e) => { e.preventDefault(); query = ''; results = null; this.render(root, app); };
     $$('[data-cab]').forEach(b => b.onclick = () => { cabin = b.dataset.cab; this.render(root, app); });
     $$('[data-hot]').forEach(b => b.onclick = () => { hotel = b.dataset.hot; this.render(root, app); });
     const rg = $('#w-nights');

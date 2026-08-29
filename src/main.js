@@ -139,6 +139,9 @@ const server = http.createServer(async (req, res) => {
       case '/api/living':      return send(res, 200, API.setLiving(uid, body));
       case '/api/lottery':     return send(res, 200, API.buyLottery(uid, body));
       case '/api/world':       return send(res, 200, API.worldMap(uid));
+      case '/api/place':       return send(res, 200, API.place(uid, body));
+      case '/api/citysearch':  return send(res, 200, API.citySearch(uid, body));
+      case '/api/nearest':     return send(res, 200, API.nearest(uid, body));
       case '/api/speed':       return send(res, 200, API.setSpeed(uid, body));
       case '/api/birthplace':  return send(res, 200, API.setBirthplace(uid, body));
       case '/api/trip':        return send(res, 200, API.bookTrip(uid, body));

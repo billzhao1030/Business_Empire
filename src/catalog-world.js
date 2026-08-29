@@ -1,4 +1,6 @@
 // ── 世界地图：出生地阿德莱德，机票与酒店按现实价位设定 ──────
+import { atlasCity, nearestCity, ATLAS, CITY_COUNT, searchCities, COUNTRIES } from './atlas.js';
+export { atlasCity, nearestCity, ATLAS, CITY_COUNT, searchCities, COUNTRIES };
 // flight = 经济舱往返机票；hours = 单程飞行时长（游戏小时）
 // hotel = 三星标准每晚房价；spend = 每日餐饮交通杂费；relief = 每晚压力缓解
 export const DEFAULT_HOME = 'adelaide';
@@ -189,4 +191,37 @@ export function routeOf(home, dest) {
   const mult = dest.fareMult || 1;
   return { km, fare: Math.round(fareFor(km) * mult / 5) * 5, hours: flightHoursFor(km) * (dest.fareMult > 2 ? 1.6 : 1) };
 }
-export const DEST = Object.fromEntries(DESTINATIONS.map(d => [d.id, d]));
+const CURATED = Object.fromEntries(DESTINATIONS.map(d => [d.id, d]));
+
+// ── 精选目的地与城市图集的对接 ──────────────────────────────
+// 图集里也有悉尼、东京这些城市。同一个地方只能有一个身份，否则足迹会记两次：
+// 40 公里以内视为同一座城，图集的 id 让位给手写的那份。
+const ALIAS = new Map();
+for (const d of DESTINATIONS) {
+  const near = nearestCity(d.lon, d.lat);
+  if (near && distanceKm(near, d) < 40) ALIAS.set(near.id, d.id);
+}
+export const CITY_ALIAS = ALIAS;                      // 图集 id → 精选 id
+
+// 精选目的地反过来也认领图集里的那一条，人口、首都标记这些才不会丢
+const MERGED = {};
+{
+  const back = new Map();                              // 精选 id → 图集城市
+  for (const [aid, cid] of ALIAS) back.set(cid, atlasCity(aid));
+  for (const d of DESTINATIONS) {
+    const a = back.get(d.id);
+    MERGED[d.id] = a ? { ...a, ...d, atlas: true, curated: true } : { ...d, curated: true };
+  }
+}
+
+// 任何一个 id 都能查到目的地：精选优先，其次图集
+export function destOf(id) {
+  if (!id) return null;
+  if (MERGED[id]) return MERGED[id];
+  const aliased = ALIAS.get(id);
+  if (aliased) return MERGED[aliased];
+  return atlasCity(id);
+}
+// 老代码用的是 DEST[id]，保持这个写法可用
+export const DEST = new Proxy(MERGED, { get: (t, k) => (typeof k === 'string' ? destOf(k) : t[k]),
+                                         has: (t, k) => typeof k === 'string' && !!destOf(k) });
