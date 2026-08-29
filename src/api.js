@@ -407,7 +407,7 @@ export function takeover(uid, { symbol }) {
 }
 
 // ── 实业 ────────────────────────────────────────────────────
-export function bizBuy(uid, { typeId, cityId, name, useCompany }) {
+export function bizBuy(uid, { typeId, cityId, name, useCompany, coId }) {
   S.advancePlayer(uid);
   const def = S.BIZ[typeId];
   const p = P(uid), hour = curHour();
@@ -419,9 +419,10 @@ export function bizBuy(uid, { typeId, cityId, name, useCompany }) {
   const setup = Math.round(def.cost * city.costMult);
   const travel = Math.round(city.travelCost || 0);
   const cost = setup + travel;
-  // 公司账上的钱也能拿来开店——融来的钱就是干这个用的
-  const co = useCompany ? CO.companyOf(uid) : null;
-  if (useCompany && !co) throw new Err('你还没有公司 / You have not founded a company');
+  // 公司账上的钱也能拿来开店——融来的钱就是干这个用的。
+  // 名下可能有好几家公司，得说清楚是哪一家出钱、店归哪一家。
+  const co = (useCompany || coId) ? CO.companyOf(uid, coId) : null;
+  if ((useCompany || coId) && !co) throw new Err('找不到这家公司 / No such company');
   if (co) {
     if (co.cash < cost)
       throw new Err(`公司账上不够，需要 ${S.fmt(cost)}，现有 ${S.fmt(co.cash)} / Company needs ${S.fmt(cost)}, has ${S.fmt(co.cash)}`);
@@ -885,14 +886,16 @@ export function bizCities(uid, { q, typeId, limit }) {
   const query = String(q || '').trim();
   if (query) {
     for (const c of searchCities(query, n)) push(CITY_ALIAS.get(c.id) ? c.id : c.id);
-    return { home: cityCard(cityOf(home.id, home) || home, def), results: out, searched: true };
+    return { home: cityCard(cityOf(home.id, home) || home, def), results: out, searched: true,
+      companies: CO.companiesOf(uid).map(c => ({ id: c.id, name: c.name, ticker: c.ticker, cash: c.cash })) };
   }
   push(home.id);                                    // 家乡永远排第一
   for (const c of nearbyCities(home, 11)) push(c.id);   // 就近的大城市
   for (const id of ['tokyo.jp', 'new-york.us', 'london.gb', 'dubai.ae', 'singapore.sg',
                     'shanghai.cn', 'mumbai.in', 'sao-paulo.br', 'lagos.ng', 'bangkok.th'])
     push(id);
-  return { home: cityCard(cityOf(home.id, home) || home, def), results: out.slice(0, n), searched: false };
+  return { home: cityCard(cityOf(home.id, home) || home, def), results: out.slice(0, n), searched: false,
+    companies: CO.companiesOf(uid).map(c => ({ id: c.id, name: c.name, ticker: c.ticker, cash: c.cash })) };
 }
 
 // 离家最近的几座大城市（先按距离，人口太小的不算）
@@ -909,21 +912,34 @@ function nearbyCities(home, n) {
 // ── 创业：注册公司、装店、估值、融资、分红 ──────────────────
 const TICKER_RE = /^[A-Z]{2,5}$/;
 
-function coState(uid) {
-  const co = CO.companyOf(uid);
+function coState(uid, coId) {
+  const all = CO.companiesOf(uid);
+  const co = coId ? all.find(c => c.id === Number(coId)) : all[0];
   const p = P(uid);
+  // 公司清单：切换用，顺便让每一家的关键数字都能一眼看到
+  const roster = all.map(c => {
+    const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, c.id);
+    const v = CO.valuate(c, shops, S.prestigeBonus(S.prestigeOf(uid) + p.prestige), M.cityProsperity(), curHour());
+    return { id: c.id, name: c.name, ticker: c.ticker, stage: c.stage,
+      stageZh: STAGE[c.stage]?.zh, stageEn: STAGE[c.stage]?.en,
+      value: v.value, stake: c.player_shares / c.shares, cash: c.cash, shops: v.shops,
+      growth: v.growth, listed: c.stage === 'public' };
+  });
   const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
   const prosp = M.cityProsperity();
-  const all = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+  const bizAll = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+  const owned = new Set(all.map(c => c.id));
+  const freeShops = bizAll.filter(b => !owned.has(b.company_id));   // 还没被任何公司装走的
   if (!co) {
-    return { has: false, foundFee: FOUND_FEE, minShops: FOUND_MIN_SHOPS,
+    return { has: false, roster, foundFee: FOUND_FEE, minShops: FOUND_MIN_SHOPS,
+      atCap: all.length >= MAX_COMPANIES, maxCompanies: MAX_COMPANIES,
       sectors: CO_SECTORS, rounds: ROUNDS, illiquid: ILLIQUID,
-      shopsAvailable: all.map(b => shopBrief(b, pb, prosp)),
-      canFound: all.length >= FOUND_MIN_SHOPS && p.cash >= FOUND_FEE, cash: p.cash };
+      shopsAvailable: freeShops.map(b => shopBrief(b, pb, prosp)),
+      canFound: freeShops.length >= FOUND_MIN_SHOPS && p.cash >= FOUND_FEE, cash: p.cash };
   }
   CO.syncPublicStake(co);                       // 上市后创始人持股以持仓为准
-  const shops = all.filter(b => b.company_id === co.id);
-  const outside = all.filter(b => b.company_id !== co.id);
+  const shops = bizAll.filter(b => b.company_id === co.id);
+  const outside = freeShops;                        // 别家公司的店不在这儿挪
   const val = CO.valuate(co, shops, pb, prosp, curHour());
   const offer = co.stage === 'public' ? null : CO.roundOffer(co, val, p.credit_score);
   const stake = co.player_shares / co.shares;
@@ -939,7 +955,11 @@ function coState(uid) {
       sinceIpo: co.ipo_price ? a.price / co.ipo_price - 1 : 0 };
   })() : null;
   return {
-    has: true, illiquid: ILLIQUID, rounds: ROUNDS, sectors: CO_SECTORS, cash: p.cash,
+    has: true, roster, illiquid: ILLIQUID, rounds: ROUNDS, sectors: CO_SECTORS, cash: p.cash,
+    canFoundMore: freeShops.length >= FOUND_MIN_SHOPS && p.cash >= FOUND_FEE,
+    atCap: all.length >= MAX_COMPANIES, maxCompanies: MAX_COMPANIES,
+    foundFee: FOUND_FEE, minShops: FOUND_MIN_SHOPS,
+    shopsAvailable: freeShops.map(b => shopBrief(b, pb, prosp)),
     co: { id: co.id, name: co.name, nameEn: co.name_en, ticker: co.ticker, sector: co.sector,
       stage: co.stage, stageZh: STAGE[co.stage]?.zh, stageEn: STAGE[co.stage]?.en,
       foundedHour: co.founded_hour, cash: co.cash, shares: co.shares,
@@ -962,11 +982,13 @@ function shopBrief(b, pb, prosp) {
     dailyNet: r.dailyNet, dailyRev: r.dailyRev, companyId: b.company_id };
 }
 
-export function companyState(uid) { S.advancePlayer(uid); return coState(uid); }
+export function companyState(uid, coId) { S.advancePlayer(uid); return coState(uid, coId); }
 
 export function foundCompany(uid, { name, nameEn, ticker, sector, shopIds }) {
   S.advancePlayer(uid);
-  if (CO.companyOf(uid)) throw new Err('你已经有一家公司了 / You already have a company');
+  const existing = CO.companiesOf(uid);
+  if (existing.length >= MAX_COMPANIES)
+    throw new Err(`最多同时经营 ${MAX_COMPANIES} 家公司 / You can run at most ${MAX_COMPANIES} companies`);
   const p = P(uid), hour = curHour();
   const nm = String(name || '').trim().slice(0, 24);
   if (nm.length < 2) throw new Err('公司名太短了 / Company name is too short');
@@ -976,9 +998,10 @@ export function foundCompany(uid, { name, nameEn, ticker, sector, shopIds }) {
    || db.prepare('SELECT COUNT(*) c FROM companies WHERE ticker=?').get(tk).c)
     throw new Err(`代码 ${tk} 已经被占用了 / Ticker ${tk} is taken`);
   const sec = CO_SECTOR[sector] ? sector : CO_SECTORS[0].id;
-  const all = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+  const owned = new Set(existing.map(c => c.id));
+  const all = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid).filter(b => !owned.has(b.company_id));
   if (all.length < FOUND_MIN_SHOPS)
-    throw new Err(`至少要先有 ${FOUND_MIN_SHOPS} 门生意 / You need at least ${FOUND_MIN_SHOPS} business first`);
+    throw new Err(`还没被公司装走的生意不够 ${FOUND_MIN_SHOPS} 家 / You need ${FOUND_MIN_SHOPS} business not already inside a company`);
   if (p.cash < FOUND_FEE)
     throw new Err(`注册费 ${S.fmt(FOUND_FEE)}，现金不够 / Registration costs ${S.fmt(FOUND_FEE)}`);
 
@@ -995,13 +1018,13 @@ export function foundCompany(uid, { name, nameEn, ticker, sector, shopIds }) {
   const upd = db.prepare('UPDATE businesses SET company_id=?, auto_repair=1 WHERE id=? AND user_id=?');
   for (const b of picked) upd.run(coId, b.id, uid);
   ledger(uid, 'company', -FOUND_FEE, L('led.coFound', { name: nm, ticker: tk, n: picked.length, fee: FOUND_FEE }), '🏢');
-  return { ok: true, ...coState(uid) };
+  return { ok: true, ...coState(uid, coId) };
 }
 
 // 把店铺装进公司 / 拿出来
-export function companyShops(uid, { add, remove }) {
+export function companyShops(uid, { add, remove, coId }) {
   S.advancePlayer(uid);
-  const co = CO.companyOf(uid);
+  const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   if (co.stage === 'public') throw new Err('上市公司的资产不能随便进出 / A listed company cannot move assets in and out freely');
   const upd = db.prepare('UPDATE businesses SET company_id=?, auto_repair=1 WHERE id=? AND user_id=?');
@@ -1009,16 +1032,16 @@ export function companyShops(uid, { add, remove }) {
   for (const id of (Array.isArray(add) ? add : [])) { upd.run(co.id, Number(id), uid); moved++; }
   for (const id of (Array.isArray(remove) ? remove : [])) { upd.run(0, Number(id), uid); moved++; }
   if (!moved) throw new Err('没有要调整的店铺 / Nothing to move');
-  return { ok: true, ...coState(uid) };
+  return { ok: true, ...coState(uid, co.id) };
 }
 
 // 融资：投资人给的估值总比你自己算的低
-export function raiseRound(uid) {
+export function raiseRound(uid, { coId } = {}) {
   S.advancePlayer(uid);
-  const co = CO.companyOf(uid);
+  const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   if (co.stage === 'public') throw new Err('已经上市了，融资要走公开市场 / Already listed');
-  const st = coState(uid);
+  const st = coState(uid, co.id);
   const o = st.offer;
   if (!o) throw new Err('后面没有轮次了 / No further rounds available');
   if (!o.ok) {
@@ -1034,13 +1057,13 @@ export function raiseRound(uid) {
   ledger(uid, 'company', 0, L('led.coRaise', { round: { zh: o.round.zh, en: o.round.en },
     amt: o.raise, pre: o.pre, post: o.post, pct: Math.round(o.round.sell * 100),
     stake: Math.round(o.stakeAfter * 100) }), '💰');
-  return { ok: true, raised: o.raise, ...coState(uid) };
+  return { ok: true, raised: o.raise, ...coState(uid, co.id) };
 }
 
 // 分红：公司账上的钱按持股比例发下来，你那份要缴 20% 的税
-export function payDividend(uid, { amount }) {
+export function payDividend(uid, { amount, coId }) {
   S.advancePlayer(uid);
-  const co = CO.companyOf(uid);
+  const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   const amt = Math.min(co.cash, num(amount, MIN_DIVIDEND, 1e15));
   if (amt < MIN_DIVIDEND) throw new Err(`至少要发 ${S.fmt(MIN_DIVIDEND)} / Minimum dividend is ${S.fmt(MIN_DIVIDEND)}`);
@@ -1055,13 +1078,13 @@ export function payDividend(uid, { amount }) {
   db.prepare('UPDATE companies SET cash=cash-?, dividends_paid=dividends_paid+? WHERE id=?').run(amt, amt, co.id);
   ledger(uid, 'dividend', net, L('led.coDividend', { total: amt, stake: Math.round(stake * 100),
     gross, tax, net }), '💵');
-  return { ok: true, gross, tax, net, ...coState(uid) };
+  return { ok: true, gross, tax, net, ...coState(uid, co.id) };
 }
 
 // 给公司注资：把个人的钱投进去（不稀释，你本来就是股东）
-export function fundCompany(uid, { amount }) {
+export function fundCompany(uid, { amount, coId }) {
   S.advancePlayer(uid);
-  const co = CO.companyOf(uid);
+  const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   const p = P(uid);
   const amt = num(amount, 1, 1e15);
@@ -1069,13 +1092,13 @@ export function fundCompany(uid, { amount }) {
   p.cash -= amt; savePlayer(p);
   db.prepare('UPDATE companies SET cash=cash+? WHERE id=?').run(amt, co.id);
   ledger(uid, 'company', -amt, L('led.coFund', { name: co.name, amt }), '🏢');
-  return { ok: true, ...coState(uid) };
+  return { ok: true, ...coState(uid, co.id) };
 }
 
 // 上市：公司从此变成行情页上一支真的股票
-export function listCompany(uid) {
+export function listCompany(uid, { coId } = {}) {
   S.advancePlayer(uid);
-  const co = CO.companyOf(uid);
+  const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   if (co.stage === 'public') throw new Err('已经上市了 / Already listed');
   if (db.prepare('SELECT COUNT(*) c FROM assets WHERE symbol=?').get(co.ticker).c)
@@ -1100,18 +1123,18 @@ export function listCompany(uid) {
   ledger(uid, 'company', 0, L('led.coIpo', { name: co.name, ticker: co.ticker,
     price: r.price, raised: r.raised, cap: r.marketCap,
     stake: Math.round(plan.stakeAfter * 100) }), '🔔');
-  return { ok: true, ...r, ...coState(uid) };
+  return { ok: true, ...r, ...coState(uid, co.id) };
 }
 
-export function renameCompany(uid, { name, nameEn }) {
+export function renameCompany(uid, { name, nameEn, coId }) {
   S.advancePlayer(uid);
-  const co = CO.companyOf(uid);
+  const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
   const nm = String(name || '').trim().slice(0, 24);
   if (nm.length < 2) throw new Err('公司名太短了 / Company name is too short');
   db.prepare('UPDATE companies SET name=?, name_en=? WHERE id=?')
     .run(nm, String(nameEn || '').trim().slice(0, 32), co.id);
-  return { ok: true, ...coState(uid) };
+  return { ok: true, ...coState(uid, co.id) };
 }
 
 // ── 世界地图：订机票出发 ────────────────────────────────────
@@ -1182,6 +1205,7 @@ export function worldMap(uid) {
 // 图集里任意一座城市：算好航线，够格就能订
 export const BIRTH_MIN_POP = 20_000;
 export const TOTAL_PLACES = CITY_COUNT - CITY_ALIAS.size + DESTINATIONS.length;
+export const MAX_COMPANIES = 8;   // 同时经营的公司上限
 
 function placePayload(uid, d) {
   const p = P(uid), home = S.birthOf(p);

@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, esc, toast } from '../util.js';
 
 let data = null, sector = '服务', picked = null, divAmt = null, fundAmt = null;
+let coId = null, founding = false;      // 当前查看的公司；founding = 正在开新的一家
 
 const BASIS = { earnings: ['按利润估值', 'Earnings multiple'],
                 revenue:  ['按营收估值', 'Revenue multiple'],
@@ -11,10 +12,27 @@ const BASIS = { earnings: ['按利润估值', 'Earnings multiple'],
 
 export default {
   async render(root, app) {
-    if (!data) { try { data = await api.company(); } catch { data = null; } }
+    if (!data) { try { data = await api.company(coId); } catch { data = null; } }
     if (!data) { root.innerHTML = `<div class="card"><div class="card-b"><div class="empty"><p>${t('common.loading')}</p></div></div></div>`; return; }
-    root.innerHTML = data.has ? this.owned(data, app) : this.found(data, app);
+    if (data.co) coId = data.co.id;
+    const showFound = !data.has || founding;
+    root.innerHTML = this.roster(data) + (showFound ? this.found(data, app) : this.owned(data, app));
     this.bind(root, app);
+  },
+
+  // ── 公司切换条：名下每一家都在这儿 ────────────────────────
+  roster(d) {
+    const rs = d.roster || [];
+    if (!rs.length && !d.has) return '';
+    return `<div class="ptabs" style="margin-bottom:14px">
+      ${rs.map(c => `<button class="ptab ${!founding && c.id === coId ? 'active' : ''}" data-co="${c.id}">
+        <span class="e">${c.listed ? '🔔' : '🏢'}</span>
+        <span>${esc(c.name)}</span>
+        <span class="b ${c.listed ? 'c' : c.growth > 0.05 ? 'g' : ''}">${money(c.value)}</span>
+      </button>`).join('')}
+      ${d.atCap ? '' : `<button class="ptab ${founding || !d.has ? 'active' : ''}" id="co-new">
+        <span class="e">＋</span><span>${t('co.newCo')}</span></button>`}
+    </div>`;
   },
 
   // ── 还没有公司：注册一家 ──────────────────────────────────
@@ -26,7 +44,8 @@ export default {
     <div class="card" style="margin-bottom:16px;max-width:900px">
       <div class="card-h"><h3>🏢 ${t('co.foundTitle')}</h3><span class="sub">${t('co.foundSub')}</span></div>
       <div class="card-b">
-        <div class="dim2" style="font-size:12px;line-height:1.8;margin-bottom:16px">${t('co.foundIntro')}</div>
+        <div class="dim2" style="font-size:12px;line-height:1.8;margin-bottom:16px">${
+          (d.roster || []).length ? t('co.foundMoreIntro', { n: (d.roster || []).length }) : t('co.foundIntro')}</div>
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
           <label class="field"><span>${t('co.name')}</span>
             <input id="co-name" maxlength="24" placeholder="${t('co.namePh')}"></label>
@@ -46,7 +65,8 @@ export default {
             <div class="t">${s.emoji} ${esc(s.name)}</div>
             <div class="s">${esc(nm({ zh: s.cityZh, en: s.cityEn }))} · ${t('co.dailyNet')}
               <b class="${s.dailyNet >= 0 ? 'up' : 'down'}">${money(s.dailyNet)}</b></div></button>`).join('')}
-        </div>` : `<div class="summary" style="margin-bottom:14px;color:var(--orange)">${t('co.needShop')}</div>`}
+        </div>` : `<div class="summary" style="margin-bottom:14px;color:var(--orange)">${
+          (d.roster || []).length ? t('co.needFreeShop', { n: d.minShops }) : t('co.needShop')}</div>`}
         <div class="summary" style="margin-bottom:14px">
           <div><span>${t('co.fee')}</span><span class="mono down">${moneyFull(d.foundFee)}</span></div>
           <div><span>${t('co.yourCash')}</span><span class="mono ${d.cash >= d.foundFee ? '' : 'down'}">${moneyFull(d.cash)}</span></div>
@@ -252,9 +272,19 @@ export default {
 
   bind(root, app) {
     const again = async (fn) => {
-      try { const r = await app.guard(fn); data = r && r.has !== undefined ? r : null; await app.refresh(true); this.render(root, app); }
+      try {
+        const r = await app.guard(fn);
+        if (r && r.co) coId = r.co.id;
+        founding = false; picked = null;
+        data = r && r.has !== undefined ? r : null;
+        await app.refresh(true); this.render(root, app);
+      }
       catch (e) { toast(e.message.split(' / ')[0], 'err'); }
     };
+    $$('[data-co]').forEach(b => b.onclick = () => {
+      coId = +b.dataset.co; founding = false; picked = null; data = null; this.render(root, app);
+    });
+    $('#co-new') && ($('#co-new').onclick = () => { founding = true; picked = null; this.render(root, app); });
     $$('[data-sec]').forEach(b => b.onclick = () => { sector = b.dataset.sec; this.render(root, app); });
     $$('[data-shop]').forEach(b => b.onclick = () => {
       const id = +b.dataset.shop;
@@ -268,8 +298,8 @@ export default {
       if (!/^[A-Za-z]{2,5}$/.test(ticker)) return toast(t('co.errTicker'), 'err');
       again(() => api.coFound(name, $('#co-name-en').value.trim(), ticker, sector, [...picked]));
     };
-    $('#co-raise') && ($('#co-raise').onclick = () => again(() => api.coRaise()));
-    $('#co-ipo') && ($('#co-ipo').onclick = () => again(() => api.coIpo()));
+    $('#co-raise') && ($('#co-raise').onclick = () => again(() => api.coRaise(coId)));
+    $('#co-ipo') && ($('#co-ipo').onclick = () => again(() => api.coIpo(coId)));
     $('#co-market') && ($('#co-market').onclick = () => app.go('market'));
     const dv = $('#co-div'), fd = $('#co-fund');
     if (dv) dv.oninput = () => { divAmt = dv.value; };
@@ -286,23 +316,23 @@ export default {
       const a = Number($('#co-div').value);
       if (!(a > 0)) return toast(t('co.errAmount'), 'err');
       divAmt = null;
-      again(() => api.coDividend(a));
+      again(() => api.coDividend(a, coId));
     });
     $('#co-inject') && ($('#co-inject').onclick = () => {
       const a = Number($('#co-fund').value);
       if (!(a > 0)) return toast(t('co.errAmount'), 'err');
       fundAmt = null;
-      again(() => api.coFund(a));
+      again(() => api.coFund(a, coId));
     });
-    $$('[data-in]').forEach(b => b.onclick = () => again(() => api.coShops([+b.dataset.in], [])));
-    $$('[data-out]').forEach(b => b.onclick = () => again(() => api.coShops([], [+b.dataset.out])));
+    $$('[data-in]').forEach(b => b.onclick = () => again(() => api.coShops([+b.dataset.in], [], coId)));
+    $$('[data-out]').forEach(b => b.onclick = () => again(() => api.coShops([], [+b.dataset.out], coId)));
   },
 
   patch(app) {
     const a = document.activeElement;
     if (a && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName)) return;
-    const s = app.state.netWorth.company;
-    const sig = s ? `${Math.round(s.value)}|${Math.round(s.cash)}|${s.shops}` : 'none';
+    const cs = app.state.netWorth.companies || [];
+    const sig = cs.length ? cs.map(c => `${c.id}:${Math.round(c.value)}:${Math.round(c.cash)}:${c.shops}`).join('|') : 'none';
     if (sig === this._sig) return;
     this._sig = sig;
     data = null;

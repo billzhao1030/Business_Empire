@@ -147,14 +147,14 @@ const server = http.createServer(async (req, res) => {
       case '/api/takeover':    return send(res, 200, API.takeover(uid, body));
       case '/api/biz/buy':     return send(res, 200, API.bizBuy(uid, body));
       case '/api/biz/cities':  return send(res, 200, API.bizCities(uid, body));
-      case '/api/company':          return send(res, 200, API.companyState(uid));
+      case '/api/company':          return send(res, 200, API.companyState(uid, body?.coId || url.searchParams.get('coId')));
       case '/api/company/found':    return send(res, 200, API.foundCompany(uid, body));
       case '/api/company/shops':    return send(res, 200, API.companyShops(uid, body));
-      case '/api/company/raise':    return send(res, 200, API.raiseRound(uid));
+      case '/api/company/raise':    return send(res, 200, API.raiseRound(uid, body));
       case '/api/company/dividend': return send(res, 200, API.payDividend(uid, body));
       case '/api/company/fund':     return send(res, 200, API.fundCompany(uid, body));
       case '/api/company/rename':   return send(res, 200, API.renameCompany(uid, body));
-      case '/api/company/ipo':      return send(res, 200, API.listCompany(uid));
+      case '/api/company/ipo':      return send(res, 200, API.listCompany(uid, body));
       case '/api/biz/action':  return send(res, 200, API.bizAction(uid, body));
       case '/api/bank':        return send(res, 200, API.bank(uid, body));
       case '/api/item/buy':    return send(res, 200, API.itemBuy(uid, body));
