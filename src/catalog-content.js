@@ -400,19 +400,44 @@ export const FLIGHT_CLASSES = [
 
 // ── 一日三餐：吃什么直接影响身体状态 ──────────────────────
 // cost = 每游戏日伙食费；stamina/stress 为每小时修正；sick 为患病概率倍率
+// ── 一日三餐：cost 是一整天的伙食费，hours 是每天要花在这上面的时间 ──
+// 自己买菜做饭最省钱也最养人，代价是每天实打实地少掉一两个小时。
 export const MEALS = [
-  { id:'skip',    emoji:'🚱', zh:'饿着',        en:'Skipping meals',  cost:0,   stamina:-0.40, stress:0.35, sick:2.0,
+  { id:'skip',     emoji:'🚱', zh:'饿着',        en:'Skipping meals',  cost:0,   hours:0,   stamina:-0.40, stress:0.35, sick:2.0,
     descZh:'省下饭钱，代价是身体。撑不了几天。', descEn:'Saves money, costs your body. It will not last.' },
-  { id:'instant', emoji:'🍜', zh:'泡面度日',    en:'Instant noodles', cost:7,   stamina:-0.12, stress:0.12, sick:1.35,
+  { id:'instant',  emoji:'🍜', zh:'泡面度日',    en:'Instant noodles', cost:5,   hours:0.2, stamina:-0.12, stress:0.12, sick:1.35,
     descZh:'最便宜的活法，每天都在透支。', descEn:'The cheapest way to stay alive, and a daily overdraft on your health.' },
-  { id:'canteen', emoji:'🍱', zh:'路边摊 / 食堂',en:'Street food',     cost:16,  stamina:0,     stress:0,    sick:1.0,
+  { id:'cook',     emoji:'🍳', zh:'买菜做饭',    en:'Cooking at home', cost:12,  hours:1.2, stamina:0.06,  stress:0.02, sick:0.82,
+    descZh:'去菜市场，回来自己开火。每天多花一个多小时，钱和身体都省下来了。',
+    descEn:'Shop for groceries, cook them yourself. Over an hour a day, and it pays you back twice.' },
+  { id:'canteen',  emoji:'🍱', zh:'路边摊 / 食堂',en:'Street food',    cost:14,  hours:0,   stamina:0,     stress:0,    sick:1.0,
     descZh:'管饱，谈不上好，但过得去。', descEn:'Filling, unremarkable, good enough.' },
-  { id:'diner',   emoji:'🍚', zh:'普通餐馆',    en:'Casual dining',   cost:38,  stamina:0.10,  stress:-0.06, sick:0.85,
+  { id:'cookfine', emoji:'🥘', zh:'精心下厨',    en:'Cooking properly', cost:25, hours:1.7, stamina:0.20,  stress:-0.10, sick:0.62,
+    descZh:'好食材，认真做，饭点是一天里最踏实的时候。',
+    descEn:'Good ingredients, properly cooked. Mealtimes become the steadiest hour of your day.' },
+  { id:'diner',    emoji:'🍚', zh:'普通餐馆',    en:'Casual dining',   cost:32,  hours:0,   stamina:0.10,  stress:-0.06, sick:0.85,
     descZh:'一天两顿正经饭，人有精神。', descEn:'Two proper meals a day. You feel like a person.' },
-  { id:'healthy', emoji:'🥗', zh:'健康轻食',    en:'Healthy meals',   cost:85,  stamina:0.22,  stress:-0.14, sick:0.62,
+  { id:'healthy',  emoji:'🥗', zh:'健康轻食',    en:'Healthy meals',   cost:68,  hours:0,   stamina:0.22,  stress:-0.14, sick:0.62,
     descZh:'配比讲究，睡得也踏实。', descEn:'Properly balanced. You sleep better too.' },
-  { id:'chef',    emoji:'👨‍🍳', zh:'私人厨师',   en:'Private chef',    cost:420, stamina:0.35,  stress:-0.24, sick:0.45, prestige:5,
+  { id:'chef',     emoji:'👨‍🍳', zh:'私人厨师',   en:'Private chef',    cost:380, hours:0,   stamina:0.35,  stress:-0.24, sick:0.45, prestige:5,
     descZh:'厨师住在你家，按你的作息做饭。', descEn:'A chef who lives in and cooks to your schedule.' },
+];
+
+// ── 通勤：没有车就得走路或者坐公交，出门的日子每天都在花 ──
+// cost 是出门那天的往返交通费，hours 是路上耗掉的时间，会直接吃掉加班的余量。
+export const COMMUTES = [
+  { id:'walk',  emoji:'🚶', zh:'走路 / 骑车', en:'Walk or cycle',   cost:0,    hours:1.4,  stamina:-6,   stress:0.10,
+    descZh:'一分钱不花，一个半小时的腿脚。刚起步时你也只有这个选择。',
+    descEn:'Costs nothing but an hour and a half on your feet. At the start it is the only option you have.' },
+  { id:'transit', emoji:'🚌', zh:'公共交通', en:'Public transport', cost:6,    hours:0.9,  stamina:-2.5, stress:0.45,
+    descZh:'公交加地铁，一天一张日票。挤是挤了点，比走路快。',
+    descEn:'Bus and metro on a day pass. Crowded, but faster than walking.' },
+  { id:'rideshare', emoji:'🚕', zh:'打车通勤', en:'Ride-hailing',   cost:26,   hours:0.4,  stamina:0,    stress:-0.10,
+    descZh:'门到门，最省时间的花钱办法。',
+    descEn:'Door to door. The most expensive way to buy back your morning.' },
+  { id:'car',   emoji:'🚗', zh:'自己开车', en:'Drive yourself',    cost:13,   hours:0.45, stamina:-1,   stress:0.20, needsCar:true,
+    descZh:'油钱、停车、保险摊下来一天十几块。需要先有一辆车。',
+    descEn:'Fuel, parking and insurance come to a bit over ten a day. You need to own a car first.' },
 ];
 
 // ── 住处：没房就得租，租金按月扣 ──────────────────────────

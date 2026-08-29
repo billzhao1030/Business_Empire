@@ -54,6 +54,7 @@ export default {
           <span class="dim2">${t('career.timeBudget')}:</span>
           <span>🏬 ${t('career.mgmtTime')} <b class="mono ${j.mgmtHours > j.mgmtMax ? 'down' : ''}">${j.mgmtHours.toFixed(1)}h</b></span>
           <span>💼 ${t('career.shiftTime')} <b class="mono">${j.shiftHours.toFixed(0)}h</b></span>
+          ${j.choreHours > 0 ? `<span>🍳🚌 ${t('career.choreTime')} <b class="mono">${j.choreHours.toFixed(1)}h</b></span>` : ''}
           <span>🕐 ${t('career.freeTime')} <b class="mono">${j.freeHours.toFixed(1)}h</b></span>
         </div>
         ${!j.canJob ? `<div class="summary" style="border-color:var(--orange);color:var(--orange);font-size:11.5px;margin-bottom:10px">
@@ -144,21 +145,27 @@ export default {
         <span class="sub">${t('living.hint')}</span></div>
         <div class="card-b">
           <div class="summary" style="margin-bottom:12px">
-            <div><span>${t('living.food')}（${esc(nm({ zh: lv.meal.zh, en: lv.meal.en }))}）</span>
+            <div><span>${t('living.food')} (${esc(nm({ zh: lv.meal.zh, en: lv.meal.en }))})</span>
               <span class="mono down">${money(lv.meal.cost)}${t('living.perDay')} · ${money(lv.monthlyFood)}${t('living.perMonth')}</span></div>
-            <div><span>${t('living.rent')}（${esc(nm({ zh: lv.home.zh, en: lv.home.en }))}）</span>
+            <div><span>${t('living.rent')} (${esc(nm({ zh: lv.home.zh, en: lv.home.en }))})</span>
               <span class="mono ${lv.home.rent ? 'down' : 'up'}">${lv.home.rent ? money(lv.home.rent) + t('living.perMonth') : t('living.owned')}</span></div>
+            <div><span>${t('living.fare')} (${esc(nm({ zh: lv.commute.zh, en: lv.commute.en }))})</span>
+              <span class="mono ${lv.commute.cost ? 'down' : 'up'}">${lv.commute.cost
+                ? money(lv.commute.cost) + t('living.perDay') + ' · ' + money(lv.monthlyCommute) + t('living.perMonth')
+                : t('living.free')}</span></div>
             <div class="tot"><span>${t('living.monthlyCost')}</span>
               <span class="mono down">${money(lv.monthlyCost)}
-                <span class="dim2" style="font-weight:400">（${lv.monthlyWage ? pctPlain(lv.monthlyCost / lv.monthlyWage, 0) : '—'} ${t('living.ofIncome')}）</span></span></div>
+                <span class="dim2" style="font-weight:400">(${t('living.costShare', { p: lv.monthlyWage ? pctPlain(lv.monthlyCost / lv.monthlyWage, 0) : '—' })})</span></span></div>
           </div>
           <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:6px">${t('living.meal')}</div>
           <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr));margin-bottom:12px">
             ${lv.meals.map(mm => `<button class="opt ${mm.id === lv.meal.id ? 'active' : ''}" data-meal="${mm.id}">
               <div class="t">${mm.emoji} ${esc(nm({ zh: mm.zh, en: mm.en }))}</div>
               <div class="s">${money(mm.cost)}${t('living.perDay')}
-                ${mm.stamina ? `<span class="${mm.stamina > 0 ? 'up' : 'down'}">体力${mm.stamina > 0 ? '+' : ''}${mm.stamina}</span>` : ''}</div></button>`).join('')}
+                ${mm.hours ? `<span class="dim2">· ${mm.hours}h</span>` : ''}
+                ${mm.stamina ? `<span class="${mm.stamina > 0 ? 'up' : 'down'}">${t('career.stamina')}${mm.stamina > 0 ? '+' : ''}${mm.stamina}</span>` : ''}</div></button>`).join('')}
           </div>
+          <div class="dim2" style="font-size:10.5px;margin:-6px 0 12px">🍳 ${t('living.cookHint')}</div>
           ${lv.ownsEstate ? `<div class="dim2" style="font-size:11.5px">🏡 ${t('living.owned')}</div>` : `
           <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:6px">${t('living.home')}</div>
           <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr))">
@@ -166,9 +173,22 @@ export default {
               <div class="t">${hh.emoji} ${esc(nm({ zh: hh.zh, en: hh.en }))}</div>
               <div class="s">${money(hh.rent)}${t('living.perMonth')}</div></button>`).join('')}
           </div>`}
+          <div class="dim2" style="font-size:10.5px;font-weight:700;margin:12px 0 6px">${t('living.commute')}</div>
+          <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr))">
+            ${lv.commutes.map(cc => { const locked = cc.needsCar && !lv.carOwned; return `
+              <button class="opt ${cc.id === lv.commute.id ? 'active' : ''}" data-commute="${cc.id}"
+                ${locked ? 'disabled' : ''} style="${locked ? 'opacity:.45' : ''}">
+              <div class="t">${cc.emoji} ${esc(nm({ zh: cc.zh, en: cc.en }))}</div>
+              <div class="s">${cc.cost ? money(cc.cost) + t('living.perDay') : t('living.free')}
+                <span class="dim2">· ${cc.hours}h</span>
+                ${locked ? `<span class="down">${t('living.needCar')}</span>` : ''}</div></button>`; }).join('')}
+          </div>
+          <div class="dim2" style="font-size:10.5px;margin-top:6px">🚌 ${t('living.commuteHint')}
+            ${lv.monthlyCommute ? `(${t('living.workDays', { n: lv.commuteDays })})` : ''}</div>
           <div class="mini-grid" style="margin-top:12px">
             <div class="mini"><label>${t('living.foodSpent')}</label><b class="down">${money(lv.foodSpent)}</b></div>
             <div class="mini"><label>${t('living.rentSpent')}</label><b class="down">${money(lv.rentSpent)}</b></div>
+            <div class="mini"><label>${t('living.fareSpent')}</label><b class="down">${money(lv.transitSpent)}</b></div>
           </div>
         </div></div>
 
@@ -248,6 +268,7 @@ export default {
     $('#go-world') && ($('#go-world').onclick = () => app.go('world'));
     $$('[data-meal]').forEach(b => b.onclick = () => app.act(() => api.living(b.dataset.meal, null), t('toast.success')).catch(() => {}));
     $$('[data-home]').forEach(b => b.onclick = () => app.act(() => api.living(null, b.dataset.home), t('toast.success')).catch(() => {}));
+    $$('[data-commute]').forEach(b => b.onclick = () => app.act(() => api.living(null, null, b.dataset.commute), t('toast.success')).catch(() => {}));
     $$('[data-lot]').forEach(b => b.onclick = async () => {
       b.disabled = true;
       try {
