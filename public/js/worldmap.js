@@ -102,6 +102,22 @@ export async function loadGeo() {
   return feats;
 }
 
+// ── 城市图集：7,330 座真实城市（Natural Earth，公有领域）──
+let CITIES = null;
+export async function loadCities() {
+  if (CITIES) return CITIES;
+  const raw = await (await fetch('/data/cities.json')).json();
+  const co = new Map(raw.countries.map(([iso, zh, en]) => [iso, { zh, en }]));
+  // 文件里已按人口降序排好，画标注时先大后小，正好是要的顺序
+  CITIES = raw.cities.map(([id, en, zh, iso, lonI, latI, pop, flags]) => {
+    const lon = lonI / 1e3, lat = latI / 1e3, c = co.get(iso);
+    return { id, en, zh, iso, lon, lat, pop, flags, x: PX(lon), y: PY(lat),
+             country: c ? c.zh : iso, countryEn: c ? c.en : iso };
+  });
+  return CITIES;
+}
+export function citiesLoaded() { return CITIES; }
+
 // 大圆航线：按球面插值，跨越换日线时自动断开
 function greatCircle(a, b, n = 96) {
   const rad = Math.PI / 180;
@@ -129,6 +145,8 @@ export class WorldMap {
     this.ratio = opts.ratio || 0.52;
     this.zoom = 1; this.cx = 0.5; this.cy = 0.5;     // 视图中心（世界坐标）
     this.places = []; this.home = null; this.selected = null; this.hovered = null; this.visited = {};
+    this.cities = null; this.aliasSkip = null; this.showCities = opts.showCities !== false;
+    this.minCityPop = 0;                              // 只显示这个人口以上的城市（0 = 不限）
     this.canvas = document.createElement('canvas');
     this.canvas.style.display = 'block';
     this.canvas.style.cursor = 'grab';
@@ -136,7 +154,11 @@ export class WorldMap {
     this._bind();
   }
   setData(d) { Object.assign(this, d); this.draw(); }
-  async ready() { this.geo = await loadGeo(); this.draw(); }
+  async ready() {
+    const [geo, cities] = await Promise.all([loadGeo(), this.showCities ? loadCities() : null]);
+    this.geo = geo; this.cities = cities;
+    this.draw();
+  }
 
   size() {
     const w = this.el.clientWidth || 900;
@@ -209,6 +231,13 @@ export class WorldMap {
       const d = (x - mx) ** 2 + (y - my) ** 2;
       if (d < bd) { bd = d; best = p; }
     }
+    if (best) return best;
+    // 精选目的地没命中，就在这一帧画出来的城市里找最近的
+    let cd = 15 * 15;
+    for (const c of (this._drawn || [])) {
+      const d = (c.sx - mx) ** 2 + (c.sy - my) ** 2;
+      if (d < cd) { cd = d; best = c.c; }
+    }
     return best;
   }
 
@@ -271,6 +300,48 @@ export class WorldMap {
       }
     }
 
+    // ── 城市图集 ────────────────────────────────────────────
+    // 放得越大，露出的城市越小。标注不按缩放档位开关，而是谁先占住位置谁显示——
+    // 这样缩放时城市是一座座浮出来的，不会整批闪现。
+    this._drawn = [];
+    if (this.cities && this.showCities) {
+      const minPop = Math.max(this.minCityPop, 1_000_000 / Math.pow(this.zoom, 1.8));
+      const boxes = [];
+      const fits = (x0, y0, x1, y1) => {
+        for (const b of boxes) if (x0 < b[2] && x1 > b[0] && y0 < b[3] && y1 > b[1]) return false;
+        boxes.push([x0, y0, x1, y1]); return true;
+      };
+      const sans = CSSVAR('--sans'), bg = CSSVAR('--bg');
+      const dotFill = CSSVAR('--dim2'), txtFill = CSSVAR('--dim');
+      let dots = 0, labels = 0;
+      ctx.textAlign = 'center';
+      for (const c of this.cities) {
+        if (dots >= 1400) break;
+        if (c.pop < minPop) break;                        // 已按人口降序，后面只会更小
+        if (this.aliasSkip && this.aliasSkip.has(c.id)) continue;   // 精选目的地会单独画
+        const x = ox + c.x * s, y = oy + c.y * sh;
+        if (x < -30 || x > w + 30 || y < -20 || y > h + 20) continue;
+        dots++;
+        const big = c.pop >= 5e6, mid = c.pop >= 1e6;
+        const rad = big ? 3.2 : mid ? 2.5 : 1.9;
+        ctx.beginPath(); ctx.arc(x, y, rad, 0, 7);
+        ctx.fillStyle = dotFill; ctx.globalAlpha = big ? .95 : mid ? .8 : .62; ctx.fill();
+        ctx.globalAlpha = 1;
+        if (labels >= 130) continue;
+        const fs = big ? 11.5 : mid ? 10.5 : 9.5;
+        ctx.font = `600 ${fs}px ${sans}`;
+        const label = this.lang === 'en' ? c.en : (c.zh || c.en);
+        const tw = ctx.measureText(label).width;
+        const ty = y - rad - 3;
+        if (!fits(x - tw / 2 - 2, ty - fs, x + tw / 2 + 2, ty + 2)) continue;
+        labels++;
+        ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.strokeText(label, x, ty);
+        ctx.fillStyle = txtFill; ctx.fillText(label, x, ty);
+        this._drawn.push({ c, sx: x, sy: y });
+      }
+      this._shown = { dots, labels, minPop };
+    }
+
     // 航线
     const target = this.places.find(p => p.id === (this.hovered || this.selected));
     if (this.home && target) {
@@ -324,6 +395,9 @@ export class WorldMap {
     // 缩放指示
     ctx.font = `600 10.5px ${CSSVAR('--mono')}`; ctx.textAlign = 'left';
     ctx.fillStyle = CSSVAR('--dim2');
-    ctx.fillText(`${this.zoom.toFixed(1)}×`, 10, h - 10);
+    const info = this._shown && this.showCities
+      ? `${this.zoom.toFixed(1)}×   ${this._shown.dots} / ${this.cities.length}`
+      : `${this.zoom.toFixed(1)}×`;
+    ctx.fillText(info, 10, h - 10);
   }
 }
