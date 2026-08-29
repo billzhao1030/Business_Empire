@@ -13,8 +13,10 @@ export default {
 
     root.innerHTML = `
     <div class="grid g4" style="margin-bottom:16px">
-      <div class="stat"><label>📥 ${t('common.revenue')}</label><div class="v up">${money(income)}</div><div class="d">${t('dash.recent')}</div></div>
-      <div class="stat"><label>📤 ${t('common.expense')}</label><div class="v down">${money(outgo)}</div><div class="d">${t('dash.recent')}</div></div>
+      <div class="stat"><label>📥 ${t('common.revenue')}</label><div class="v up">${money(income)}</div>
+        <div class="d">${t('led.window', { n: s.ledgerKeepDays || 30 })}</div></div>
+      <div class="stat"><label>📤 ${t('common.expense')}</label><div class="v down">${money(outgo)}</div>
+        <div class="d">${t('led.window', { n: s.ledgerKeepDays || 30 })}</div></div>
       <div class="stat"><label>🧾 ${t('dash.taxPaid')}</label><div class="v">${money(s.player.totalTax)}</div><div class="d">${t('common.total')}</div></div>
       <div class="stat"><label>💵 ${t('dash.dividends')}</label><div class="v gold">${money(s.player.totalDividend)}</div><div class="d">${t('common.total')}</div></div>
     </div>

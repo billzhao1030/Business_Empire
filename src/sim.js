@@ -25,6 +25,10 @@ export const START_CASH = 0;
 // 所以这里通常不会再触发——留着是为了兜住多人存档里某个玩家格外久没上线的情况。
 export const OFFLINE_CAP_HOURS = M.OFFLINE_CAP_HOURS;
 
+// 资金流水的保留窗口：一个游戏月，最多 1500 条
+export const LEDGER_KEEP_HOURS = 30 * 24;
+export const LEDGER_MAX_ROWS = 1500;
+
 // ── 利率随央行政策利率浮动 ────────────────────────────────
 export function savingsRate()  { return Math.max(0.002, M.policyRate() * 0.85); }
 export function overdraftRate(){ return M.policyRate() + 0.19; }
@@ -722,7 +726,11 @@ export function advancePlayer(userId) {
     db.exec('COMMIT');
   } catch (e) { try { db.exec('ROLLBACK'); } catch {} throw e; }
 
-  db.prepare('DELETE FROM ledger WHERE user_id=? AND id NOT IN (SELECT id FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT 400)').run(userId, userId);
+  // 流水只留最近一个游戏月。再加一道行数上限，免得某个月特别忙的时候无限膨胀。
+  db.prepare('DELETE FROM ledger WHERE user_id=? AND hour < ?').run(userId, target - LEDGER_KEEP_HOURS);
+  db.prepare(`DELETE FROM ledger WHERE user_id=? AND id NOT IN
+              (SELECT id FROM ledger WHERE user_id=? ORDER BY id DESC LIMIT ?)`)
+    .run(userId, userId, LEDGER_MAX_ROWS);
   db.prepare('DELETE FROM networth WHERE user_id=? AND hour < ?').run(userId, target - 3000);
   return db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
 }

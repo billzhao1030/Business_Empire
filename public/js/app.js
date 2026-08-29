@@ -213,6 +213,10 @@ export const app = {
     $$('.tbs label')[1].textContent = t('common.cash');
     $$('.tbs label')[2].textContent = t('mkt.marketIndex');
     $$('.tbs label')[3].textContent = t('common.credit');
+    $$('.tbs label')[4].textContent = t('common.prestige');
+    // 声望：数值 + 它带来的营收加成，一眼看到自己攒到哪儿了
+    $('#tb-prestige').innerHTML = `${Math.round(s.player.prestige)}
+      <span class="dim2" style="font-size:10.5px;font-weight:600">+${(s.player.prestigeBonus * 100).toFixed(1)}%</span>`;
     $$('#speed-switch button').forEach(x => x.classList.toggle('active', +x.dataset.ms === s.now.realMsPerHour));
     $('#badge-biz').textContent = s.businesses.length || '';
     $('#badge-pf').textContent = s.holdings.length || '';
