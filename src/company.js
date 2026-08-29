@@ -18,8 +18,13 @@ import { FOUND_FEE, INIT_SHARES, BASE_MULT, GROWTH_K, HEAT_K, SCALE_K,
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-export function companyOf(uid) {
-  return db.prepare('SELECT * FROM companies WHERE user_id=?').get(uid) || null;
+// 一个人可以开很多家公司。不带 id 时返回最早的那家（作为默认）。
+export function companiesOf(uid) {
+  return db.prepare('SELECT * FROM companies WHERE user_id=? ORDER BY id').all(uid);
+}
+export function companyOf(uid, id) {
+  if (id) return db.prepare('SELECT * FROM companies WHERE user_id=? AND id=?').get(uid, Number(id)) || null;
+  return db.prepare('SELECT * FROM companies WHERE user_id=? ORDER BY id LIMIT 1').get(uid) || null;
 }
 export function companyShops(uid, coId) {
   return db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, coId);

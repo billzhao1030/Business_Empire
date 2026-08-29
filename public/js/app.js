@@ -220,8 +220,10 @@ export const app = {
     $$('#speed-switch button').forEach(x => x.classList.toggle('active', +x.dataset.ms === s.now.realMsPerHour));
     $('#badge-biz').textContent = s.businesses.length || '';
     $('#badge-pf').textContent = s.holdings.length || '';
-    const co = s.netWorth.company;                       // 有公司就在导航上标出持股
-    $('#badge-co').textContent = co ? Math.round(co.stake * 100) + '%' : '';
+    // 一家公司就标持股比例，多家就标家数
+    const cos = s.netWorth.companies || [];
+    $('#badge-co').textContent = cos.length > 1 ? String(cos.length)
+      : cos.length === 1 ? Math.round(cos[0].stake * 100) + '%' : '';
   },
 
   go(view, force) {

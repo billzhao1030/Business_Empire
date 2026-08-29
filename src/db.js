@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS companies (
   ipo_hour      INTEGER NOT NULL DEFAULT 0,
   ipo_price     REAL NOT NULL DEFAULT 0
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_co_user ON companies(user_id);
+CREATE INDEX IF NOT EXISTS idx_co_user2 ON companies(user_id);
 
 -- 奢侈品 / 房产 / 收藏
 CREATE TABLE IF NOT EXISTS items (
@@ -257,6 +257,9 @@ addColumn('businesses', 'city_vol',  'REAL NOT NULL DEFAULT 0');
 addColumn('businesses', 'city_name', "TEXT NOT NULL DEFAULT ''");
 addColumn('businesses', 'city_en',   "TEXT NOT NULL DEFAULT ''");
 addColumn('businesses', 'city_flag', "TEXT NOT NULL DEFAULT ''");
+
+// 早期版本限制一人一家公司，靠的是这条唯一索引。现在可以开很多家了。
+try { db.exec('DROP INDEX IF EXISTS idx_co_user'); } catch {}
 addColumn('items', 'region',    "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'index_sym', "TEXT NOT NULL DEFAULT ''");
 addColumn('items', 'units',     'REAL NOT NULL DEFAULT 0');

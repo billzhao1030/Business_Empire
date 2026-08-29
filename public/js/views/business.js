@@ -143,11 +143,11 @@ export default {
   async openNew(app) {
     const cat = app.catalog, s = app.state;
     pickType = pickType || cat.biz[0].id;
-    let cities = [], cityQuery = '', searching = false, picked = null;
+    let cities = [], cityQuery = '', searching = false, picked = null, cos = [], payer = 0;
     const loadCities = async q => {
       try {
         const r = await api.bizCities(q, pickType);
-        cities = r.results; if (!picked) picked = r.home;
+        cities = r.results; cos = r.companies || []; if (!picked) picked = r.home;
       } catch { cities = []; }
     };
     await loadCities('');
@@ -194,6 +194,17 @@ export default {
           </button>`).join('')
         : `<div class="dim2" style="font-size:11.5px;padding:10px">${t('biz.noCity')}</div>`}
       </div>
+      ${cos.length ? `<div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;margin-bottom:7px">${t('biz.payer')}</div>
+      <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:16px">
+        <button class="opt ${payer === 0 ? 'active' : ''}" data-payer="0">
+          <div class="t">👤 ${t('biz.paySelf')}</div>
+          <div class="s">${money(s.player.cash)}</div></button>
+        ${cos.map(c => `<button class="opt ${payer === c.id ? 'active' : ''}" data-payer="${c.id}"
+          ${c.cash < cost ? 'style="opacity:.5"' : ''}>
+          <div class="t">🏢 ${esc(c.name)}</div>
+          <div class="s ${c.cash < cost ? 'down' : ''}">${money(c.cash)}</div></button>`).join('')}
+      </div>
+      <div class="dim2" style="font-size:10.5px;margin:-10px 0 14px">${t('biz.payerHint')}</div>` : ''}
       <label class="field"><span>${t('biz.nameIt')}</span><input id="nb-name" placeholder="${esc(nm({ zh: city.name + def.name, en: def.en + ' · ' + city.en }))}" maxlength="24"></label>
       <div class="summary">
         <div><span>📍 ${t('biz.location')}</span><span class="mono">${city.flag || ''} ${esc(nm({ zh: city.name, en: city.en }))}
@@ -214,6 +225,7 @@ export default {
       <p class="dim2" style="font-size:11.5px;margin-top:10px;line-height:1.6">${esc(nm({ zh: def.desc, en: def.descEn }))}</p>`;
       box.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { pickType = b.dataset.type; render(el); });
       box.querySelectorAll('[data-city]').forEach(b => b.onclick = () => { pickCity = b.dataset.city; render(el); });
+      box.querySelectorAll('[data-payer]').forEach(b => b.onclick = () => { payer = +b.dataset.payer; render(el); });
       const cq = box.querySelector('#nb-city-q');
       if (cq) {
         cq.oninput = () => {
@@ -233,8 +245,9 @@ export default {
         };
       }
       const sub = el.querySelector('#nb-submit');
-      sub.disabled = s.player.cash < cost;
-      sub.textContent = s.player.cash < cost ? `${t('common.cash')} ${money(s.player.cash)} / ${money(cost)}` : `${t('biz.open')} · ${money(cost)}`;
+      const purse = payer ? (cos.find(c => c.id === payer)?.cash ?? 0) : s.player.cash;
+      sub.disabled = purse < cost;
+      sub.textContent = purse < cost ? `${money(purse)} / ${money(cost)}` : `${t('biz.open')} · ${money(cost)}`;
     };
     modal({
       wide: true, title: t('biz.open'), icon: '🏪',
@@ -245,7 +258,7 @@ export default {
         el.querySelector('[data-close]').onclick = close;
         el.querySelector('#nb-submit').onclick = async () => {
           try {
-            await api.bizBuy(pickType, pickCity, el.querySelector('#nb-name').value);
+            await api.bizBuy(pickType, pickCity, el.querySelector('#nb-name').value, payer || null);
             close(); toast(t('toast.opened'), 'ok');
             await app.refresh(true);
           } catch (e) { toast(e.message, 'err'); }

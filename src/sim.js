@@ -1,6 +1,6 @@
 // 玩家经济引擎：实业经营、银行利息、股息、税收、贷款/房贷、房产指数、随机事件
 import { db } from './db.js';
-import { stepGrowth, valuate, stakeValue, companyOf } from './company.js';
+import { stepGrowth, valuate, stakeValue, companyOf, companiesOf } from './company.js';
 import * as M from './market.js';
 import { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
@@ -314,19 +314,25 @@ export function computeNetWorth(userId) {
   const pbonus = prestigeBonus(prestigeOf(userId) + p.prestige);
   const prosp = M.cityProsperity();
   // 装进公司的店铺，账面值算在股权里，不能再单独计一次
-  const co = companyOf(userId);
+  const cos = companiesOf(userId);
+  const coIds = new Set(cos.map(c => c.id));
   let bizValue = 0, bizNetPerHour = 0;
   for (const b of biz) {
-    if (co && b.company_id === co.id) continue;
+    if (coIds.has(b.company_id)) continue;
     bizValue += b.invested * 0.80 * (0.65 + 0.35 * b.condition);
     bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net;
   }
-  let equity = 0, coVal = null;
-  if (co) {
-    const shops = biz.filter(b => b.company_id === co.id);
-    coVal = valuate(co, shops, pbonus, prosp, M.currentGameHour());
-    equity = stakeValue(co, coVal);
-    for (const b of shops) bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net * (co.player_shares / co.shares);
+  let equity = 0;
+  const coList = [];
+  for (const c of cos) {
+    const shops = biz.filter(b => b.company_id === c.id);
+    const v = valuate(c, shops, pbonus, prosp, M.currentGameHour());
+    const e = stakeValue(c, v);
+    equity += e;
+    for (const b of shops) bizNetPerHour += bizRates(b, pbonus, prosp[b.city] || 1).net * (c.player_shares / c.shares);
+    coList.push({ id: c.id, name: c.name, ticker: c.ticker, stage: c.stage,
+      value: v.value, stake: c.player_shares / c.shares, equity: e, cash: c.cash,
+      growth: v.growth, shops: v.shops });
   }
   const items = db.prepare('SELECT * FROM items WHERE user_id=?').all(userId);
   let itemValueSum = 0;
@@ -341,9 +347,7 @@ export function computeNetWorth(userId) {
   const total = p.cash + p.bank + depValue + portfolio + bizValue + itemValueSum + equity - debt;
   return { cash: p.cash, bank: p.bank, deposits: depValue, portfolio, business: bizValue,
            items: itemValueSum, equity, debt, mortgage, total, bizNetPerHour,
-           company: co ? { id: co.id, name: co.name, ticker: co.ticker, stage: co.stage,
-             value: coVal.value, stake: co.player_shares / co.shares, equity, cash: co.cash,
-             growth: coVal.growth, shops: coVal.shops } : null,
+           company: coList[0] || null, companies: coList,
            counts: { biz: biz.length, items: items.length, holdings: holdings.length } };
 }
 
@@ -391,9 +395,10 @@ export function advancePlayer(userId) {
   const sRate = savingsRate(), oRate = overdraftRate();
   let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0, dayFood = 0, dayFare = 0;
   const bizCommute = biz.some(b => !b.manager);          // 亲自看店，也得每天出门
-  // 装进公司的店铺，利润归公司账上，不再直接进你口袋
-  const co = db.prepare('SELECT * FROM companies WHERE user_id=?').get(userId) || null;
-  let coDayNet = 0;
+  // 装进公司的店铺，利润归各自公司的账上，不再直接进你口袋
+  const cos = db.prepare('SELECT * FROM companies WHERE user_id=? ORDER BY id').all(userId);
+  const coById = new Map(cos.map(c => [c.id, c]));
+  const co = cos[0] || null;                        // 门店维护那一段沿用的默认引用
   // 实业的日净利估算（用于衡量月供负担）
   let dayIncomeRate = 0;
   for (const b of biz) dayIncomeRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
@@ -523,23 +528,25 @@ export function advancePlayer(userId) {
       b.lifetime_profit += (rev - cost);
       dayRev += rev; dayCost += cost;
       const net = rev - cost;
-      if (co && b.company_id === co.id) { co.cash += net; co.lifetime_profit += net; coDayNet += net; }
+      const owner = b.company_id ? coById.get(b.company_id) : null;
+      if (owner) { owner.cash += net; owner.lifetime_profit += net; }
       else p.cash += net;
       p.month_profit += net;
       // 门店维护。不修的话 condition 一路掉，毛利本来就薄的小生意会被拖成亏损，
       // 一家连锁就这么慢慢烂掉——公司名下的店从公司账上出这笔钱。
       if (b.auto_repair && b.condition < 0.72) {
         const rc = r.def.cost * r.city.costMult * 0.22 * (1 - b.condition);
-        const fromCo = co && b.company_id === co.id;
-        if (fromCo) { if (co.cash > rc * 3) { co.cash -= rc; b.condition = 1; } }
+        const owner = b.company_id ? coById.get(b.company_id) : null;
+        if (owner) { if (owner.cash > rc * 3) { owner.cash -= rc; b.condition = 1; } }
         else if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
       }
     }
-    // 公司的利润跑速：快慢两条线一拉开，就是在增长
-    if (co) {
-      let coRate = 0;
-      for (const b of biz) if (b.company_id === co.id) coRate += bizRates(b, pb, prosp[b.city] || 1).dailyNet;
-      stepGrowth(co, coRate * 365);
+    // 每家公司各算各的利润跑速：快慢两条线一拉开，就是在增长
+    if (cos.length) {
+      const rate = new Map();
+      for (const b of biz) if (b.company_id && coById.has(b.company_id))
+        rate.set(b.company_id, (rate.get(b.company_id) || 0) + bizRates(b, pb, prosp[b.city] || 1).dailyNet);
+      for (const c of cos) stepGrowth(c, (rate.get(c.id) || 0) * 365);
     }
     if (p.bank > 0) { const i = p.bank * sRate / YEAR_HOURS; p.bank += i; dayInterest += i; }
     if (p.cash < 0) { const i = -p.cash * oRate / YEAR_HOURS; p.cash -= i; dayOverdraft += i; }
@@ -710,9 +717,11 @@ export function advancePlayer(userId) {
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);
-    if (co) db.prepare(`UPDATE companies SET cash=?,rate_fast=?,rate_slow=?,rate_vslow=?,growth=?,
-                        lifetime_profit=? WHERE id=?`)
-      .run(co.cash, co.rate_fast, co.rate_slow, co.rate_vslow, co.growth, co.lifetime_profit, co.id);
+    if (cos.length) {
+      const uc = db.prepare(`UPDATE companies SET cash=?,rate_fast=?,rate_slow=?,rate_vslow=?,growth=?,
+                             lifetime_profit=? WHERE id=?`);
+      for (const c of cos) uc.run(c.cash, c.rate_fast, c.rate_slow, c.rate_vslow, c.growth, c.lifetime_profit, c.id);
+    }
     const ui = db.prepare('UPDATE items SET value=? WHERE id=?');
     for (const it of items) ui.run(it.value, it.id);
     const ul = db.prepare('UPDATE loans SET balance=?,months_left=?,next_due=?,paid_total=?,status=? WHERE id=?');
