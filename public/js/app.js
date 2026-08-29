@@ -26,7 +26,7 @@ export function applyTheme(t) {
 }
 
 export const app = {
-  state: null, catalog: null, view: 'dashboard', viewObj: null,
+  state: null, catalog: null, view: localStorage.getItem('be_view') || 'dashboard', viewObj: null,
   clockBase: { hour: 0, progress: 0, at: 0 },
 
   async boot() {
@@ -78,6 +78,7 @@ export const app = {
   async enter() {
     const [state, catalog] = await Promise.all([api.state(), api.catalog()]);
     this.state = state; this.catalog = catalog;
+    if (!VIEWS[this.view]) this.view = 'dashboard';        // 存的是个已经不存在的页面
     this.syncClock();
     $('#auth').classList.add('hidden');
     $('#app').classList.remove('hidden');
@@ -223,6 +224,7 @@ export const app = {
     if (!VIEWS[view]) return;
     if (view === this.view && !force) return;
     this.view = view;
+    try { localStorage.setItem('be_view', view); } catch {}   // 刷新页面后回到原来那一页
     $$('.nav-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     this.paintTop();
     this.renderView();
