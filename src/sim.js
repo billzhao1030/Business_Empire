@@ -192,8 +192,19 @@ export function bizHours(b) {
 export function bizOpenNow(b, hod) { return isOpenAt(bizHours(b), hod); }
 
 // 每营业小时的经营数据。房租等固定成本 24 小时都在烧，单独计。
+// 店铺所在城市的经营参数。新店在开的时候就把这几个数固化下来了；
+// 老存档没有，就回落到原来那张抽象城市表。
+export function bizCity(b) {
+  if (b.rev_mult > 0) return {
+    revMult: b.rev_mult, rentMult: b.rent_mult, wageMult: b.wage_mult,
+    costMult: b.cost_mult, vol: b.city_vol || 1,
+    name: b.city_name || b.city, en: b.city_en || b.city, flag: b.city_flag || '',
+  };
+  return CITY[b.city] || CITIES[1];
+}
+
 export function bizRates(b, pb = 0, prosp = 1) {
-  const def = BIZ[b.type_id], city = CITY[b.city] || CITIES[1];
+  const def = BIZ[b.type_id], city = bizCity(b);
   if (!def) return { rev: 0, cost: 0, net: 0, potential: 0, capacity: 0, util: 1, recStaff: 0 };
   const tier = b.price_tier || 0;
   const priceMult = 1 + 0.22 * tier;
@@ -490,7 +501,7 @@ export function advancePlayer(userId) {
     }
 
     for (const b of biz) {
-      const city = CITY[b.city] || CITIES[1];
+      const city = bizCity(b);
       const pr = prosp[b.city] || 1;
       const r0 = bizRates(b, pb, pr);
       const tgt = demandTarget(b) * (r0.util < 0.98 ? 0.90 : 1);
