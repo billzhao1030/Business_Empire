@@ -2,6 +2,7 @@
 import { db, getMeta, setMeta } from './db.js';
 import { STOCKS, COMMODITIES, CRYPTOS, INDICES, DISTRICTS } from './catalog-assets.js';
 import * as C from './catalog-content.js';
+import { HINTS, CONFIRM, familyOf } from './catalog-rumor.js';
 
 // ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 2 分钟）──
 export const SPEED_MIN_MS = 12_000;      // 最快：12 秒 = 1 游戏小时
@@ -35,6 +36,17 @@ const MKT_MU = 0.075, MKT_SIGMA = 0.155;
 const HISTORY_KEEP = 900;
 let pendingEvent = null;
 let sectorMom = {};          // 每个资产保留的历史小时数
+
+// ── 市场传闻与催化剂 ────────────────────────────────────────
+// catalyst: { sector, dir, mag, fireHour, real, hints:[hour…] }  已排期、还没发生
+// active:   { sector, perHour, left }                            正在发生
+let catalyst = null, activeCat = null;
+// 七成的传闻会应验，两成不了了之，一成是放出来骗人的反向消息——
+// 有些风就是放出来骗人的。读得懂方向仍然明显划算，但不是白捡钱。
+export const RUMOR_TRUE_RATE = 0.70;
+export const RUMOR_FAKE_RATE = 0.12;      // 反向走的比例（从不应验的那部分里出）
+export const RUMOR_LEAD_MIN = 30, RUMOR_LEAD_MAX = 110;   // 提前多少游戏小时开始放风
+export const RUMOR_RUN_HOURS = 54;        // 兑现之后，行情走多久
 const MAX_DETAIL_TICKS = 600;      // 单次补算的最大精细步数
 export const START_HOD = 8;        // 世界起点落在早上 8:00
 export const WARMUP_HOURS = 720 + START_HOD;   // 预热 30 个游戏日，让一开局就有完整历史行情
@@ -282,6 +294,53 @@ function tickOnce(assetList, hour, sectorSet) {
     pendingEvent = null;
   }
 
+  // ── 传闻 → 催化剂 ──
+  // 先排期，再放几条隐晦的风，到点才真的动。三成的传闻不了了之。
+  if (!catalyst && !activeCat && Math.random() < 0.010) {
+    // 传闻只针对股票板块。大宗商品、加密货币、房产商圈也在 sectorSet 里，
+    // 但对它们说「板块传闻」没有意义。
+    const eq = [...new Set(assetList.filter(a => a.kind === 'stock').map(a => a.sector))];
+    const sector = pick(eq);
+    const up = Math.random() < 0.5;
+    const lead = RUMOR_LEAD_MIN + Math.floor(Math.random() * (RUMOR_LEAD_MAX - RUMOR_LEAD_MIN));
+    const nHints = 2 + (Math.random() < 0.45 ? 1 : 0);
+    const hints = [];
+    for (let i = 0; i < nHints; i++) hints.push(hour + Math.floor(lead * (0.10 + 0.75 * (i + Math.random()) / nHints)));
+    const roll2 = Math.random();
+    const outcome = roll2 < RUMOR_TRUE_RATE ? 1                       // 应验
+                  : roll2 < RUMOR_TRUE_RATE + RUMOR_FAKE_RATE ? -1    // 反着走
+                  : 0;                                               // 不了了之
+    catalyst = { sector, dir: up ? 1 : -1, outcome,
+      mag: 0.05 + Math.random() * 0.13, fireHour: hour + lead, hints: hints.sort((a, b) => a - b) };
+  }
+  if (catalyst) {
+    // 放风：只描述上下游看得见的迹象，从不直说方向
+    while (catalyst.hints.length && catalyst.hints[0] <= hour) {
+      catalyst.hints.shift();
+      const fam = HINTS[familyOf(catalyst.sector)] || HINTS.consumer;
+      const line = pick(catalyst.dir > 0 ? fam.up : fam.down);
+      newsItems.push({ scope: 'rumor', target: catalyst.sector, impact: 0,
+        headline: JSON.stringify({ zh: line[0], en: line[1] }) });
+    }
+    if (hour >= catalyst.fireHour) {
+      if (catalyst.outcome !== 0) {
+        const realDir = catalyst.dir * catalyst.outcome;   // outcome = -1 时反着走
+        activeCat = { sector: catalyst.sector,
+          perHour: realDir * catalyst.mag / RUMOR_RUN_HOURS, left: RUMOR_RUN_HOURS };
+        const tp = pick(realDir > 0 ? CONFIRM.up : CONFIRM.down);
+        newsItems.push({ scope: 'sector', target: catalyst.sector, impact: realDir * catalyst.mag * 0.3,
+          headline: JSON.stringify({ zh: tp[0].replace('{X}', catalyst.sector),
+                                     en: tp[1].replace('{X}', C.sectorEn(catalyst.sector)) }) });
+      }
+      catalyst = null;
+    }
+  }
+  // 催化剂兑现期间：这个板块每小时都被推着走，内在价值也一起重估
+  if (activeCat) {
+    sectorRet[activeCat.sector] = (sectorRet[activeCat.sector] || 0) + activeCat.perHour;
+    if (--activeCat.left <= 0) activeCat = null;
+  }
+
   // ── 新闻 ──
   if (Math.random() < 0.085) {
     const roll = Math.random();
@@ -321,6 +380,8 @@ function tickOnce(assetList, hour, sectorSet) {
 
     // 基本面（内在价值）自身缓慢演化
     a.fair = Math.max(1e-6, a.fair * Math.exp(a.mu * DT + 0.40 * a.sigma * SQDT * gauss()));
+    // 催化剂是基本面事件，不只是情绪：内在价值同步重估，涨上去才站得住
+    if (activeCat && a.sector === activeCat.sector) a.fair *= Math.exp(activeCat.perHour * 0.85);
 
     const theta = isCrypto ? 0.55 : a.kind === 'commodity' ? 1.9 : a.kind === 'index' ? 0.85 : a.kind === 'district' ? 1.05 : 1.15;
     const reversion = theta * Math.log(a.fair / a.price) * DT;
@@ -416,6 +477,7 @@ export function advanceMarket() {
     // 清理历史
     if (target % 40 === 0) {
       setMeta('sector_mom', JSON.stringify(sectorMom));
+      saveRumors();
       db.prepare('DELETE FROM prices WHERE hour < ?').run(target - HISTORY_KEEP);
       db.prepare('DELETE FROM news WHERE id NOT IN (SELECT id FROM news ORDER BY id DESC LIMIT 400)').run();
     }
@@ -439,6 +501,18 @@ export function allAssets() { return assets(); }
 // 板块热度：创业公司的估值倍数也跟着自己赛道的轮动走
 export function sectorMomentum(sector) { return sectorMom[sector] || 0; }
 export function loadSectorMom() { try { sectorMom = JSON.parse(getMeta('sector_mom', '{}')); } catch { sectorMom = {}; } }
+export function loadRumors() {
+  try { catalyst = JSON.parse(getMeta('catalyst', 'null')); } catch { catalyst = null; }
+  try { activeCat = JSON.parse(getMeta('catalyst_active', 'null')); } catch { activeCat = null; }
+}
+function saveRumors() {
+  setMeta('catalyst', JSON.stringify(catalyst));
+  setMeta('catalyst_active', JSON.stringify(activeCat));
+}
+// 给界面看的：正在流传、还没有结果的传闻
+export function pendingRumor() {
+  return catalyst ? { sector: catalyst.sector, hoursLeft: Math.max(0, catalyst.fireHour - currentGameHour()) } : null;
+}
 // 各城市商圈繁荣度：直接影响该城市所有店铺的营收
 export function cityProsperity() {
   const out = {};
