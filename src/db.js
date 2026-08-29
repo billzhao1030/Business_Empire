@@ -15,6 +15,10 @@ export const DB_PATH = path.join(DATA_DIR, 'game.db');
 export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA synchronous = NORMAL');
+// 撞上别的写入时先等一会儿再重试，而不是当场抛 SQLITE_BUSY。
+// WAL 下读不会被挡，但两个写入者仍然会互斥——没有这一行，第二个写入者
+// 立刻就是一句 "database is locked"。
+db.exec('PRAGMA busy_timeout = 8000');
 db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
