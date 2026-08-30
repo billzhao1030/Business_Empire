@@ -406,7 +406,23 @@ export function prestigeOf(userId) {
   if (pl) p += lookOf(pl, rows).prestige;
   return p;
 }
-export function prestigeBonus(prestige) { return Math.min(0.60, prestige * 0.0012); }
+// 声望对生意的加成。
+//
+// 原来是「每点 0.12%、到 60% 封顶」，两头都不合理：
+//   · 60% 太离谱——买一艘游艇就让全部店铺的营收涨六成，这不是声望是魔法；
+//   · 线性到 500 点戛然而止——第 500 点值 0.12%，第 501 点值 0。
+//     500 分以后再攒声望完全没有意义，这是个台阶，不是个模型。
+//
+// 换成饱和曲线：A · p/(p+K)。永远在涨，涨得越来越慢，永远够不到上限。
+// 前期一点声望很值钱（真实世界也是——从默默无闻到小有名气那一步最值），
+// 后面继续攒仍然有用，只是边际递减。上限 30%：名气确实能带来更好的铺位、
+// 更好的账期和免费的口碑，但它不可能顶得上把店开在对的地方。
+export const PRESTIGE_MAX = 0.30;      // 渐近线，永远达不到
+export const PRESTIGE_K = 500;         // 半程点：500 声望拿到一半的加成
+export function prestigeBonus(prestige) {
+  const p = Math.max(0, prestige);
+  return PRESTIGE_MAX * p / (p + PRESTIGE_K);
+}
 
 export function ensurePlayer(userId, nickname) {
   const p = db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
