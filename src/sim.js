@@ -636,8 +636,10 @@ export function advancePlayer(userId) {
       const net = rev - cost;
       const owner = b.company_id ? coById.get(b.company_id) : null;
       if (owner) { owner.cash += net; owner.lifetime_profit += net; }
-      else p.cash += net;
-      p.month_profit += net;
+      // 装进公司的店，钱进的是公司账户，不是你的口袋——那就不能算进你的
+      // 个人月度利润，更不能让你替公司交那 25% 的税。公司的利润在分红的
+      // 时候按股息税收；两头都收，等于同一笔钱交两遍。
+      else { p.cash += net; p.month_profit += net; }
       // 门店维护。不修的话 condition 一路掉，毛利本来就薄的小生意会被拖成亏损，
       // 一家连锁就这么慢慢烂掉——公司名下的店从公司账上出这笔钱。
       if (b.auto_repair && b.condition < 0.72) {

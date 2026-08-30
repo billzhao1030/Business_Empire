@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, durText, hoursAgo, renderLedger, newsLine, gShort, toast, realPace } from '../util.js';
+import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, durText, hoursAgo, renderLedger, newsLine, gShort, toast, realPace , tabBar, getTab, wireTabs } from '../util.js';
 import { PriceChart, donut, sparkline } from '../chart.js';
 
 let chart = null, sparks = null;
@@ -14,8 +14,14 @@ function statCard(label, value, sub, opts = {}) {
     <div class="d">${sub}</div></div>`;
 }
 
+const DTABS = s => [
+  { id: 'chart', emoji: '📈', label: t('dash.tabChart') },
+  { id: 'feed',  emoji: '📰', label: t('dash.tabFeed'), badge: s.news.length || '' },
+];
+
 export default {
   render(root, app) {
+    const dtab = getTab('dash', 'chart');
     const s = app.state, nw = s.netWorth;
     const segs = [
       { k: 'cash', label: t('common.cash'), v: nw.cash, color: COLORS[0] },
@@ -84,6 +90,9 @@ export default {
 
     ${s.player.cash < 0 ? `<div class="card" style="border-color:#5a2530;margin-bottom:16px"><div class="card-b" style="color:#ff8b9c;padding:12px 18px">${t('bank.overdraftWarn')}</div></div>` : ''}
 
+    ${tabBar('dash', DTABS(s), dtab)}
+
+    ${dtab === 'chart' ? `
     <div class="grid" style="grid-template-columns:1.9fr 1fr;margin-bottom:16px">
       <div class="card">
         <div class="card-h"><h3>${t('dash.trend')}</h3>
@@ -107,8 +116,9 @@ export default {
           </div>
         </div>
       </div>
-    </div>
+    </div>` : ''}
 
+    ${dtab === 'feed' ? `
     <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
       <div class="card">
         <div class="card-h"><h3>📰 ${t('dash.news')}</h3></div>
@@ -133,8 +143,9 @@ export default {
           </div>`).join('')}
         </div>
       </div>
-    </div>
+    </div>` : ''}
 
+    ${dtab === 'chart' ? `
     <div class="card">
       <div class="card-h"><h3>🏘️ ${t('dash.indices')}</h3><div class="right"><span class="sub">${t('lux.indexHint')}</span></div></div>
       <div class="card-b">
@@ -149,7 +160,7 @@ export default {
           </div>`).join('')}
         </div>
       </div>
-    </div>`;
+    </div>` : ''}`;
 
     // 净资产走势与资产构成：这两张图之前只有容器，从来没人往里画过。
     // chart 一直是 null，patch() 里那句 if (chart) 就永远静悄悄地跳过了。
@@ -161,7 +172,8 @@ export default {
     const dn = $('#nw-donut');
     if (dn) donut(dn, segs, 150);
 
-    $('#go-ledger').onclick = () => app.go('ledger');
+    wireTabs('dash', () => this.render(root, app));
+    $('#go-ledger') && ($('#go-ledger').onclick = () => app.go('ledger'));
     $('#d-go-career') && ($('#d-go-career').onclick = () => app.go('career'));
     const hb = $('#d-hustle');
     if (hb) hb.onclick = async () => {
