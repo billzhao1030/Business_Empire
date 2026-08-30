@@ -1730,7 +1730,9 @@ export function marketOverview(uid) {
     // target 现在是股票代码；老存档里还留着一批指向板块的旧记录，
     // 这里把它们分辨出来，前端才知道该跳到哪支股票、还是退回按板块筛。
     rumors: (() => {
-      const rows = db.prepare("SELECT hour,target,headline FROM news WHERE scope='rumor' ORDER BY id DESC LIMIT 12").all();
+      // 只看最近一个月的风声。更早的传闻早就有结果了，留在那儿只会挡住新的。
+      const rows = db.prepare("SELECT hour,target,headline FROM news WHERE scope='rumor' AND hour >= ? ORDER BY id DESC LIMIT 12")
+        .all(curHour() - M.NEWS_KEEP_HOURS);
       const bySym = new Map(M.allAssets().map(a => [a.symbol, a]));
       return rows.map(r => {
         const a = bySym.get(r.target);
