@@ -205,12 +205,36 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// 安全网：任何未捕获的异常都不许把服务打死——记下来，继续服务
+// 安全网：任何未捕获的异常都不许把服务打死——记下来，继续服务。
+//
+// 但这张网自己也会翻车。启动它的终端一关，stderr 就成了断掉的管道，
+// console.error 随即抛 EPIPE → uncaughtException → 再进这里 → 再 console.error…
+// 一个下午写出 28GB 的 error.log，就是这么来的。所以：
+//   1) 正在写日志时不再递归进来
+//   2) 写 stderr 用 try/catch 包住，管道断了就不写了
+//   3) 日志到 8MB 就滚掉，无论如何不让它吃满硬盘
+const LOG_MAX = 8 * 1024 * 1024;
+let inLogFatal = false, logBroken = false;
 function logFatal(kind, err) {
-  const msg = `\n[${new Date().toISOString()}] ${kind}: ${err && err.stack || err}\n`;
-  try { fs.appendFileSync(path.join(path.dirname(DB_PATH), 'error.log'), msg); } catch {}
-  console.error(msg);
+  if (inLogFatal) return;                     // 递归护栏：写日志时又炸了，就别写了
+  inLogFatal = true;
+  try {
+    const msg = `\n[${new Date().toISOString()}] ${kind}: ${err && err.stack || err}\n`;
+    const file = path.join(path.dirname(DB_PATH), 'error.log');
+    try {
+      if (fs.existsSync(file) && fs.statSync(file).size > LOG_MAX)
+        fs.renameSync(file, file + '.1');     // 只留最近一轮，上一轮覆盖掉
+      fs.appendFileSync(file, msg);
+    } catch {}
+    if (!logBroken) {
+      try { console.error(msg); }
+      catch { logBroken = true; }             // stderr 已经断了，从此不再往那儿写
+    }
+  } finally { inLogFatal = false; }
 }
+// stderr 断了是常事（终端关掉了），它自己不该再冒出一个未捕获异常
+process.stderr.on('error', () => { logBroken = true; });
+process.stdout.on('error', () => { logBroken = true; });
 // 兜底是为了让一次请求出错不至于把服务打死。但启动就失败（端口被占、
 // 数据目录不可写）属于另一回事：这种进程活着只会白白占着数据库句柄，
 // 让下一个真正的实例写不进去——直接退出。
