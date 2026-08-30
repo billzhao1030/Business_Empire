@@ -34,6 +34,19 @@ function dailyNetAt(def, city, marketing) {
   const rentH = def.hourlyRent * city.rentMult * mk;
   return H * (served - served * (def.cogs ?? 0.42) - staff * wage) - 24 * rentH;
 }
+// 开这家店要花的钱 ÷ 它一天能赚的钱 = 多少天回本。
+// 目录里的 payDays 是「设计目标」，只按成本算，跟城市无关；这里算的是
+// 你选的这座城市的实际值——把差旅费也算进本金。大城市房租涨得比营收快，
+// 同一家街头小摊在家乡 35 天回本，在国际金融中心要 140 天。
+export function paybackInfo(def, city) {
+  const setup = Math.round(def.cost * city.costMult);
+  const travel = Math.round(city.travelCost || 0);
+  const total = setup + travel;
+  const dailyNet = dailyNetAt(def, city, 0);
+  return { setup, travel, total, dailyNet,
+    days: dailyNet > 0 ? total / dailyNet : Infinity,
+    ok: dailyNet > 0 };
+}
 export function marketingInfo(def, city) {
   const cost = Math.round(def.cost * city.costMult * 0.10);
   const net0 = dailyNetAt(def, city, 0);
@@ -329,8 +342,9 @@ export default {
         && (!q || x.name.toLowerCase().includes(q) || x.en.toLowerCase().includes(q)
             || x.cat.toLowerCase().includes(q) || x.catEn.toLowerCase().includes(q))
         && (!adOnly || ad(x).worth));
+      const pb = x => paybackInfo(x, city);
       const by = { cost: (a, b) => a.cost - b.cost,
-                   payback: (a, b) => a.payDays - b.payDays,
+                   payback: (a, b) => pb(a).days - pb(b).days,
                    margin: (a, b) => a.cogs - b.cogs,
                    steady: (a, b) => (a.vol + Math.abs(a.cyc)) - (b.vol + Math.abs(b.cyc)),
                    adback: (a, b) => ad(a).payback - ad(b).payback };
@@ -344,6 +358,7 @@ export default {
       const def = cat.biz.find(x => x.id === pickType);
       if (!def) return;
       const ad = marketingInfo(def, city);
+      const pb = paybackInfo(def, city);
       const setup = Math.round(def.cost * city.costMult);
       const travel = Math.round(city.travelCost || 0);
       const cost = setup + travel;
@@ -385,7 +400,10 @@ export default {
           const sea = seasonText(x);
           return `<button class="opt ${x.id === pickType ? 'active' : ''}" data-type="${x.id}" ${afford ? '' : 'style="opacity:.45"'}>
             <div class="t">${x.emoji} ${esc(nm({ zh: x.name, en: x.en }))}</div>
-            <div class="s">${money(c)} · ${t('biz.grossMargin')} ${Math.round((1 - x.cogs) * 100)}% · ${Math.round(x.payDays)}${t('biz.dPayback')}
+            <div class="s">${money(c)} · ${t('biz.grossMargin')} ${Math.round((1 - x.cogs) * 100)}% · ${(() => {
+                const p = paybackInfo(x, city);
+                return p.ok ? `<b class="${p.days < 60 ? 'up' : p.days > 240 ? 'down' : ''}">${Math.round(p.days)}${t('biz.dPayback')}</b>`
+                            : `<b class="down">${t('biz.lossMaking')}</b>`; })()}
               ${(() => { const a = marketingInfo(x, city);
                 return a.worth ? `<span class="${a.payback < 30 ? 'up' : a.payback > 200 ? 'down' : 'dim2'}">· 📣${Math.round(a.payback)}${t('biz.dAd')}</span>`
                                : `<span class="down">· 📣${t('biz.adNever')}</span>`; })()}
@@ -429,7 +447,11 @@ export default {
         <div><span>${t('biz.wages')}（${staffN} ${t('biz.staff')}）</span><span class="mono down">-${money(wages)}</span></div>
         <div><span>${t('biz.rent')}</span><span class="mono down">-${money(rentM / 30)}/${t('common.day')}（${money(rentM)}/${t('common.month')}）</span></div>
         <div><span>${t('biz.mgmt')}</span><span class="mono">${def.mgmt.toFixed(1)} h/${t('common.day')}</span></div>
-        <div><span>${t('biz.payback')}</span><span class="mono">${Math.round(def.payDays)} ${t('common.day')}</span></div>
+        <div class="tot"><span>${t('biz.payback')}
+          <span class="dim2" style="font-weight:400">${t('biz.paybackHow')}</span></span>
+          <span class="mono ${!pb.ok ? 'down' : pb.days < 60 ? 'up' : pb.days > 240 ? 'down' : ''}">${
+            pb.ok ? Math.round(pb.days) + ' ' + t('common.day') : t('biz.lossMaking')}
+          <span class="dim2" style="font-weight:400">${moneyFull(pb.total)} ÷ ${money(pb.dailyNet)}</span></span></div>
         <div><span>📣 ${t('biz.adCost')}</span><span class="mono">${moneyFull(ad.cost)}
           <span class="dim2" style="font-weight:400">${ad.ratio < 1e6 ? t('biz.adRatio', { d: ad.ratio.toFixed(1) }) : ''}</span></span></div>
         <div><span>📣 ${t('biz.adGain')}</span><span class="mono ${ad.gain > 0 ? 'up' : 'down'}">${ad.gain > 0 ? '+' : ''}${money(ad.gain)}/${t('common.day')}</span></div>
