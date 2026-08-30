@@ -398,10 +398,19 @@ const J = [
 ['cfo','首席财务官','CFO','💰','exec',480,4_200,0,'每一分钱都要向你解释。','Every dollar has to explain itself to you.'],
 ['ceo','职业经理人 CEO','Professional CEO','👑','exec',650,4_500,0,'替别人打理帝国——直到你有自己的。','Running someone else’s empire — until you build your own.'],
 ['chair','跨国集团董事长','Group Chairman','🗿','exec',980,6_000,0,'不再管事，只决定谁来管事。','You no longer run anything. You decide who does.'],
+// ── 顶层：这些位置不是靠工时熬出来的 ──
+// 猎头找上门的前提是你本来就有身家和名声。exp 之外还卡净资产（worth），
+// 两个条件都够了才轮得到你——但到了那一步，一天的报酬是六位数。
+['pubchair','上市公司董事长','Listed Chairman','🔔','exec',2_400,7_000,0,'敲过钟的人，才会被请去敲别人的钟。','Once you have rung the bell, people ask you to ring theirs.',50e6],
+['sovpm','主权基金操盘手','Sovereign Fund PM','🏛️','exec',4_500,8_000,0,'管的是一个国家的钱，签字之前要想三遍。','You manage a country\'s money. You think three times before signing.',200e6],
+['ibchair','全球投行主席','Global IB Chairman','🌐','exec',8_000,9_000,0,'每一笔跨国并购的最后一通电话，都打给你。','Every cross-border deal ends with a call to you.',500e6],
+['petitan','私募巨头合伙人','Private Equity Partner','💠','exec',15_000,10_000,0,'你买下的公司，比大多数国家的企业还多。','You have bought more companies than most countries have.',1e9],
+['conglom','财团总裁','Conglomerate President','🏯','exec',26_000,12_000,0,'从港口到银行到芯片厂，都在你这一张组织架构图上。','Ports, banks, fabs — all on one org chart, and it is yours.',3e9],
+['familyoffice','家族办公室掌门','Family Office Principal','👑','exec',45_000,15_000,0,'不再有人给你发工资，是你给别人发。这个位置只有一个。','Nobody pays you a salary any more; you pay everyone else. There is one seat.',10e9],
 ];
 
-export const JOBS = J.map(([id,zh,en,emoji,track,wage,exp,car,descZh,descEn]) =>
-  ({ id, zh, en, emoji, track, wage, exp, car: !!car, descZh, descEn }));
+export const JOBS = J.map(([id,zh,en,emoji,track,wage,exp,car,descZh,descEn,worth]) =>
+  ({ id, zh, en, emoji, track, wage, exp, car: !!car, worth: worth || 0, descZh, descEn }));
 
 // ── 世界富豪榜（化名，财富与游戏内公司股价实时联动）──
 export const RIVALS = [

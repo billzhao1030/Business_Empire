@@ -230,6 +230,15 @@ export default {
           <button class="btn btn-primary btn-block" id="co-pay" ${c.cash >= d.minDividend ? '' : 'disabled'}>
             💵 ${t('co.payBtn')}</button>
           <div class="dim2" style="font-size:10.5px;margin-top:8px;line-height:1.6">${t('co.dividendNote', { p: pctPlain(c.stake, 1) })}</div>
+
+          <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.5px;margin:14px 0 6px">🔁 ${t('co.autoDiv')}</div>
+          <div class="segs" style="display:flex;flex-wrap:wrap">
+            ${[0, 0.05, 0.10, 0.20, 0.35, 0.50].map(v => `<button class="seg ${Math.abs((c.autoDiv || 0) - v) < 1e-6 ? 'active' : ''}"
+              data-adiv="${v}" style="flex:1;min-width:44px;font-size:11px">${v ? Math.round(v * 100) + '%' : t('co.autoDivOff')}</button>`).join('')}
+          </div>
+          <div class="dim2" style="font-size:10.5px;margin-top:7px;line-height:1.6">${c.autoDiv > 0
+            ? t('co.autoDivOn', { p: pctPlain(c.autoDiv, 0), amt: money(c.cash * c.autoDiv * c.stake * (1 - d.dividendTax)) })
+            : t('co.autoDivHint')}</div>
         </div>
       </div>
 
@@ -357,6 +366,7 @@ export default {
         };
       },
     }));
+    $$('[data-adiv]').forEach(b => b.onclick = () => again(() => api.coAutoDiv(+b.dataset.adiv, coId)));
     const dv = $('#co-div'), fd = $('#co-fund');
     if (dv) dv.oninput = () => { divAmt = dv.value; };
     if (fd) fd.oninput = () => { fundAmt = fd.value; };

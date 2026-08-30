@@ -182,11 +182,15 @@ export function getState(uid, active = true) {
 
   const carOwned = S.hasCar(uid), bikeOwned = S.hasBike(uid);
   const job = S.jobOf(p);
-  const nwTmp = nw.total;
+  // 有效经验：打工工时 + 身家折算 + 名声折算。做成过事的人不必从头攒工时。
+  const prestigeNow = S.prestigeOf(uid) + p.prestige;
+  const effExp = S.effectiveExp(p, nw.total, prestigeNow);
   const jobs = JOBS.map(j => ({ id: j.id, zh: j.zh, en: j.en, emoji: j.emoji, wage: j.wage, exp: j.exp,
     car: !!j.car, descZh: j.descZh, descEn: j.descEn,
-    unlocked: p.job_exp >= j.exp, blocked: !!j.car && !carOwned, current: p.job_id === j.id, track: j.track }));
-  const prestige = S.prestigeOf(uid) + p.prestige;
+    unlocked: effExp >= j.exp && nw.total >= (j.worth || 0),
+    blocked: (!!j.car && !carOwned) || (nw.total < (j.worth || 0)),
+    needWorth: j.worth || 0, current: p.job_id === j.id, track: j.track }));
+  const prestige = prestigeNow;
   const personalDebt = loans.filter(l => l.kind !== 'mortgage').reduce((s, l) => s + l.balance, 0);
   const creditLimit = Math.max(0, Math.max(100_000, nw.total * 0.6 + Math.max(0, nw.bizNetPerHour) * M.YEAR_HOURS * 0.5) - personalDebt);
 
@@ -236,6 +240,9 @@ export function getState(uid, active = true) {
       return {
         current: job ? { id: job.id, zh: job.zh, en: job.en, emoji: job.emoji, wage: job.wage } : null,
         exp: p.job_exp, hours: p.job_hours, income: p.job_income,
+        // 履历的三块，界面上要拆开给人看，不然「我有九位数身家为什么还不够格」说不通
+        effExp, expFromWorth: S.worthExp(nw.total), expFromPrestige: prestigeNow * S.EXP_FROM_PRESTIGE,
+        netWorth: nw.total,
         working: !!job && (!job.car || carOwned), carOwned, list: jobs, tracks: S.JOB_TRACKS,
         stamina: p.stamina, staminaMax: S.STAMINA_MAX, efficiency: S.efficiency(p.stamina),
         phase, hod, wakeHour: S.WAKE_HOUR, sleepHour: S.SLEEP_HOUR,
@@ -842,7 +849,14 @@ export function takeJob(uid, { jobId }) {
   if (jobId === '') { db.prepare("UPDATE players SET job_id='' WHERE user_id=?").run(uid); return { ok: true }; }
   const j = S.JOB[jobId];
   if (!j) throw new Err('职位不存在 / Job not found');
-  if (p.job_exp < j.exp) throw new Err(`工作经验不足，需要 ${Math.round(j.exp)} / Requires ${Math.round(j.exp)} experience`);
+  const nwNow = S.computeNetWorth(uid);
+  const eff = S.effectiveExp(p, nwNow.total, S.prestigeOf(uid) + p.prestige);
+  if (eff < j.exp) throw new Err(`履历不够：需要 ${Math.round(j.exp)}，你现在 ${Math.round(eff)}`
+    + `（工时 ${Math.round(p.job_exp)} + 身家折算 ${Math.round(S.worthExp(nwNow.total))} + 名声折算 ${Math.round((S.prestigeOf(uid) + p.prestige) * S.EXP_FROM_PRESTIGE)}）`
+    + ` / Needs ${Math.round(j.exp)}, you have ${Math.round(eff)}`);
+  if (j.worth && nwNow.total < j.worth)
+    throw new Err(`这个位置还要求净资产 ${S.fmt(j.worth)}，你现在 ${S.fmt(nwNow.total)}`
+      + ` / Also requires a net worth of ${S.fmt(j.worth)}`);
   if (j.car && !S.hasCar(uid)) throw new Err('这份工作需要你先拥有一辆车 / This job requires your own vehicle');
   db.prepare('UPDATE players SET job_id=? WHERE user_id=?').run(jobId, uid);
   ledger(uid, 'job', 0, L('led.jobTake', { job: { zh: j.zh, en: j.en }, wage: j.wage }), j.emoji);
@@ -1182,7 +1196,7 @@ function coState(uid, coId, want = {}) {
     shopsAvailable: freeShops.map(b => shopBrief(b, pb, prosp)),
     co: { id: co.id, name: co.name, nameEn: co.name_en, ticker: co.ticker, sector: co.sector,
       stage: co.stage, stageZh: STAGE[co.stage]?.zh, stageEn: STAGE[co.stage]?.en,
-      foundedHour: co.founded_hour, cash: co.cash, shares: co.shares,
+      foundedHour: co.founded_hour, cash: co.cash, shares: co.shares, autoDiv: co.auto_div || 0,
       playerShares: co.player_shares, stake, roundN: co.round_n, raised: co.raised,
       roundVal: co.round_val, peakVal: co.peak_val, lifetimeProfit: co.lifetime_profit,
       dividendsPaid: co.dividends_paid },
@@ -1191,7 +1205,7 @@ function coState(uid, coId, want = {}) {
               float: IPO_FLOAT, fee: IPO_FEE },
     shops: shops.map(b => shopBrief(b, pb, prosp)),
     outside: outside.map(b => shopBrief(b, pb, prosp)),
-    minDividend: MIN_DIVIDEND, dividendTax: DIVIDEND_TAX,
+    minDividend: MIN_DIVIDEND, dividendTax: DIVIDEND_TAX, autoDivMax: AUTO_DIV_MAX,
   };
 }
 function shopBrief(b, pb, prosp) {
@@ -1300,6 +1314,17 @@ export function payDividend(uid, { amount, coId }) {
   ledger(uid, 'dividend', net, L('led.coDividend', { total: amt, stake: Math.round(stake * 100),
     gross, tax, net }), '💵');
   return { ok: true, gross, tax, net, ...coState(uid, co.id) };
+}
+
+// 自动分红：设一个比例，往后每天自动把公司现金的这个比例发出来
+export const AUTO_DIV_MAX = 0.50;
+export function setAutoDividend(uid, { pct, coId } = {}) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid, coId);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  const v = Math.max(0, Math.min(AUTO_DIV_MAX, Number(pct) || 0));
+  db.prepare('UPDATE companies SET auto_div=? WHERE id=?').run(v, co.id);
+  return { ok: true, autoDiv: v, ...coState(uid, co.id) };
 }
 
 // 给公司注资：把个人的钱投进去（不稀释，你本来就是股东）
