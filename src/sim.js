@@ -81,6 +81,29 @@ export const L = (k, p = {}) => JSON.stringify({ k, p });
 const NM = def => ({ zh: def?.name || '', en: def?.en || def?.name || '' });
 
 export function loanRate(score) { return M.policyRate() + 0.022 + clamp((850 - score) / 550, 0, 1) * 0.16; }
+// ── 股票质押融资 ────────────────────────────────────────────
+// 创始人身家全在股权里，个人账上却没什么现金——现实里的解法从来不是卖股票，
+// 而是拿股票去抵押。有抵押品，利率比信用贷低得多；代价是股价跌下来会被强平。
+export const PLEDGE_LTV = 0.50;        // 最多借到持仓市值的一半
+export const PLEDGE_CALL = 0.72;       // 负债/市值 超过这个比例，触发追加保证金
+export const PLEDGE_SAFE = 0.45;       // 强平之后要压回这个比例
+export function pledgeRate(score) { return M.policyRate() + 0.010 + clamp((850 - score) / 550, 0, 1) * 0.045; }
+// 能拿来抵押的：上市股票（含你自己带上市的公司）。加密货币太颠，银行不认
+export function pledgeable(userId) {
+  const live = new Map(M.allAssets().map(a => [a.id, a]));
+  let value = 0;
+  const rows = db.prepare('SELECT * FROM holdings WHERE user_id=? AND qty>0').all(userId);
+  const items = [];
+  for (const h of rows) {
+    const a = live.get(h.asset_id);
+    if (!a || a.kind !== 'stock') continue;
+    const v = h.qty * a.price;
+    value += v;
+    items.push({ assetId: a.id, symbol: a.symbol, zh: a.zh, en: a.name, qty: h.qty, price: a.price, value: v });
+  }
+  items.sort((x, y) => y.value - x.value);
+  return { value, items };
+}
 export function mortgageRate(score) { return M.policyRate() + 0.004 + clamp((850 - score) / 550, 0, 1) * 0.065; }
 export function levelRevMult(level) { return Math.pow(1.32, level - 1); }
 export function levelCostMult(level) { return Math.pow(1.18, level - 1); }
@@ -476,6 +499,7 @@ export function advancePlayer(userId) {
   const assetsById = new Map(M.allAssets().map(a => [a.id, a]));
 
   const ledger = [], nwPoints = [];
+  let holdingsDirty = false;   // 只有强平会改持仓，改了才写回
   const pb = prestigeBonus(prestigeOf(userId) + p.prestige);
   const prosp = M.cityProsperity();
   const carOwned = items.some(it => ITEM[it.type_id]?.car);
@@ -662,6 +686,48 @@ export function advancePlayer(userId) {
       p.cash -= move; p.bank += move;
       if (h % DAY_HOURS === 0) ledger.push([h, 'bank', 0, L('led.sweep', { amt: move, keep: p.sweep_keep }), '🔁']);
     }
+    // 质押盘的强平：股价跌下来，负债率越过红线，银行不会等你——
+    // 它直接卖掉你一部分股票把比例压回安全线。每天查一次。
+    if (h % DAY_HOURS === 0) {
+      const pledged = loans.filter(l => l.status === 'active' && l.kind === 'pledge');
+      const owed = pledged.reduce((a, l) => a + l.balance, 0);
+      if (owed > 0) {
+        const coll = holdings.reduce((a, hd) => {
+          const a2 = assetsById.get(hd.asset_id);
+          return a + (a2 && a2.kind === 'stock' ? hd.qty * a2.price : 0);
+        }, 0);
+        if (coll > 0 && owed / coll > PLEDGE_CALL) {
+          // 要卖掉多少市值，才能把负债率压回安全线
+          let need = (owed - PLEDGE_SAFE * coll) / (1 - PLEDGE_SAFE);
+          let sold = 0;
+          const byValue = holdings
+            .map(hd => ({ hd, a: assetsById.get(hd.asset_id) }))
+            .filter(x => x.a && x.a.kind === 'stock' && x.hd.qty > 0)
+            .sort((x, y) => y.hd.qty * y.a.price - x.hd.qty * x.a.price);
+          for (const { hd, a } of byValue) {
+            if (need <= 0.01) break;
+            const take = Math.min(hd.qty, need / a.price);
+            hd.qty -= take; hd.cost -= hd.cost * (take / (hd.qty + take || 1));
+            const cash = take * a.price * 0.985;      // 强平是要打折的
+            sold += cash; need -= cash;
+          }
+          // 卖来的钱直接抵债
+          let left = sold;
+          for (const l of pledged) {
+            if (left <= 0) break;
+            const pay = Math.min(l.balance, left);
+            l.balance -= pay; l.paid_total += pay; left -= pay;
+            if (l.balance <= 1) { l.balance = 0; l.status = 'closed'; }
+          }
+          if (left > 0) p.cash += left;
+          holdingsDirty = true;
+          p.credit_score = Math.max(300, p.credit_score - 25);
+          p.stress = clamp(p.stress + 12, 0, STRESS_MAX);
+          ledger.push([h, 'loan', 0, L('led.marginCall', { sold: Math.round(sold),
+            ltv: Math.round(100 * owed / coll) }), '🚨']);
+        }
+      }
+    }
     if (p.bank > 0) { const i = p.bank * sRate / YEAR_HOURS; p.bank += i; dayInterest += i; }
     if (p.cash < 0) { const i = -p.cash * oRate / YEAR_HOURS; p.cash -= i; dayOverdraft += i; }
     for (const l of loans) if (l.status === 'active') l.balance += l.balance * l.rate / YEAR_HOURS;
@@ -700,6 +766,21 @@ export function advancePlayer(userId) {
 
     for (const l of loans) {
       if (l.status !== 'active' || h < l.next_due) continue;
+      // 质押融资只付利息，本金什么时候还都行——这正是它比信用贷好用的地方
+      if (l.kind === 'pledge') {
+        const due = l.balance * l.rate / 12;
+        if (payFrom(p, due)) {
+          l.paid_total += due;
+          p.credit_score = Math.min(850, p.credit_score + 1);
+          ledger.push([h, 'loan', -due, L('led.pledgeInterest', { amt: due, left: l.balance }), '📈']);
+        } else {
+          l.balance += due; p.missed_pay++;
+          p.credit_score = Math.max(300, p.credit_score - 20);
+          ledger.push([h, 'loan', -due, L('led.loanMissed', { pen: due }), '🚨']);
+        }
+        l.next_due += MONTH_HOURS;
+        continue;
+      }
       const last = l.months_left <= 1;
       const due = last ? l.balance : Math.min(l.payment, l.balance);
       const isMortgage = l.kind === 'mortgage';
@@ -840,6 +921,11 @@ export function advancePlayer(userId) {
     for (const it of items) ui.run(it.value, it.id);
     const ul = db.prepare('UPDATE loans SET balance=?,months_left=?,next_due=?,paid_total=?,status=? WHERE id=?');
     for (const l of loans) ul.run(l.balance, l.months_left, l.next_due, l.paid_total, l.status, l.id);
+    // 强平会动到持仓，不写回去这笔卖出就白发生了
+    if (holdingsDirty) {
+      const uh = db.prepare('UPDATE holdings SET qty=?,cost=? WHERE user_id=? AND asset_id=?');
+      for (const hd of holdings) uh.run(Math.max(0, hd.qty), Math.max(0, hd.cost), userId, hd.asset_id);
+    }
     const ud = db.prepare('UPDATE deposits SET status=? WHERE id=?');
     for (const d of deposits) if (d.status !== 'active') ud.run(d.status, d.id);
     const il = db.prepare('INSERT INTO ledger(user_id,hour,kind,amount,detail,icon) VALUES(?,?,?,?,?,?)');

@@ -563,6 +563,64 @@ export function allAssets() { return assets(); }
 export function sectorMomentum(sector) { return sectorMom[sector] || 0; }
 export { getMeta, setMeta };
 // 让引擎之外的模块也能往新闻里写一条（玩家挤压行业时用）
+// ── 拆股 / 并股 ────────────────────────────────────────────
+// 股价涨到四位数，一手就要几万块，看着也累。现实里公司到这个价位就会拆股：
+// 股本翻倍、股价减半，公司还是那个公司，你手上的钱一分不多一分不少。
+// 反过来，跌成仙股的也会并股。这里对全市场一视同仁，包括你自己带上市的公司。
+export const SPLIT_ABOVE = 1000;      // 高于这个价考虑拆股
+export const SPLIT_TARGET = 200;      // 拆完大致落在这个价位
+export const SPLIT_BELOW = 1.5;       // 低于这个价考虑并股
+export const SPLIT_RATIOS = [2, 3, 4, 5, 8, 10, 15, 20];
+
+const nearestRatio = x => SPLIT_RATIOS.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a));
+
+// 把一支股票按 n 拆开（n>1 拆股）或按 n 合并（reverse=true）
+function doSplit(a, n, reverse) {
+  const f = reverse ? 1 / n : n;              // 股本乘以 f，股价除以 f
+  db.prepare(`UPDATE assets SET shares=shares*?, price=price/?, prev_close=prev_close/?,
+              day_open=day_open/?, day_high=day_high/?, day_low=day_low/?, fair=fair/?, eps=eps/?
+              WHERE id=?`).run(f, f, f, f, f, f, f, f, a.id);
+  // 历史价格一起缩放，图表才不会在拆股那一刻断成两截
+  db.prepare('UPDATE prices SET price=price/? WHERE asset_id=?').run(f, a.id);
+  // 持仓：股数按比例变，成本不变——所以每股成本同步变，盈亏一分没动
+  db.prepare('UPDATE holdings SET qty=qty*? WHERE asset_id=?').run(f, a.id);
+  // 自己带上市的公司，股本与创始人持股也要跟着变
+  db.prepare(`UPDATE companies SET shares=shares*?, player_shares=player_shares*?, ipo_price=ipo_price/?
+              WHERE asset_id=?`).run(f, f, f, a.id);
+  const zh = reverse ? `${a.zh} 实施 ${n} 合 1 并股，股价相应上调`
+                     : `${a.zh} 实施 1 拆 ${n} 拆股，股价相应下调，持股数量按比例增加`;
+  const en = reverse ? `${a.name} completes a 1-for-${n} reverse split; the price is adjusted up`
+                     : `${a.name} completes a ${n}-for-1 split; the price is adjusted down and holdings scale up`;
+  pushNews('asset', a.symbol, { zh, en }, 0);
+  return { symbol: a.symbol, n, reverse };
+}
+
+// 手动拆股：自己的公司想什么时候拆就什么时候拆
+export function splitAsset(assetId, n, reverse = false) {
+  const a = assets().find(x => x.id === assetId);
+  if (!a) return null;
+  const r = doSplit(a, n, reverse);
+  invalidate();
+  return r;
+}
+
+// 每个游戏日查一次就够了——拆股本来就是稀罕事
+export function applySplits() {
+  const done = [];
+  for (const a of assets()) {
+    if (a.kind !== 'stock' || a.symbol === 'BEXI') continue;
+    if (a.price > SPLIT_ABOVE) {
+      const n = nearestRatio(a.price / SPLIT_TARGET);
+      if (n >= 2) done.push(doSplit(a, n, false));
+    } else if (a.price > 0 && a.price < SPLIT_BELOW) {
+      const n = nearestRatio(SPLIT_TARGET / 8 / Math.max(0.05, a.price));
+      if (n >= 2) done.push(doSplit(a, n, true));
+    }
+  }
+  if (done.length) invalidate();
+  return done;
+}
+
 export function pushNews(scope, target, headline, impact = 0) {
   db.prepare('INSERT INTO news(hour,scope,target,headline,impact) VALUES(?,?,?,?,?)')
     .run(currentGameHour(), scope, target, JSON.stringify(headline), impact);

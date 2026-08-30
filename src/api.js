@@ -336,6 +336,14 @@ export function getState(uid, active = true) {
     macro: M.regimeState(),
     prosperity: M.cityProsperity(),
     businesses, companies: myCompanies, holdings, items, loans, deposits,
+    // 股票质押融资：身家在股权里，现金却在别处
+    pledge: (() => {
+      const pl = S.pledgeable(uid);
+      const owed = db.prepare("SELECT COALESCE(SUM(balance),0) s FROM loans WHERE user_id=? AND status='active' AND kind='pledge'").get(uid).s;
+      return { collateral: pl.value, owed, room: Math.max(0, pl.value * S.PLEDGE_LTV - owed),
+        ltv: pl.value > 0 ? owed / pl.value : 0, maxLtv: S.PLEDGE_LTV, callLtv: S.PLEDGE_CALL,
+        rate: S.pledgeRate(p.credit_score), items: pl.items.slice(0, 6) };
+    })(),
     bank: { sweepKeep: p.sweep_keep || 0,
       savingsRate: S.savingsRate(), overdraftRate: S.overdraftRate(), fixedRates: S.fixedRates(),
       policyRate: M.policyRate(),
@@ -686,6 +694,25 @@ export function bank(uid, { action, amount, months, id }) {
     p.cash += amt; savePlayer(p);
     ledger(uid, 'loan', amt, L('led.loanNew', { amt, rate, months: m, payment }), '🏦');
     return { ok: true, rate, payment };
+  }
+  // ── 股票质押：拿持仓换现金，不用卖 ──
+  if (action === 'pledge') {
+    const amt = money(amount);
+    const pl = S.pledgeable(uid);
+    const owed = db.prepare("SELECT COALESCE(SUM(balance),0) s FROM loans WHERE user_id=? AND status='active' AND kind='pledge'").get(uid).s;
+    const room = Math.max(0, pl.value * S.PLEDGE_LTV - owed);
+    if (pl.value <= 0) throw new Err('你名下没有可质押的股票 / You hold no stock to pledge');
+    if (amt > room) throw new Err(`超出可融资额度，最多 ${S.fmt(room)}（持仓 ${S.fmt(pl.value)} 的 ${Math.round(S.PLEDGE_LTV * 100)}%）`
+      + ` / Limit is ${S.fmt(room)}`);
+    const rate = S.pledgeRate(p.credit_score);
+    // 质押融资只付利息，本金随时还——这才是它的用处：要钱的时候有钱
+    db.prepare(`INSERT INTO loans(user_id,principal,balance,rate,term_months,months_left,payment,next_due,created_hour,kind)
+                VALUES(?,?,?,?,0,0,?,?,?,'pledge')`)
+      .run(uid, amt, amt, rate, amt * rate / 12, hour + M.MONTH_HOURS, hour);
+    p.cash += amt; savePlayer(p);
+    ledger(uid, 'loan', amt, L('led.pledgeNew', { amt, rate,
+      coll: Math.round(pl.value), ltv: Math.round(100 * (owed + amt) / pl.value) }), '📈');
+    return { ok: true, rate, room: room - amt };
   }
   if (action === 'repay') {
     const l = db.prepare("SELECT * FROM loans WHERE id=? AND user_id=? AND status='active'").get(num(id, 1), uid);
@@ -1333,6 +1360,35 @@ export function listCompany(uid, { coId, price, float } = {}) {
     ticker: co.ticker, open: r.open, price: r.price, pct: Math.round(Math.abs(pop) * 100),
     fill: Math.round(plan.fill * 100), prestige }), pop >= 0 ? '🚀' : '💔');
   return { ok: true, ...r, prestige, ...coState(uid, co.id) };
+}
+
+// 拆股 / 并股：股本乘以 n，每股价格除以 n。公司还是那个公司，
+// 你手上的钱一分不多一分不少——只是把同一块蛋糕切成更多份。
+export const SPLIT_MAX = 20;
+export function splitCompany(uid, { coId, ratio, reverse } = {}) {
+  S.advancePlayer(uid);
+  const co = CO.companyOf(uid, coId);
+  if (!co) throw new Err('你还没有公司 / You have not founded a company');
+  const n = Math.round(Number(ratio) || 0);
+  if (!(n >= 2 && n <= SPLIT_MAX))
+    throw new Err(`比例要在 2 到 ${SPLIT_MAX} 之间 / Ratio must be between 2 and ${SPLIT_MAX}`);
+  const rev = !!reverse;
+  if (rev && co.shares / n < 1000)
+    throw new Err('并股之后股本太小了 / That would leave too few shares');
+  if (!rev && co.shares * n > 5e11)
+    throw new Err('股本太大了 / That would leave too many shares');
+
+  if (co.stage === 'public' && co.asset_id) {
+    M.splitAsset(co.asset_id, n, rev);          // 上市了：股价、历史、所有人的持仓一起调整
+  } else {
+    const f = rev ? 1 / n : n;                  // 还没上市：只有股本和创始人持股
+    db.prepare('UPDATE companies SET shares=shares*?, player_shares=player_shares*? WHERE id=?')
+      .run(f, f, co.id);
+  }
+  const after = CO.companyOf(uid, co.id);
+  ledger(uid, 'company', 0, L(rev ? 'led.coReverseSplit' : 'led.coSplit',
+    { name: co.name, n, shares: Math.round(after.shares) }), '🔀');
+  return { ok: true, ...coState(uid, co.id) };
 }
 
 export function renameCompany(uid, { name, nameEn, coId }) {

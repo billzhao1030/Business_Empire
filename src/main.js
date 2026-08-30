@@ -42,7 +42,16 @@ function tickWorld() {
   M.advanceMarket();
   CO.syncPublicFundamentals();   // 上市公司的股价要围着自己的经营基本面转
   CO.applyMarketShare();         // 玩家的连锁做大了，同赛道的上市公司要让出份额
+  // 拆股一天查一次就够了——它本来就是稀罕事，没必要每 5 秒扫一遍全市场
+  const day = Math.floor(M.currentGameHour() / 24);
+  if (day !== lastSplitDay) {
+    lastSplitDay = day;
+    const done = M.applySplits();
+    for (const d of done)
+      console.log(`  🔀  ${d.symbol} ${d.reverse ? `${d.n} 合 1 并股` : `1 拆 ${d.n} 拆股`}`);
+  }
 }
+let lastSplitDay = -1;
 // 心跳跟着流速走：默认 5 秒一次，但开到 20 倍速时一个游戏小时只有 3 秒——
 // 还按 5 秒推，行情就是一跳一个半小时。取两者中的小值，保证每跳最多补一个小时。
 function heartbeat() {
@@ -170,6 +179,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/company/dividend': return send(res, 200, API.payDividend(uid, body));
       case '/api/company/fund':     return send(res, 200, API.fundCompany(uid, body));
       case '/api/company/rename':   return send(res, 200, API.renameCompany(uid, body));
+      case '/api/company/split':    return send(res, 200, API.splitCompany(uid, body));
       case '/api/company/ipo':      return send(res, 200, API.listCompany(uid, body));
       case '/api/biz/action':  return send(res, 200, API.bizAction(uid, body));
       case '/api/bank':        return send(res, 200, API.bank(uid, body));

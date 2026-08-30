@@ -20,6 +20,7 @@ export default {
   render(root, app) {
     const s = app.state, b = s.bank;
     const tab = getTab('bank', 'cash');
+    const pg = s.pledge || { collateral: 0, owed: 0, room: 0, ltv: 0, maxLtv: 0.5, callLtv: 0.72, rate: 0, items: [] };
     const scoreLv = s.player.creditScore >= 780 ? 4 : s.player.creditScore >= 700 ? 3 : s.player.creditScore >= 620 ? 2 : s.player.creditScore >= 500 ? 1 : 0;
     const scorePct = (s.player.creditScore - 300) / 550;
 
@@ -126,6 +127,32 @@ export default {
           </div>`).join('') : `<div class="empty" style="padding:32px"><p>${t('bank.noLoans')}</p></div>`}
         </div>
       <div class="card-b" style="border-top:1px solid var(--line)">
+        <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.5px;margin-bottom:8px">📈 ${t('bank.pledge')}</div>
+        <div class="dim2" style="font-size:11.5px;line-height:1.65;margin-bottom:11px">${t('bank.pledgeHint', {
+          ltv: pctPlain(pg.maxLtv, 0), call: pctPlain(pg.callLtv, 0) })}</div>
+        ${pg.collateral > 0 ? `
+        <div class="summary" style="margin-bottom:11px">
+          <div><span>${t('bank.collateral')}</span><span class="mono">${moneyFull(pg.collateral)}
+            <span class="dim2" style="font-weight:400">${pg.items.slice(0, 3).map(x => x.symbol).join(' · ')}${pg.items.length > 3 ? ' …' : ''}</span></span></div>
+          <div><span>${t('bank.pledged')}</span><span class="mono ${pg.owed ? 'down' : ''}">${moneyFull(pg.owed)}</span></div>
+          <div><span>${t('bank.rate')}</span><span class="mono gold">${pctPlain(pg.rate, 2)}
+            <span class="dim2" style="font-weight:400">${t('bank.pledgeCheaper', { r: pctPlain(b.loanRate, 2) })}</span></span></div>
+          <div class="tot"><span>${t('bank.ltvNow')}</span>
+            <span class="mono ${pg.ltv > pg.callLtv * 0.85 ? 'down' : pg.ltv > 0 ? '' : 'dim2'}">${pctPlain(pg.ltv, 0)}
+              <span class="dim2" style="font-weight:400">/ ${pctPlain(pg.callLtv, 0)} ${t('bank.callAt')}</span></span></div>
+        </div>
+        <div class="sb-bar" style="margin-bottom:11px"><i style="width:${Math.min(100, pg.ltv / pg.callLtv * 100)}%;
+          background:${pg.ltv > pg.callLtv * 0.85 ? 'var(--down)' : 'linear-gradient(90deg,var(--gold),#f5b942)'}"></i>
+          <u style="left:${Math.min(100, pg.maxLtv / pg.callLtv * 100)}%"></u></div>
+        <div style="display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap">
+          <label class="field" style="flex:1;min-width:150px;margin:0"><span>${t('bank.pledgeAmt', { max: money(pg.room) })}</span>
+            <input id="bk-pg" type="text" inputmode="decimal" placeholder="0"></label>
+          <button class="btn btn-primary" id="bk-pg-go" ${pg.room > 0 ? '' : 'disabled'}>${t('bank.pledgeGo')}</button>
+        </div>`
+        : `<div class="dim2" style="font-size:11.5px;padding:6px 0 2px">${t('bank.pledgeNone')}</div>`}
+      </div>
+
+      <div class="card-b" style="border-top:1px solid var(--line)">
         <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.5px;margin-bottom:8px">${t('bank.calc')}</div>
         <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end">
           <label class="field" style="flex:1;min-width:130px;margin:0"><span>${t('common.amount')}</span>
@@ -157,6 +184,9 @@ export default {
       $('#bk-sweep-go').onclick = () => app.act(() => api.setSweep(Number(sw.value) || 0), t('toast.success')).catch(() => {});
       $('#bk-sweep-off') && ($('#bk-sweep-off').onclick = () => app.act(() => api.setSweep(0), t('toast.success')).catch(() => {}));
     }
+    const pgIn = $('#bk-pg');
+    if (pgIn) $('#bk-pg-go').onclick = () =>
+      app.act(() => api.bank('pledge', { amount: Number(pgIn.value) || 0 }), t('toast.success')).catch(() => {});
     const ca = $('#bk-c-amt'), cm = $('#bk-c-m');
     if (ca) ca.oninput = () => { calcAmt = Math.max(0, Number(ca.value) || 0); clearTimeout(this._c);
       this._c = setTimeout(() => { keepScroll(() => this.render(root, app));
