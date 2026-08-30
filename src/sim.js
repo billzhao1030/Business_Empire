@@ -3,7 +3,9 @@ import { db } from './db.js';
 import { stepGrowth, valuate, stakeValue, companyOf, companiesOf } from './company.js';
 import * as M from './market.js';
 import { DESTINATIONS, DEST, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE } from './catalog-world.js';
-import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, RIVALS,
+import { WEARABLES, WEAR_SLOTS, STYLES, GENDERS, outfitScore } from './catalog-wardrobe.js';
+import { LEISURE, LEISURE_CATS, REPEAT_DECAY } from './catalog-leisure.js';
+import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, JOB_TRACKS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours,
          COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB,
          BIZ_CATS, seasonMult as seasonMultOf,
@@ -45,6 +47,32 @@ const CITY = Object.fromEntries(CITIES.map(c => [c.id, c]));
 const ITEM = Object.fromEntries(ITEM_TYPES.map(i => [i.id, i]));
 const REGION = Object.fromEntries(REGIONS.map(r => [r.id, r]));
 export { BIZ, CITY, ITEM, REGION, ITEM_CATS };
+// ── 人物：衣柜与消遣 ────────────────────────────────────────
+export { WEARABLES, WEAR_SLOTS, STYLES, GENDERS, outfitScore, LEISURE, LEISURE_CATS, REPEAT_DECAY, JOB_TRACKS };
+export const WEAR = Object.fromEntries(WEARABLES.map(w => [w.id, w]));
+export const ACT = Object.fromEntries(LEISURE.map(a => [a.id, a]));
+export const WEAR_COLS = { top:'wear_top', bottom:'wear_bottom', outer:'wear_outer', shoes:'wear_shoes', acc:'wear_acc' };
+
+// 身上穿的那一套：从 players 的五个格子读回具体的衣服
+export function outfitOf(p, items) {
+  const byId = new Map((items || []).map(it => [it.id, it]));
+  const out = {};
+  for (const [slot, col] of Object.entries(WEAR_COLS)) {
+    const it = byId.get(p[col]);
+    const def = it && WEAR[it.type_id];
+    out[slot] = def ? { ...def, itemId: it.id, value: it.value } : null;
+  }
+  return out;
+}
+// 穿得好不好，是能被别人看见的：算进声望，也让人松弛一点
+export function lookOf(p, items) {
+  const o = outfitOf(p, items);
+  const sc = outfitScore(Object.values(o));
+  return { ...sc, slots: o,
+    // 一身得体的衣服，值几点声望；同时每小时压力略降——人是会因为体面而放松的
+    prestige: sc.score,
+    stress: -Math.min(0.06, sc.score / 1400) };
+}
 
 const clamp = (x, lo, hi) => x < lo ? lo : x > hi ? hi : x;
 const round2 = x => Math.round(x * 100) / 100;
@@ -61,6 +89,9 @@ export function marketingCost(def, city, m) { return Math.round(def.cost * city.
 export const MAX_LEVEL = 12, MAX_MARKETING = 6;
 export const JOB = Object.fromEntries(JOBS.map(j => [j.id, j]));
 export { JOBS, RIVALS };
+export function hasBike(userId) {
+  return db.prepare('SELECT type_id FROM items WHERE user_id=?').all(userId).some(it => ITEM[it.type_id]?.bike);
+}
 export function hasCar(userId) {
   const rows = db.prepare('SELECT type_id FROM items WHERE user_id=?').all(userId);
   return rows.some(r => ITEM[r.type_id]?.car);
@@ -220,9 +251,11 @@ export function homeOf(p, homeItem) {
 }
 export function mealOf(p) { return MEAL[p.meal_id] || MEAL.canteen; }
 // 没车的时候「自己开车」不成立，退回走路
-export function commuteOf(p, carOwned) {
+export function commuteOf(p, carOwned, bikeOwned = false) {
   const c = COMMUTE[p.commute_id] || COMMUTES[0];
-  return (c.needsCar && !carOwned) ? COMMUTES[0] : c;
+  if (c.needsCar && !carOwned) return COMMUTES[0];
+  if (c.needsBike && !bikeOwned) return COMMUTES[0];
+  return c;
 }
 
 export function bizHours(b) {
@@ -342,9 +375,12 @@ export function itemListPrice(def) {
 }
 
 export function prestigeOf(userId) {
-  const rows = db.prepare('SELECT type_id FROM items WHERE user_id=?').all(userId);
+  const rows = db.prepare('SELECT id,type_id FROM items WHERE user_id=?').all(userId);
   let p = 0;
-  for (const r of rows) p += (ITEM[r.type_id]?.prestige || 0);
+  // 衣服要穿在身上才算数：堆在衣柜里的高定，谁也看不见
+  for (const r of rows) { const d = ITEM[r.type_id]; if (d && !d.wearable) p += d.prestige || 0; }
+  const pl = db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
+  if (pl) p += lookOf(pl, rows).prestige;
   return p;
 }
 export function prestigeBonus(prestige) { return Math.min(0.60, prestige * 0.0012); }
@@ -443,10 +479,12 @@ export function advancePlayer(userId) {
   const pb = prestigeBonus(prestigeOf(userId) + p.prestige);
   const prosp = M.cityProsperity();
   const carOwned = items.some(it => ITEM[it.type_id]?.car);
+  const bikeOwned = items.some(it => ITEM[it.type_id]?.bike);
   let job = JOB[p.job_id];
   const home = homeOf(p, homeItemOf(p, items));
+  const look = lookOf(p, items);                        // 今天穿的这一身
   let meal = mealOf(p);
-  const commute = commuteOf(p, carOwned);
+  const commute = commuteOf(p, carOwned, bikeOwned);
   // 做饭和通勤都是实打实的时间，先从一天里扣掉，剩下的才轮得到加班
   const tb = timeBudget(biz, { mealHours: meal.hours || 0, commuteHours: commute.hours || 0 });
   const working = !!job && (!job.car || carOwned) && tb.canJob;
@@ -529,7 +567,8 @@ export function advancePlayer(userId) {
 
     // ── 正常班：可上工时长会被店铺管理精力挤占 ──
     const shiftHod = hod - WORK_START;
-    if (working && !onLeave && phase === 'shift' && shiftHod < tb.shift && !sick && !traveling) {
+    const busy = h < (p.busy_until || 0);                  // 正在消遣，脱不开身
+    if (working && !onLeave && phase === 'shift' && shiftHod < tb.shift && !sick && !traveling && !busy) {
       const eff = efficiency(p.stamina) * stressFactor(p.stress);
       const pay = job.wage * eff;
       p.cash += pay; p.job_exp += 1; p.job_hours += 1; p.job_income += pay; dayJob += pay;
@@ -546,7 +585,7 @@ export function advancePlayer(userId) {
     // ── 精神压力：负债、加班、透支推高；睡眠、旅游、低负债缓解 ──
     let dStress = phase === 'sleep' ? STRESS_SLEEP * rq * (1 + p.stress / STRESS_RELIEF_SCALE) : 0;
     dStress += streakStress(p.work_streak);              // 连轴转本身就是压力源
-    dStress += meal.stress + home.stress;                // 吃不好、住不好，人是会垮的
+    dStress += meal.stress + home.stress + look.stress;  // 吃不好、住不好、穿不好，人是会垮的
     if (traveling) dStress -= 1.2;                       // 旅途中持续放松
     const debtNow = loans.reduce((a, l) => a + (l.status === 'active' ? l.balance : 0), 0);
     if (debtNow > 0) {
@@ -614,6 +653,12 @@ export function advancePlayer(userId) {
       for (const b of biz) if (b.company_id && coById.has(b.company_id))
         rate.set(b.company_id, (rate.get(b.company_id) || 0) + bizRates(b, pb, prosp[b.city] || 1, macroDemand, month).dailyNet);
       for (const c of cos) stepGrowth(c, (rate.get(c.id) || 0) * 365);
+    }
+    // 自动转存：手上留够生活费，多出来的自动进活期——省得每天手动点一次
+    if (p.sweep_keep > 0 && p.cash > p.sweep_keep) {
+      const move = p.cash - p.sweep_keep;
+      p.cash -= move; p.bank += move;
+      if (h % DAY_HOURS === 0) ledger.push([h, 'bank', 0, L('led.sweep', { amt: move, keep: p.sweep_keep }), '🔁']);
     }
     if (p.bank > 0) { const i = p.bank * sRate / YEAR_HOURS; p.bank += i; dayInterest += i; }
     if (p.cash < 0) { const i = -p.cash * oRate / YEAR_HOURS; p.cash -= i; dayOverdraft += i; }

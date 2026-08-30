@@ -175,6 +175,9 @@ const server = http.createServer(async (req, res) => {
       case '/api/bank':        return send(res, 200, API.bank(uid, body));
       case '/api/item/buy':    return send(res, 200, API.itemBuy(uid, body));
       case '/api/item/action': return send(res, 200, API.itemAction(uid, body));
+      case '/api/look':        return send(res, 200, API.setLook(uid, body));
+      case '/api/sweep':       return send(res, 200, API.setSweep(uid, body));
+      case '/api/leisure':     return send(res, 200, API.doLeisure(uid, body));
       case '/api/reset':       return send(res, 200, API.resetSave(uid));
       case '/api/job':         return send(res, 200, API.takeJob(uid, body));
       case '/api/hustle':      return send(res, 200, API.hustle(uid));

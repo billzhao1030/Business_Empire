@@ -36,6 +36,8 @@ function dayBar(j, live) {
 
 // 生涯页分四块：干活、找活、过日子、消遣。挤在一页里谁也看不清。
 let tab = 'work';
+let leisCat = 'sport', sortLeis = 'relief', trackF = 'all', jobSort = 'wage';
+
 const TABS = [
   { id: 'work',   emoji: '🧑‍💼' },
   { id: 'jobs',   emoji: '🧭' },
@@ -220,10 +222,29 @@ export default {
     ${tab === 'jobs' ? `
     <div class="card">
       <div class="card-h"><h3>🧭 ${t('career.jobList')}</h3>
-        ${cur ? `<div class="right"><button class="btn btn-xs btn-ghost" id="quit-job">${t('career.quit')}</button></div>` : ''}</div>
+        <span class="sub">${t('career.jobCount', { n: j.list.length, t: (j.tracks || []).length })}</span>
+        <div class="right" style="display:flex;gap:8px;align-items:center">
+          <select class="sel" id="job-sort">
+            <option value="wage" ${jobSort === 'wage' ? 'selected' : ''}>${t('career.sortWage')}</option>
+            <option value="reach" ${jobSort === 'reach' ? 'selected' : ''}>${t('career.sortReach')}</option>
+          </select>
+          ${cur ? `<button class="btn btn-xs btn-ghost" id="quit-job">${t('career.quit')}</button>` : ''}</div></div>
+      <div class="card-b" style="padding:11px 16px;border-bottom:1px solid var(--line)">
+        <div class="chips">
+          <button class="chip ${trackF === 'all' ? 'active' : ''}" data-track="all">${t('mkt.all')} ${j.list.length}</button>
+          ${(j.tracks || []).map(tk => { const n = j.list.filter(x => x.track === tk.id).length;
+            const open = j.list.filter(x => x.track === tk.id && x.unlocked && !x.blocked).length;
+            return `<button class="chip ${trackF === tk.id ? 'active' : ''}" data-track="${tk.id}">
+              ${tk.emoji} ${esc(nm(tk))} <b class="${open ? 'up' : 'dim2'}">${open}</b><span class="dim2">/${n}</span></button>`; }).join('')}
+        </div>
+      </div>
       <div class="card-b">
         <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:9px">
-        ${j.list.map(x => {
+        ${j.list.filter(x => trackF === 'all' || x.track === trackF)
+          .sort((a, b) => jobSort === 'reach'
+            ? (Number(b.unlocked && !b.blocked) - Number(a.unlocked && !a.blocked)) || a.exp - b.exp
+            : b.wage - a.wage)
+          .map(x => {
           const locked = !x.unlocked || x.blocked;
           return `<button class="job-card ${x.current ? 'current' : ''} ${locked ? 'locked' : ''}" data-job="${x.id}" ${locked ? 'disabled' : ''}>
             <div class="ico">${x.emoji}</div>
@@ -291,13 +312,13 @@ export default {
           </div>`}
           <div class="dim2" style="font-size:10.5px;font-weight:700;margin:12px 0 6px">${t('living.commute')}</div>
           <div class="opt-grid" style="grid-template-columns:repeat(auto-fill,minmax(132px,1fr))">
-            ${lv.commutes.map(cc => { const locked = cc.needsCar && !lv.carOwned; return `
+            ${lv.commutes.map(cc => { const locked = (cc.needsCar && !lv.carOwned) || (cc.needsBike && !lv.bikeOwned); return `
               <button class="opt ${cc.id === lv.commute.id ? 'active' : ''}" data-commute="${cc.id}"
                 ${locked ? 'disabled' : ''} style="${locked ? 'opacity:.45' : ''}">
               <div class="t">${cc.emoji} ${esc(nm({ zh: cc.zh, en: cc.en }))}</div>
               <div class="s">${cc.cost ? money(cc.cost) + t('living.perDay') : t('living.free')}
                 <span class="dim2">· ${cc.hours}h</span>
-                ${locked ? `<span class="down">${t('living.needCar')}</span>` : ''}</div></button>`; }).join('')}
+                ${locked ? `<span class="down">${cc.needsBike ? t('living.needBike') : t('living.needCar')}</span>` : ''}</div></button>`; }).join('')}
           </div>
           <div class="dim2" style="font-size:10.5px;margin-top:6px">🚌 ${t('living.commuteHint')}
             ${lv.monthlyCommute ? `(${t('living.workDays', { n: lv.commuteDays })})` : ''}</div>
@@ -316,6 +337,8 @@ export default {
         <div class="dim2" style="font-size:11.5px;line-height:1.6">${t('life.travelHint')}</div></div>
       <button class="btn btn-primary btn-sm" id="go-world">${t('world.title')} →</button>
     </div></div>
+
+    ${this.leisurePanel(app, s)}
 
       <div class="card" style="max-width:760px"><div class="card-h"><h3>🎫 ${t('living.lottery')}</h3>
         <span class="sub">${t('living.lotteryHint')}</span></div>
@@ -364,6 +387,17 @@ export default {
     $('#go-world') && ($('#go-world').onclick = () => app.go('world'));
     $$('[data-meal]').forEach(b => b.onclick = () => app.act(() => api.living(b.dataset.meal, null), t('toast.success')).catch(() => {}));
     $$('[data-home]').forEach(b => b.onclick = () => app.act(() => api.living(null, b.dataset.home), t('toast.success')).catch(() => {}));
+    $$('[data-track]').forEach(b => b.onclick = () => { trackF = b.dataset.track; keepScroll(() => this.render(root, app)); });
+    const js = $('#job-sort'); if (js) js.onchange = () => { jobSort = js.value; keepScroll(() => this.render(root, app)); };
+    $$('[data-lcat]').forEach(b => b.onclick = () => { leisCat = b.dataset.lcat; keepScroll(() => this.render(root, app)); });
+    const ls = $('#leis-sort'); if (ls) ls.onchange = () => { sortLeis = ls.value; keepScroll(() => this.render(root, app)); };
+    $$('[data-act]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try { const r = await api.leisure(b.dataset.act);
+        toast(t('leisure.did', { relief: r.relief, h: r.hours }), 'ok');
+        await app.refresh(true);
+      } catch (e) { toast(e.message.split(' / ')[0], 'err'); b.disabled = false; }
+    });
     $$('[data-liveat]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.liveat, 'live'), t('toast.success')).catch(() => {}));
     $$('[data-commute]').forEach(b => b.onclick = () => app.act(() => api.living(null, null, b.dataset.commute), t('toast.success')).catch(() => {}));
     $$('[data-lot]').forEach(b => b.onclick = async () => {
@@ -388,6 +422,65 @@ export default {
       const me = r.list.find(x => !x.npc);
       const el = $('#cr-rank'); if (el && me) el.textContent = '#' + me.rank;
     }).catch(() => {});
+  },
+
+  // ── 消遣：花钱买松弛。按类型分，每类底下一堆具体的活动 ──
+  leisurePanel(app, s) {
+    const L = s.leisure;
+    if (!L) return '';
+    const cats = L.cats.filter(c => c.id !== 'gamble');
+    if (!cats.some(c => c.id === leisCat)) leisCat = cats[0].id;
+    const list = L.acts.filter(a => a.cat === leisCat)
+      .sort((a, b) => (sortLeis === 'cost' ? a.cost - b.cost : b.relief * b.fresh - a.relief * a.fresh));
+    const hl = s.health;
+    return `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>🎯 ${t('leisure.title')}</h3>
+        <span class="sub">${t('leisure.sub', { n: L.acts.length })}</span>
+        <div class="right" style="display:flex;gap:8px;align-items:center">
+          <span class="dim2" style="font-size:11px">${t('leisure.spent')} <b class="down">${money(L.spent)}</b></span>
+          <select class="sel" id="leis-sort">
+            <option value="relief" ${sortLeis === 'relief' ? 'selected' : ''}>${t('leisure.sortRelief')}</option>
+            <option value="cost" ${sortLeis === 'cost' ? 'selected' : ''}>${t('leisure.sortCost')}</option>
+          </select>
+        </div></div>
+      <div class="card-b" style="padding:11px 16px;border-bottom:1px solid var(--line)">
+        <div class="chips">
+          ${cats.map(c => `<button class="chip ${leisCat === c.id ? 'active' : ''}" data-lcat="${c.id}">
+            ${c.emoji} ${esc(nm(c))} <b class="dim2">${L.acts.filter(a => a.cat === c.id).length}</b></button>`).join('')}
+        </div>
+        <div class="dim2" style="font-size:11px;margin-top:9px">😰 ${t('career.stress')} <b class="${hl.stress > 55 ? 'down' : ''}">${Math.round(hl.stress)}</b>
+          · ⚡ ${t('career.stamina')} <b>${Math.round(hl.stamina)}</b>
+          ${L.busy ? `· <b class="gold">${t('leisure.busy')}</b>` : ''}</div>
+      </div>
+      <div class="card-b">
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:10px">
+        ${list.map(a => {
+          const afford = s.player.cash >= a.cost;
+          const dulled = a.fresh < 0.99;
+          const gain = Math.round(a.relief * a.fresh);
+          return `<div class="act-card ${dulled ? 'dull' : ''}">
+            <div class="ac-h"><span class="ac-e">${a.emoji}</span>
+              <div style="flex:1;min-width:0">
+                <div class="ac-t">${esc(nm({ zh: a.name, en: a.en }))}</div>
+                <div class="ac-s">${a.cost ? money(a.cost) : t('leisure.free')} · ${a.hours}h${a.times ? ` · ${t('leisure.done', { n: a.times })}` : ''}</div>
+              </div></div>
+            <div class="ac-eff">
+              <span class="up">😌 -${gain}</span>
+              ${a.stamina ? `<span class="${a.stamina > 0 ? 'up' : 'down'}">⚡ ${a.stamina > 0 ? '+' : ''}${a.stamina}</span>` : ''}
+              ${a.exp ? `<span class="gold">📘 +${a.exp}</span>` : ''}
+              ${a.prestige ? `<span class="gold">⭐ +${a.prestige}</span>` : ''}
+              ${dulled ? `<span class="dim2">${t('leisure.dulled', { p: Math.round(a.fresh * 100) })}</span>` : ''}
+            </div>
+            <p class="ac-d">${esc(nm({ zh: a.desc, en: a.descEn }))}</p>
+            <button class="btn btn-sm ${afford && !L.busy ? 'btn-primary' : ''}" style="width:100%"
+              data-act="${a.id}" ${afford && !L.busy ? '' : 'disabled'}>
+              ${L.busy ? t('leisure.busy') : !afford ? money(s.player.cash) + ' / ' + money(a.cost) : t('leisure.go')}</button>
+          </div>`;
+        }).join('')}
+        </div>
+      </div>
+    </div>`;
   },
 
   countdown(app, ms) {

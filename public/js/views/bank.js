@@ -1,10 +1,25 @@
 import { t, nm } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, cls, esc, toast, durText, confirmBox, modal, keepScroll} from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, cls, esc, toast, durText, confirmBox, modal, keepScroll, tabBar, getTab, setTab, wireTabs } from '../util.js';
+
+let calcAmt = 50000, calcM = 36;
+
+const TABS = s => [
+  { id: 'cash',   emoji: '💵', label: t('bank.tabCash') },
+  { id: 'fixed',  emoji: '💰', label: t('bank.tabFixed'),  badge: s.deposits.length || '' },
+  { id: 'loans',  emoji: '🏦', label: t('bank.tabLoans'),  badge: s.loans.length || '' },
+  { id: 'credit', emoji: '📊', label: t('bank.tabCredit'), badge: s.player.creditScore },
+];
+// 等额本息月供
+function calcPay(b, amt, months) {
+  const i = (b.loanRate || 0.08) / 12, n = Math.max(1, months);
+  return i > 0 ? amt * i / (1 - Math.pow(1 + i, -n)) : amt / n;
+}
 
 export default {
   render(root, app) {
     const s = app.state, b = s.bank;
+    const tab = getTab('bank', 'cash');
     const scoreLv = s.player.creditScore >= 780 ? 4 : s.player.creditScore >= 700 ? 3 : s.player.creditScore >= 620 ? 2 : s.player.creditScore >= 500 ? 1 : 0;
     const scorePct = (s.player.creditScore - 300) / 550;
 
@@ -18,6 +33,9 @@ export default {
         <div class="d">${t('bank.mortgageDebt')} ${money(b.mortgageDebt)}</div></div>
     </div>
 
+    ${tabBar('bank', TABS(s), tab)}
+
+    ${tab === 'cash' ? `
     <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
       <div class="card"><div class="card-h"><h3>🏦 ${t('bank.savings')}</h3><span class="sub">${pctPlain(b.savingsRate)} ${t('common.year')}</span></div>
         <div class="card-b">
@@ -52,8 +70,25 @@ export default {
         </div></div>
     </div>
 
-    <div class="grid" style="grid-template-columns:1fr 1fr">
-      <div class="card"><div class="card-h"><h3>💰 ${t('bank.fixed')}</h3>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>🔁 ${t('bank.sweep')}</h3><span class="sub">${t('bank.sweepSub')}</span></div>
+      <div class="card-b">
+        <div class="dim2" style="font-size:11.5px;line-height:1.6;margin-bottom:11px">${t('bank.sweepHint')}</div>
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <label class="field" style="flex:1;min-width:180px;margin:0"><span>${t('bank.sweepKeep')}</span>
+            <input id="bk-sweep" type="text" inputmode="decimal" value="${b.sweepKeep || ''}" placeholder="0 = ${t('bank.sweepOff')}"></label>
+          <button class="btn btn-primary" id="bk-sweep-go">${t('common.confirm')}</button>
+          ${b.sweepKeep > 0 ? `<button class="btn btn-ghost" id="bk-sweep-off">${t('bank.sweepStop')}</button>` : ''}
+        </div>
+        <div class="dim2" style="font-size:11px;margin-top:9px">${b.sweepKeep > 0
+          ? t('bank.sweepOn', { keep: money(b.sweepKeep), rate: pctPlain(b.savingsRate) })
+          : t('bank.sweepIsOff')}</div>
+      </div>
+    </div>` : ''}
+
+    ${tab === 'fixed' ? `
+    <div class="card">
+      <div class="card-h"><h3>💰 ${t('bank.fixed')}</h3>
         <div class="right"><button class="btn btn-sm btn-primary" id="bk-newfix">+ ${t('bank.openFixed')}</button></div></div>
         <div style="max-height:320px;overflow:auto">
           ${s.deposits.length ? s.deposits.map(d => `<div class="item-row">
@@ -64,11 +99,21 @@ export default {
               <div class="bar thin" style="margin-top:6px"><i style="width:${d.progress * 100}%;background:var(--gold)"></i></div></div>
             <div class="i-act"><button class="btn btn-xs btn-ghost" data-redeem="${d.id}">${t('bank.redeem')}</button></div>
           </div>`).join('') : `<div class="empty" style="padding:32px"><p>${t('bank.noFixed')}</p></div>`}
-        </div></div>
+        </div>
+      <div class="card-b" style="border-top:1px solid var(--line)">
+        <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.5px;margin-bottom:8px">${t('bank.rateLadder')}</div>
+        <div class="rate-grid">
+          ${Object.entries(b.fixedRates).map(([m, rate]) => `<div class="rl"><label>${m} ${t('common.months')}</label>
+            <b class="gold">${pctPlain(rate)}</b>
+            <span class="dim2">${t('bank.per10k', { amt: money(10000 * rate * (+m) / 12) })}</span></div>`).join('')}
+        </div>
+      </div></div>` : ''}
 
-      <div class="card"><div class="card-h"><h3>🏦 ${t('bank.loans')}</h3>
+    ${tab === 'loans' ? `
+    <div class="card">
+      <div class="card-h"><h3>🏦 ${t('bank.loans')}</h3>
         <div class="right"><button class="btn btn-sm btn-primary" id="bk-newloan">+ ${t('bank.borrow')}</button></div></div>
-        <div style="max-height:320px;overflow:auto">
+        <div style="max-height:420px;overflow:auto">
           ${s.loans.length ? s.loans.map(l => `<div class="item-row">
             <div class="ico">${l.kind === 'mortgage' ? '🏠' : '📄'}</div>
             <div class="i-main"><div class="i-title">${moneyFull(l.balance)}
@@ -79,16 +124,92 @@ export default {
                 <span>${t('bank.nextDue')} ${durText(Math.max(0, l.nextDueIn))}</span></div></div>
             <div class="i-act"><button class="btn btn-xs" data-repay="${l.id}">${t('bank.repay')}</button></div>
           </div>`).join('') : `<div class="empty" style="padding:32px"><p>${t('bank.noLoans')}</p></div>`}
-        </div></div>
-    </div>`;
+        </div>
+      <div class="card-b" style="border-top:1px solid var(--line)">
+        <div class="dim2" style="font-size:10.5px;font-weight:700;letter-spacing:.5px;margin-bottom:8px">${t('bank.calc')}</div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end">
+          <label class="field" style="flex:1;min-width:130px;margin:0"><span>${t('common.amount')}</span>
+            <input id="bk-c-amt" type="text" inputmode="decimal" value="${calcAmt}"></label>
+          <label class="field" style="flex:1;min-width:110px;margin:0"><span>${t('bank.months')}</span>
+            <input id="bk-c-m" type="text" inputmode="numeric" value="${calcM}"></label>
+          <div style="flex:1;min-width:150px">
+            <div class="dim2" style="font-size:10.5px">${t('bank.monthly')}</div>
+            <div class="mono" style="font-size:19px;font-weight:800">${moneyFull(calcPay(b, calcAmt, calcM))}</div>
+            <div class="dim2" style="font-size:10.5px">${t('bank.totalInterest')} ${money(calcPay(b, calcAmt, calcM) * calcM - calcAmt)}</div>
+          </div>
+        </div>
+        <div class="dim2" style="font-size:11px;margin-top:9px">${t('bank.calcHint', { r: pctPlain(b.loanRate) })}</div>
+      </div>
+    </div>` : ''}
+
+    ${tab === 'credit' ? this.creditPanel(app, s, b, scoreLv, scorePct) : ''}`;
 
     const amt = () => Number($('#bk-amt').value) || 0;
     $$('#bk-pcts button').forEach(x => x.onclick = () => { $('#bk-amt').value = String(Math.floor(Math.max(0, s.player.cash) * (+x.dataset.p / 100))); });
     $$('[data-bk]').forEach(x => x.onclick = () => app.act(() => api.bank(x.dataset.bk, { amount: amt() }), t('toast.success')).catch(() => {}));
     $$('[data-redeem]').forEach(x => x.onclick = () => app.act(() => api.bank('redeem', { id: +x.dataset.redeem }), t('toast.success')).catch(() => {}));
     $$('[data-repay]').forEach(x => x.onclick = () => this.repayModal(app, +x.dataset.repay));
-    $('#bk-newfix').onclick = () => this.fixedModal(app);
-    $('#bk-newloan').onclick = () => this.loanModal(app);
+    $('#bk-newfix') && ($('#bk-newfix').onclick = () => this.fixedModal(app));
+    $('#bk-newloan') && ($('#bk-newloan').onclick = () => this.loanModal(app));
+    wireTabs('bank', () => this.render(root, app));
+    const sw = $('#bk-sweep');
+    if (sw) {
+      $('#bk-sweep-go').onclick = () => app.act(() => api.setSweep(Number(sw.value) || 0), t('toast.success')).catch(() => {});
+      $('#bk-sweep-off') && ($('#bk-sweep-off').onclick = () => app.act(() => api.setSweep(0), t('toast.success')).catch(() => {}));
+    }
+    const ca = $('#bk-c-amt'), cm = $('#bk-c-m');
+    if (ca) ca.oninput = () => { calcAmt = Math.max(0, Number(ca.value) || 0); clearTimeout(this._c);
+      this._c = setTimeout(() => { keepScroll(() => this.render(root, app));
+        const n = $('#bk-c-amt'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 220); };
+    if (cm) cm.oninput = () => { calcM = Math.max(1, Math.min(480, Number(cm.value) || 1)); clearTimeout(this._c2);
+      this._c2 = setTimeout(() => { keepScroll(() => this.render(root, app));
+        const n = $('#bk-c-m'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 220); };
+  },
+
+  // ── 信用分：不只给个数字，把每一档能拿到的利率摊开给你看 ──
+  creditPanel(app, s, b, scoreLv, scorePct) {
+    const BANDS = [
+      { lo: 780, zh: '优秀', en: 'Excellent' }, { lo: 700, zh: '良好', en: 'Good' },
+      { lo: 620, zh: '一般', en: 'Fair' }, { lo: 500, zh: '偏低', en: 'Poor' }, { lo: 300, zh: '很差', en: 'Bad' },
+    ];
+    const rateAt = sc => (b.policyRate || 0.035) + 0.022 + Math.min(1, Math.max(0, (850 - sc) / 550)) * 0.16;
+    const mortAt = sc => (b.policyRate || 0.035) + 0.004 + Math.min(1, Math.max(0, (850 - sc) / 550)) * 0.065;
+    return `
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div class="card"><div class="card-h"><h3>📊 ${t('bank.credit')}</h3></div>
+        <div class="card-b">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <div style="font-size:46px;font-weight:800;letter-spacing:-1px" class="${scoreLv >= 3 ? 'up' : scoreLv >= 2 ? 'gold' : 'down'}">${s.player.creditScore}</div>
+            <div class="tag ${scoreLv >= 3 ? 'g' : scoreLv >= 2 ? 'y' : 'r'}">${t('bank.scoreLevels')[scoreLv]}</div>
+            <div class="dim2 mono" style="margin-left:auto;font-size:11px">300 — 850</div>
+          </div>
+          <div class="bar" style="margin:11px 0 14px"><i style="width:${scorePct * 100}%;background:linear-gradient(90deg,var(--down),var(--gold),var(--up))"></i></div>
+          <div class="summary">
+            <div><span>${t('bank.loanRate')}</span><span class="mono">${pctPlain(b.loanRate)}</span></div>
+            <div><span>${t('bank.mortgageRate')}</span><span class="mono gold">${pctPlain(b.mortgageRate)}</span></div>
+            <div><span>${t('bank.creditLimit')}</span><span class="mono">${money(b.creditLimit)}</span></div>
+            <div><span>${t('bank.policy')}</span><span class="mono">${pctPlain(b.policyRate)}</span></div>
+            <div class="tot"><span>${t('bank.missed')}</span><span class="mono ${s.player.missedPay ? 'down' : ''}">${s.player.missedPay}</span></div>
+          </div>
+        </div></div>
+      <div class="card"><div class="card-h"><h3>🪜 ${t('bank.bands')}</h3><span class="sub">${t('bank.bandsSub')}</span></div>
+        <div class="card-b">
+          <div class="rate-grid">
+            ${BANDS.map(bd => { const here = s.player.creditScore >= bd.lo &&
+                (BANDS.find(x => x.lo > bd.lo && s.player.creditScore >= x.lo) === undefined);
+              return `<div class="rl ${here ? 'here' : ''}"><label>${bd.lo}+ ${esc(nm(bd))}</label>
+                <b>${pctPlain(rateAt(bd.lo + 30))}</b>
+                <span class="dim2">${t('bank.mortgageRate')} ${pctPlain(mortAt(bd.lo + 30))}</span></div>`; }).join('')}
+          </div>
+          <div class="dim2" style="font-size:11.5px;margin-top:12px;line-height:1.7">${t('bank.creditTip')}</div>
+          <div class="summary" style="margin-top:12px">
+            <div><span>✅ ${t('bank.creditUp')}</span><span class="mono up">+2 / ${t('bank.perPayment')}</span></div>
+            <div><span>⚠️ ${t('bank.creditDown')}</span><span class="mono down">-35 / ${t('bank.perMiss')}</span></div>
+            <div class="tot"><span>${t('bank.leverage')}</span><span class="mono ${b.totalDebt > 0 && s.netWorth.total > 0 && b.totalDebt / (s.netWorth.total + b.totalDebt) > 0.35 ? 'down' : ''}">${
+              pctPlain(s.netWorth.total + b.totalDebt > 0 ? b.totalDebt / (s.netWorth.total + b.totalDebt) : 0, 0)}</span></div>
+          </div>
+        </div></div>
+    </div>`;
   },
 
   fixedModal(app) {

@@ -164,3 +164,27 @@ export function keepScroll(fn) {
   else if (typeof requestAnimationFrame === 'function') requestAnimationFrame(put);
   return r;
 }
+
+// ── 页签：把一张长得要滚半天的页面切成几块 ──────────────────
+// 记住每个页面选的是哪一页，刷新和轮询都不会跳回第一页。
+const TAB_KEY = 'be_tabs';
+let _tabs = (() => { try { return JSON.parse(localStorage.getItem(TAB_KEY)) || {}; } catch { return {}; } })();
+export function getTab(page, dflt) { return _tabs[page] || dflt; }
+export function setTab(page, id) {
+  _tabs[page] = id;
+  try { localStorage.setItem(TAB_KEY, JSON.stringify(_tabs)); } catch {}
+}
+// tabs: [{id, emoji, label, badge?}]
+export function tabBar(page, tabs, active) {
+  return `<div class="ptabs" data-tabbar="${page}">
+    ${tabs.map(x => `<button class="ptab ${x.id === active ? 'active' : ''}" data-vtab="${x.id}">
+      ${x.emoji ? x.emoji + ' ' : ''}${x.label}${x.badge != null && x.badge !== '' ? `<span class="tb-n">${x.badge}</span>` : ''}
+    </button>`).join('')}
+  </div>`;
+}
+// 把 tabBar 里的按钮接上：点了记住，然后重绘
+export function wireTabs(page, onPick) {
+  document.querySelectorAll(`[data-tabbar="${page}"] [data-vtab]`).forEach(b => {
+    b.onclick = () => { setTab(page, b.dataset.vtab); onPick(b.dataset.vtab); };
+  });
+}
