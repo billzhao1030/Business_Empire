@@ -82,9 +82,11 @@ function buildOfflineReport(uid, p, hour, nwNow) {
 }
 
 // ── 状态 ────────────────────────────────────────────────────
-export function getState(uid) {
-  // 有人在玩了：把「世界最多再往前 7 天」的锚点推到此刻
-  M.markActive();
+export function getState(uid, active = true) {
+  // 「在玩」指的是人真的在，不是这个标签页还开着。
+  // 前端只在页面可见、而且最近还动过的时候才发 active=1；
+  // 后台挂机、或者人走开很久，锚点就不再往前推，世界最多再走 7 个游戏日就停下等你。
+  if (active) M.markActive();
   S.advancePlayer(uid);
   const p = P(uid);
   const hour = curHour();
@@ -189,7 +191,8 @@ export function getState(uid) {
     birth: (() => { const h = S.birthOf(p); return { id: h.id, zh: h.zh, en: h.en, flag: h.flag,
       country: h.country, countryEn: h.countryEn, chosen: !!p.birth_id }; })(),
     now: { hour, date: M.gameDate(hour), progress: M.hourProgress(), realMsPerHour: M.MS_PER_GAME_HOUR,
-      speedMin: M.SPEED_MIN_MS, speedMax: M.SPEED_MAX_MS, speedDefault: M.SPEED_DEFAULT },
+      speedMin: M.SPEED_MIN_MS, speedMax: M.SPEED_MAX_MS, speedDefault: M.SPEED_DEFAULT,
+      ...M.pausedState() },
     player: {
       nickname: p.nickname, cash: p.cash, bank: p.bank, creditScore: p.credit_score,
       prestige, prestigeBonus: S.prestigeBonus(prestige), totalTax: p.total_tax,

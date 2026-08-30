@@ -149,7 +149,9 @@ const server = http.createServer(async (req, res) => {
       case '/api/logout':      A.destroySession(token);
         return send(res, 200, { ok: true }, { 'Set-Cookie': 'be_token=; Path=/; Max-Age=0; SameSite=Lax' });
       case '/api/me':          return send(res, 200, { user });
-      case '/api/state':       return send(res, 200, API.getState(uid));
+      // active=0：标签页在后台，或者人已经很久没动过了——这不算「在玩」，
+      // 世界不该继续往前跑。挂机一晚上回来发现过了半年，就是这么来的。
+      case '/api/state':       return send(res, 200, API.getState(uid, url.searchParams.get('active') !== '0'));
       case '/api/market':      return send(res, 200, { assets: API.getMarket(uid, url.searchParams.get('kind') || null) });
       case '/api/sparks':      return send(res, 200, { spark: API.getSparks() });
       case '/api/asset':       return send(res, 200, API.getAsset(uid, url.searchParams.get('symbol'), Number(url.searchParams.get('points') || 240)));

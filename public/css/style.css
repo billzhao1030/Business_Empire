@@ -508,3 +508,8 @@ button{cursor:pointer;border:none;background:none}
 .cluster{margin-bottom:4px}
 .cluster.open > .fold-h.sm{background:var(--panel3);border-color:var(--line2)}
 @media(max-width:720px){.fold-n .l{display:none}}
+
+/* ══ 世界停摆：走满离线上限、在等人回来 ══ */
+.tc-pause{display:none;font-size:11px;color:var(--orange);margin-right:2px}
+.tc-main.paused .tc-pause{display:inline}
+.tc-main.paused .tc-date,.tc-main.paused .tc-time{color:var(--orange);opacity:.85}
