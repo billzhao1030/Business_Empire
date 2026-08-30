@@ -303,6 +303,8 @@ addColumn('players','meal_id',        "TEXT    NOT NULL DEFAULT 'canteen'");
 addColumn('players','home_id',        "TEXT    NOT NULL DEFAULT 'shared'");
 // 住进自己名下的哪一套房。0 = 还在租房；房子一旦租出去就不算住处了
 addColumn('players','home_item_id',   'INTEGER NOT NULL DEFAULT 0');
+// 人现在在哪儿。空 = 在出生地。买单程票飞走了就留在那儿，下一程从这里起算
+addColumn('players','at_id',          "TEXT    NOT NULL DEFAULT ''");
 addColumn('players','food_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','rent_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','commute_id',     "TEXT    NOT NULL DEFAULT 'walk'");

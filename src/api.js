@@ -29,6 +29,7 @@ function ledger(uid, kind, amount, detail, icon) {
   db.prepare('INSERT INTO ledger(user_id,hour,kind,amount,detail,icon) VALUES(?,?,?,?,?,?)')
     .run(uid, curHour(), kind, Math.round(amount * 100) / 100, detail, icon);
 }
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const P = uid => db.prepare('SELECT * FROM players WHERE user_id=?').get(uid);
 const savePlayer = p => db.prepare('UPDATE players SET cash=?,bank=?,credit_score=?,prestige=?,realized_pnl=? WHERE user_id=?')
   .run(p.cash, p.bank, p.credit_score, p.prestige, p.realized_pnl, p.user_id);
@@ -190,6 +191,10 @@ export function getState(uid, active = true) {
     build: process.env.BE_BUILD || '',
     birth: (() => { const h = S.birthOf(p); return { id: h.id, zh: h.zh, en: h.en, flag: h.flag,
       country: h.country, countryEn: h.countryEn, chosen: !!p.birth_id }; })(),
+    // 人现在在哪儿：买了单程票就不在家乡了，所有机票从这里起算
+    at: (() => { const b = S.birthOf(p); const w = S.whereOf(p, id => cityOf(id, b));
+      return { id: w.id, zh: w.zh, en: w.en, flag: w.flag, country: w.country, countryEn: w.countryEn,
+               away: w.id !== b.id }; })(),
     now: { hour, date: M.gameDate(hour), progress: M.hourProgress(), realMsPerHour: M.MS_PER_GAME_HOUR,
       speedMin: M.SPEED_MIN_MS, speedMax: M.SPEED_MAX_MS, speedDefault: M.SPEED_DEFAULT,
       ...M.pausedState() },
@@ -442,7 +447,7 @@ export function bizBuy(uid, { typeId, cityId, name, useCompany, coId }) {
   S.advancePlayer(uid);
   const def = S.BIZ[typeId];
   const p = P(uid), hour = curHour();
-  const home = S.birthOf(p);
+  const home = S.whereOf(p, id => cityOf(id, S.birthOf(p)));   // 从你人在的地方飞过去
   const city = cityOf(cityId, home);
   if (!def || !city) throw new Err('店铺类型或城市无效 / Invalid business or city');
   if (p.sick_until > hour) throw new Err('生着病没法去选址开店 / You are too ill to go and set up a shop');
@@ -929,7 +934,7 @@ function cityCard(c, def) {
 
 // 开店选址：默认给家乡 + 附近 + 几个世界级商圈，也可以搜
 export function bizCities(uid, { q, typeId, limit }) {
-  const p = P(uid), home = S.birthOf(p);
+  const p = P(uid), home = S.whereOf(p, id => cityOf(id, S.birthOf(p)));
   const def = typeId ? S.BIZ[typeId] : null;
   const n = Math.min(60, Math.max(1, (limit | 0) || 24));
   const seen = new Set();
@@ -969,7 +974,7 @@ function nearbyCities(home, n) {
 // ── 创业：注册公司、装店、估值、融资、分红 ──────────────────
 const TICKER_RE = /^[A-Z]{2,5}$/;
 
-function coState(uid, coId) {
+function coState(uid, coId, want = {}) {
   const all = CO.companiesOf(uid);
   const co = coId ? all.find(c => c.id === Number(coId)) : all[0];
   const p = P(uid);
@@ -1001,7 +1006,7 @@ function coState(uid, coId) {
   const offer = co.stage === 'public' ? null : CO.roundOffer(co, val, p.credit_score);
   const stake = co.player_shares / co.shares;
   const mkt = M.indexLevel('BEXI') / 1000;      // 大盘冷暖决定承销商敢不敢定高价
-  const ipo = co.stage === 'public' ? null : CO.ipoPlan(co, val, mkt);
+  const ipo = co.stage === 'public' ? null : CO.ipoPlan(co, val, mkt, want);
   const listed = co.stage === 'public' && co.asset_id ? (() => {
     const a = M.assetById(co.asset_id);
     if (!a) return null;
@@ -1040,7 +1045,7 @@ function shopBrief(b, pb, prosp) {
     dailyNet: r.dailyNet, dailyRev: r.dailyRev, companyId: b.company_id };
 }
 
-export function companyState(uid, coId) { S.advancePlayer(uid); return coState(uid, coId); }
+export function companyState(uid, coId, want) { S.advancePlayer(uid); return coState(uid, coId, want || {}); }
 
 export function foundCompany(uid, { name, nameEn, ticker, sector, shopIds }) {
   S.advancePlayer(uid);
@@ -1154,7 +1159,7 @@ export function fundCompany(uid, { amount, coId }) {
 }
 
 // 上市：公司从此变成行情页上一支真的股票
-export function listCompany(uid, { coId } = {}) {
+export function listCompany(uid, { coId, price, float } = {}) {
   S.advancePlayer(uid);
   const co = CO.companyOf(uid, coId);
   if (!co) throw new Err('你还没有公司 / You have not founded a company');
@@ -1166,7 +1171,7 @@ export function listCompany(uid, { coId } = {}) {
   const prosp = M.cityProsperity();
   const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, co.id);
   const val = CO.valuate(co, shops, pb, prosp, curHour());
-  const plan = CO.ipoPlan(co, val, M.indexLevel('BEXI') / 1000);
+  const plan = CO.ipoPlan(co, val, M.indexLevel('BEXI') / 1000, { price, float });
   if (!plan.ok) {
     const need = [];
     if (plan.rounds < plan.needRounds) need.push(`要先融过 ${plan.needRounds} 轮（现在 ${plan.rounds} 轮）`);
@@ -1175,13 +1180,32 @@ export function listCompany(uid, { coId } = {}) {
     if (plan.needProfit) need.push('公司还没有盈利');
     throw new Err(`还上不了市：${need.join('，')} / Not eligible to list yet`);
   }
+  // 定价太高，簿记根本填不满——这单发不出去，承销费照付，脸也丢了
+  if (plan.pulled) {
+    const fee = Math.round(plan.wantShares * plan.indPrice * IPO_FEE * 0.25);
+    const pl = P(uid);
+    S.payFrom(pl, fee);
+    pl.prestige = Math.max(0, pl.prestige - 8);
+    savePlayer(pl);
+    ledger(uid, 'company', -fee, L('led.coIpoPulled', { name: co.name,
+      price: plan.price, ind: plan.indPrice, fill: Math.round(plan.fill * 100), fee }), '🧊');
+    throw new Err(`发行价 ${S.fmt(plan.price)} 定得太高，簿记只认购到 ${Math.round(plan.fill * 100)}%，这单发不出去。`
+      + `承销商收了 ${S.fmt(fee)} 的费用，声望 -8。降价再试。`
+      + ` / Priced at ${S.fmt(plan.price)} the book only filled ${Math.round(plan.fill * 100)}% — the deal was pulled.`);
+  }
   const hour = curHour();
   const r = CO.goPublic(co, val, plan, hour);
-  db.prepare('UPDATE players SET prestige=prestige+? WHERE user_id=?').run(12, uid);
+  // 首日表现决定这单的口碑：大涨是好新闻，破发是坏新闻
+  const pop = r.pop;
+  const prestige = Math.round(clamp(12 + pop * 45, -6, 30));
+  db.prepare('UPDATE players SET prestige=MAX(0, prestige+?) WHERE user_id=?').run(prestige, uid);
   ledger(uid, 'company', 0, L('led.coIpo', { name: co.name, ticker: co.ticker,
     price: r.price, raised: r.raised, cap: r.marketCap,
     stake: Math.round(plan.stakeAfter * 100) }), '🔔');
-  return { ok: true, ...r, ...coState(uid, co.id) };
+  ledger(uid, 'company', 0, L(pop >= 0 ? 'led.coIpoPop' : 'led.coIpoBreak', {
+    ticker: co.ticker, open: r.open, price: r.price, pct: Math.round(Math.abs(pop) * 100),
+    fill: Math.round(plan.fill * 100), prestige }), pop >= 0 ? '🚀' : '💔');
+  return { ok: true, ...r, prestige, ...coState(uid, co.id) };
 }
 
 export function renameCompany(uid, { name, nameEn, coId }) {
@@ -1196,7 +1220,7 @@ export function renameCompany(uid, { name, nameEn, coId }) {
 }
 
 // ── 世界地图：订机票出发 ────────────────────────────────────
-export function bookTrip(uid, { destId, nights, cabin, hotel }) {
+export function bookTrip(uid, { destId, nights, cabin, hotel, oneWay }) {
   S.advancePlayer(uid);
   const p = P(uid), hour = curHour();
   const d = S.DEST[destId];
@@ -1206,9 +1230,11 @@ export function bookTrip(uid, { destId, nights, cabin, hotel }) {
   const c = S.CABIN[cabin] || CABINS[0];
   if (c.needJet && !db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c)
     throw new Err('你还没有私人飞机 / You do not own a private jet');
-  const home = S.birthOf(p);
-  if (d.id === home.id) throw new Err('这就是你的家乡 / That is where you already live');
-  const q = S.tripQuote(d, num(nights, 1, 60), c.id, hotel, home);
+  // 起点是你人现在在的地方，不是出生地——上一趟买了单程票，这一趟就从那儿飞
+  const from = S.whereOf(p, id => cityOf(id, S.birthOf(p)));
+  if (d.id === from.id) throw new Err('你已经在这儿了 / You are already there');
+  const ow = !!oneWay;
+  const q = S.tripQuote(d, num(nights, 0, 60), c.id, hotel, from, ow);
   if (p.cash < q.total)
     throw new Err(`现金不足：机票 ${S.fmt(q.air)} + 住宿 ${S.fmt(q.stay)} + 花销 ${S.fmt(q.daily)} = ${S.fmt(q.total)} / Need ${S.fmt(q.total)}`);
   p.cash -= q.total;
@@ -1216,22 +1242,28 @@ export function bookTrip(uid, { destId, nights, cabin, hotel }) {
               trip_relief=?, trip_stam=?, trip_nights=?, trip_spent2=?,
               trip_spent=trip_spent+?, trips=trips+1 WHERE user_id=?`)
     .run(p.cash, q.prestige, hour + q.hours, d.id, q.relief, q.stamina, q.nights, q.total, q.total, uid);
-  ledger(uid, 'trip', -q.total, L('led.tripGo2', { place: { zh: d.zh, en: d.en }, flag: d.flag,
+  // 单程票飞过去就留在那儿；往返票飞完回原地
+  db.prepare('UPDATE players SET at_id=? WHERE user_id=?')
+    .run(ow ? d.id : (p.at_id || ''), uid);
+  ledger(uid, 'trip', -q.total, L(ow ? 'led.tripOneWay' : 'led.tripGo2', {
+    place: { zh: d.zh, en: d.en }, flag: d.flag, from: { zh: from.zh, en: from.en },
     nights: q.nights, cabin: { zh: q.cabin.zh, en: q.cabin.en }, hotel: { zh: q.hotel.zh, en: q.hotel.en },
     air: q.air, stay: q.stay, daily: q.daily, total: q.total, hours: Math.round(q.flightHours) }), d.flag);
-  return { ok: true, ...q, until: hour + q.hours, place: d.zh };
+  return { ok: true, ...q, until: hour + q.hours, place: d.zh, movedTo: ow ? d.id : null };
 }
 
 // 世界地图数据 + 我的足迹
 export function worldMap(uid) {
   const p = P(uid);
-  const home = S.birthOf(p);
+  const birth = S.birthOf(p);
+  // 地图上的每一条航线都从你人在的地方起算——买了单程票，起点就换了
+  const home = S.whereOf(p, id => cityOf(id, birth));
   const rows = db.prepare('SELECT * FROM visits WHERE user_id=?').all(uid);
   const visited = Object.fromEntries(rows.map(r => [r.place_id, r]));
   const countries = new Set(rows.map(r => destOf(r.place_id)?.country).filter(Boolean));
   const regions = new Set(rows.map(r => destOf(r.place_id)?.region).filter(Boolean));
   return {
-    home, chosen: !!p.birth_id,
+    home, birth, away: home.id !== birth.id, chosen: !!p.birth_id,
     atlas: { cities: CITY_COUNT, countries: COUNTRIES.size, total: TOTAL_PLACES,
              birthMinPop: BIRTH_MIN_POP, alias: Object.fromEntries(CITY_ALIAS) },
     homeOptions: HOMES_AVAILABLE().map(d => ({ id: d.id, zh: d.zh, en: d.en, flag: d.flag,
@@ -1242,7 +1274,8 @@ export function worldMap(uid) {
     hasJet: db.prepare("SELECT COUNT(*) c FROM items WHERE user_id=? AND type_id LIKE 'jet_%'").get(uid).c > 0,
     places: DESTINATIONS.filter(d => d.id !== home.id).map(d => {
       const rt = routeOf(home, d);
-      return { ...d, km: rt.km, flight: rt.fare, hours: rt.hours,
+      return { ...d, km: rt.km, flight: rt.fare, flightOneWay: rt.fareOneWay, hours: rt.hours,
+        fromZh: home.zh, fromEn: home.en, isBirth: d.id === birth.id,
         visit: visited[d.id] ? { times: visited[d.id].times, nights: visited[d.id].nights,
           spent: visited[d.id].spent, firstHour: visited[d.id].first_hour, lastHour: visited[d.id].last_hour } : null };
     }),
@@ -1266,10 +1299,13 @@ export const TOTAL_PLACES = CITY_COUNT - CITY_ALIAS.size + DESTINATIONS.length;
 export const MAX_COMPANIES = 8;   // 同时经营的公司上限
 
 function placePayload(uid, d) {
-  const p = P(uid), home = S.birthOf(p);
+  const p = P(uid), birth = S.birthOf(p);
+  const home = S.whereOf(p, id => cityOf(id, birth));
   const rt = routeOf(home, d);
   const v = db.prepare('SELECT * FROM visits WHERE user_id=? AND place_id=?').get(uid, d.id);
-  return { ...d, km: rt.km, flight: rt.fare, hours: rt.hours, isHome: d.id === home.id,
+  return { ...d, km: rt.km, flight: rt.fare, flightOneWay: rt.fareOneWay, hours: rt.hours,
+    fromId: home.id, fromZh: home.zh, fromEn: home.en, fromFlag: home.flag,
+    isHere: d.id === home.id, isBirth: d.id === birth.id, isHome: d.id === home.id,
     visit: v ? { times: v.times, nights: v.nights, spent: v.spent, firstHour: v.first_hour, lastHour: v.last_hour } : null };
 }
 

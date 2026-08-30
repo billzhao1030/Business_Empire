@@ -513,3 +513,6 @@ button{cursor:pointer;border:none;background:none}
 .tc-pause{display:none;font-size:11px;color:var(--orange);margin-right:2px}
 .tc-main.paused .tc-pause{display:inline}
 .tc-main.paused .tc-date,.tc-main.paused .tc-time{color:var(--orange);opacity:.85}
+
+/* ══ 定价滑杆 ══ */
+.rng{width:100%;accent-color:var(--gold);margin:6px 0 4px;cursor:pointer}

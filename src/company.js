@@ -14,6 +14,8 @@ import { FOUND_FEE, INIT_SHARES, BASE_MULT, GROWTH_K, HEAT_K, SCALE_K,
          MATURE_DAYS, REV_GROWTH_MIN, TURNAROUND_G, DOWN_SENS,
          ROUNDS, ROUND, STAGE, CO_SECTOR,
          IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT, IPO_DISCOUNT, IPO_FEE,
+         IPO_PRICE_MIN, IPO_PRICE_MAX, IPO_FLOAT_MIN, IPO_FLOAT_MAX,
+         IPO_SUB_AT_PAR, IPO_SUB_ELAST, IPO_PULL_FILL, IPO_FLOAT_DRAG,
          IPO_HISTORY_HOURS, CO_SECTOR_MAP } from './catalog-company.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -160,27 +162,53 @@ export function syncPublicStake(co) {
 }
 
 // 上市方案：发行价按估值打个折（真实 IPO 都要给二级市场留出上涨空间）
-export function ipoPlan(co, val, marketLevel = 1) {
+// price 和 float 都可以自己填。承销商只给建议，敢不敢偏离是你的事：
+//   定得高 → 簿记认购不足，发不满，甚至发不出去；上市当天就破发
+//   定得低 → 钱少拿了，但当天大涨，声望和口碑都在
+export function ipoPlan(co, val, marketLevel = 1, want = {}) {
   const rounds = co.round_n;
   const ok = rounds >= IPO_MIN_ROUNDS && val.value >= IPO_MIN_VAL
           && val.shops >= IPO_MIN_SHOPS && val.annual > 0;
   // 行情好的时候承销商敢定高价，熊市里就得让利
   const mood = clamp(marketLevel, 0.75, 1.35);
-  const disc = clamp(IPO_DISCOUNT * mood, 0.65, 1.05);
+  const float = clamp(Number(want.float) || IPO_FLOAT, IPO_FLOAT_MIN, IPO_FLOAT_MAX);
+  // 卖得越多，机构越要压价——一次消化四成股本，谁都要个折扣
+  const sizeDrag = 1 - IPO_FLOAT_DRAG * (float - IPO_FLOAT);
+  const disc = clamp(IPO_DISCOUNT * mood * sizeDrag, 0.55, 1.05);
   const preVal = val.value * disc;
-  const price = preVal / co.shares;
-  const newShares = co.shares * IPO_FLOAT / (1 - IPO_FLOAT);
+  const indPrice = preVal / co.shares;                 // 承销商的建议价
+  const fairPrice = val.value / co.shares;             // 二级市场大致会落在这儿
+  const price = clamp(Number(want.price) > 0 ? Number(want.price) : indPrice,
+                      indPrice * IPO_PRICE_MIN, indPrice * IPO_PRICE_MAX);
+  const ratio = price / indPrice;
+
+  // 簿记：定价越高，认购倍数越低。建议价上 1.5 倍认购，是个健康的簿记
+  const sub = IPO_SUB_AT_PAR * Math.pow(ratio, -IPO_SUB_ELAST);
+  const fill = clamp(sub, 0, 1);                       // 真正卖得出去的比例
+  const pulled = fill < IPO_PULL_FILL;                 // 认购太差，这单发不出去
+
+  const wantShares = co.shares * float / (1 - float);
+  const newShares = wantShares * fill;
   const gross = newShares * price;
   const fee = gross * IPO_FEE;
+  const sharesAfter = co.shares + newShares;
+  // 上市首日的落点：市场认的是价值，不是你的发行价
+  const openPrice = fairPrice;
+  const pop = price > 0 ? openPrice / price - 1 : 0;   // 正数是涨，负数是破发
   return {
     ok, rounds, needRounds: IPO_MIN_ROUNDS, needVal: IPO_MIN_VAL, needShops: IPO_MIN_SHOPS,
     needProfit: val.annual <= 0,
-    disc, preVal, price, newShares, gross, fee, net: gross - fee,
-    sharesAfter: co.shares + newShares,
+    disc, preVal, indPrice, fairPrice, price, ratio, sub, fill, pulled,
+    priceMin: indPrice * IPO_PRICE_MIN, priceMax: indPrice * IPO_PRICE_MAX,
+    floatMin: IPO_FLOAT_MIN, floatMax: IPO_FLOAT_MAX, floatDefault: IPO_FLOAT,
+    pullFill: IPO_PULL_FILL,
+    wantShares, newShares, gross, fee, net: gross - fee,
+    sharesAfter,
     stakeBefore: co.player_shares / co.shares,
-    stakeAfter: co.player_shares / (co.shares + newShares),
-    marketCap: (co.shares + newShares) * price,
-    float: IPO_FLOAT,
+    stakeAfter: co.player_shares / sharesAfter,
+    marketCap: sharesAfter * price,
+    openPrice, pop, capAtOpen: sharesAfter * openPrice,
+    float,
   };
 }
 
@@ -188,7 +216,10 @@ export function ipoPlan(co, val, marketLevel = 1) {
 export function goPublic(co, val, plan, hour) {
   const sector = CO_SECTOR_MAP[co.sector] || '日用消费';
   const shares = plan.sharesAfter;
-  const price = plan.price;
+  const price = plan.price;                    // 发行价：你自己定的那个
+  // 上市首日开在市场认可的价上，不是开在你的发行价上。
+  // 定低了就大涨，定高了就破发——发行价定得再高，市场也不认。
+  const open = Math.max(price * 0.35, plan.openPrice || price);
   const eps = val.annual / shares;
   const name = co.name_en || co.name;
   // 波动率随规模递减：小盘股本来就更颠
@@ -198,7 +229,7 @@ export function goPublic(co, val, plan, hour) {
     (symbol,name,zh,kind,sector,unit,price,prev_close,day_open,day_high,day_low,fair,mu,sigma,beta,
      div_yield,shares,max_stake,eps,desc,link)
     VALUES(?,?,?,'stock',?,'股',?,?,?,?,?,?,?,?,?,0,?,1,?,?,?)`)
-    .run(co.ticker, name, co.name, sector, price, price, price, price, price,
+    .run(co.ticker, name, co.name, sector, open, price, open, Math.max(open, price), Math.min(open, price),
          val.value / shares, clamp(val.growth * 0.5, -0.10, 0.35), sigma, 1.05,
          shares, eps, info, 'co:' + co.id);
   const assetId = Number(r.lastInsertRowid);
@@ -211,7 +242,7 @@ export function goPublic(co, val, plan, hour) {
     px = px + (to - px) * 0.035 + px * 0.012 * (Math.random() - 0.5);
     insP.run(assetId, h, Math.max(price * 0.5, px));
   }
-  insP.run(assetId, hour, price);
+  insP.run(assetId, hour, open);
 
   db.prepare(`UPDATE companies SET stage='public', shares=?, cash=cash+?, raised=raised+?,
               asset_id=?, ipo_hour=?, ipo_price=?, round_val=? WHERE id=?`)
@@ -221,7 +252,9 @@ export function goPublic(co, val, plan, hour) {
               ON CONFLICT(user_id,asset_id) DO UPDATE SET qty=qty+excluded.qty, cost=cost+excluded.cost`)
     .run(co.user_id, assetId, co.player_shares, co.player_shares * price);
   M.invalidate();
-  return { assetId, price, shares, raised: plan.net, marketCap: plan.marketCap };
+  return { assetId, price, open, pop: price > 0 ? open / price - 1 : 0,
+           shares, newShares: plan.newShares, fill: plan.fill,
+           raised: plan.net, marketCap: shares * open };
 }
 
 // 上市公司的内在价值要跟着真实经营走，股价才会围着基本面转，
