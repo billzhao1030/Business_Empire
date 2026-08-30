@@ -39,7 +39,7 @@ export default {
       <div class="stat"><label>📦 ${t('shop.youOwn')}</label><div class="v">${s.items.length}</div>
         <div class="d">${t('shop.inThisCat', { n: list.filter(i => owned.has(i.id)).length })}</div></div>
       <div class="stat"><label>⭐ ${t('common.prestige')}</label><div class="v gold">${int(s.player.prestige)}</div>
-        <div class="d" title="${t('lux.prestigeCurve', { max: pctPlain(s.player.prestigeMax || 0.3, 0), half: int(s.player.prestigeHalf || 500) })}">${t('lux.prestigeInfo')} <b class="gold">+${pctPlain(s.player.prestigeBonus)}</b>
+        <div class="d" title="${t('lux.prestigeCurve', { n: int(s.player.prestigeDouble || 0) })}">${t('lux.prestigeInfo')} <b class="gold">+${pctPlain(s.player.prestigeBonus)}</b>
         <span class="dim2">${t('lux.prestigeNext', { n: pctPlain(s.player.prestigeNext || 0, 2) })}</span></div></div>
     </div>
 

@@ -208,7 +208,8 @@ export function getState(uid, active = true) {
       prestige, prestigeBonus: S.prestigeBonus(prestige), totalTax: p.total_tax,
       // 声望是饱和曲线：下一点还值多少、离上限还有多远，摆出来才知道该不该继续攒
       prestigeNext: S.prestigeBonus(prestige + 100) - S.prestigeBonus(prestige),
-      prestigeMax: S.PRESTIGE_MAX, prestigeHalf: S.PRESTIGE_K,
+      // 没有上限，只有「翻倍需要多少声望」这个尺度
+      prestigeDouble: Math.max(0, Math.ceil(prestige * (Math.pow(2, 1 / S.PRESTIGE_EXP) - 1))),
       totalDividend: p.total_dividend, realizedPnl: p.realized_pnl, missedPay: p.missed_pay,
       bankrupt: !!p.bankrupt, peak: p.peak_networth, playedHours: hour - p.created_hour, monthProfit: p.month_profit,
     },
