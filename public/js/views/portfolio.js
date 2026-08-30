@@ -57,13 +57,14 @@ export default {
     </tr></thead><tbody>
       ${hs.map(h => `<tr class="clickable" data-sym="${h.symbol}">
         <td><div class="sym">${h.symbol}</div><div class="nm">${esc(nm({ zh: h.zh, en: h.name }))}</div></td>
-        <td class="r mono">${fq(h.qty)}<div class="nm">${h.unit}</div></td>
+        <td class="r mono">${fq(h.qty)}<div class="nm">${h.shares ? `/ ${fq(h.shares)} ${h.unit}` : h.unit}</div></td>
         <td class="r mono dim">${price(h.avg)}</td>
         <td class="r mono">${price(h.price)}<div class="nm ${cls(h.change)}">${pct(h.change)}</div></td>
         <td class="r mono"><b>${money(h.value)}</b></td>
         <td class="r mono ${cls(h.pnl)}">${money(h.pnl)}</td>
         <td class="r mono ${cls(h.pnl)}">${pct(h.pnlPct)}</td>
-        <td class="r mono ${h.stake >= 0.5 ? 'gold' : 'dim'}">${h.stake >= 0.0001 ? pctPlain(h.stake, 2) : '<0.01%'}</td>
+        <td class="r mono ${h.stake >= 0.5 ? 'gold' : 'dim'}">${h.stake >= 0.0001 ? pctPlain(h.stake, 2) : '<0.01%'}
+          ${h.maxStake ? `<div class="nm">${t('mkt.stakeCap')} ${pctPlain(h.maxStake, 0)}</div>` : ''}</td>
         <td class="r mono ${h.monthlyDividend > 0 ? 'gold' : 'dim2'}">${h.monthlyDividend > 0 ? money(h.monthlyDividend) : '—'}</td>
       </tr>`).join('')}
     </tbody></table></div></div>`

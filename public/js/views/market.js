@@ -14,6 +14,9 @@ const KINDS = [
 const kindLabel = k => ({ overview: t('mkt.overview'), stock: t('mkt.stocks'), district: t('mkt.districts'),
   commodity: t('mkt.commodities'), crypto: t('mkt.crypto'), index: t('mkt.indices') }[k]);
 
+// 万分之一以下的持股比例，写 0.00% 等于什么都没说
+const stakeTxt = v => (v <= 0 ? '0%' : v >= 0.0001 ? pctPlain(v, 2) : '<0.01%');
+
 const OTABS = d => [
   { id: 'index',  emoji: '📊', label: t('mkt.tabIndex') },
   { id: 'movers', emoji: '🚀', label: t('mkt.tabMovers') },
@@ -352,6 +355,20 @@ export default {
 
     ${d.kind === 'district' ? `<div class="summary dim" style="font-size:12px;margin-bottom:12px">${t('mkt.districtHint')}</div>` : ''}
     ${isIndex ? `<div class="summary dim" style="font-size:12px">${t('lux.indexHint')}</div>` : `
+    ${d.kind !== 'commodity' && d.shares ? `<div class="share-bar">
+      <div class="sb"><label>${t('mkt.youHold')}</label>
+        <b class="mono ${h?.qty ? 'gold' : 'dim2'}">${fmtQty(h?.qty || 0)}</b>
+        <span>${d.unit}${h?.qty ? ` · ${stakeTxt(h.qty / d.shares)}` : ''}</span></div>
+      <div class="sb"><label>${t('mkt.totalShares')}</label>
+        <b class="mono">${fmtQty(d.shares)}</b>
+        <span>${d.unit}</span></div>
+      <div class="sb"><label>${t('mkt.stakeCap')}</label>
+        <b class="mono">${pctPlain(d.maxStake, 0)}</b>
+        <span>${t('mkt.canStillBuy', { n: fmtQty(Math.max(0, d.shares * d.maxStake - (h?.qty || 0))) })}</span></div>
+      <div class="sb-bar"><i style="width:${Math.min(100, 100 * (h?.qty || 0) / (d.shares * d.maxStake || 1))}%"></i>
+        <u style="left:${Math.min(100, d.maxStake * 100)}%"></u></div>
+    </div>` : ''}
+
     <div class="segs" id="dt-side" style="width:100%;display:flex;margin-bottom:12px">
       <button class="seg active" data-side="buy" style="flex:1">${t('mkt.buyPanel')}</button>
       <button class="seg" data-side="sell" style="flex:1">${t('mkt.sellPanel')}</button>
@@ -441,20 +458,26 @@ export default {
       const fee = Math.max(s.fees.minCommission, gross * s.fees.commission);
       if (side === 'buy') {
         const total = gross + fee;
+        const after = (h?.qty || 0) + q;
         sumEl.innerHTML = `
           <div><span>${t('mkt.est')}</span><span class="mono">${price(px)} × ${fmtQty(q)}</span></div>
           <div><span>${t('mkt.commission')}</span><span class="mono">${money(fee)}</span></div>
           <div><span>${t('mkt.available')}</span><span class="mono">${money(s.player.cash)}</span></div>
+          ${d.shares ? `<div><span>${t('mkt.afterHold')}</span><span class="mono">${fmtQty(h?.qty || 0)} → <b class="gold">${fmtQty(after)}</b>
+            <span class="dim2" style="font-weight:400">/ ${fmtQty(d.shares)} · ${stakeTxt(after / d.shares)}</span></span></div>` : ''}
           <div class="tot"><span>${t('common.total')}</span><span class="mono ${total > s.player.cash ? 'down' : ''}">${moneyFull(total)}</span></div>`;
         btn.disabled = q <= 0 || total > s.player.cash;
       } else {
         const basis = h && h.qty ? h.cost * (q / h.qty) : 0;
         const gain = gross - fee - basis;
         const tax = gain > 0 ? gain * s.tax.capGain : 0;
+        const after = Math.max(0, (h?.qty || 0) - q);
         sumEl.innerHTML = `
           <div><span>${t('mkt.est')}</span><span class="mono">${price(px)} × ${fmtQty(q)}</span></div>
           <div><span>${t('mkt.commission')}</span><span class="mono">${money(fee)}</span></div>
           <div><span>${t('mkt.capGain')}</span><span class="mono">${money(tax)}</span></div>
+          ${d.shares ? `<div><span>${t('mkt.afterHold')}</span><span class="mono">${fmtQty(h?.qty || 0)} → <b>${fmtQty(after)}</b>
+            <span class="dim2" style="font-weight:400">/ ${fmtQty(d.shares)} · ${stakeTxt(after / d.shares)}</span></span></div>` : ''}
           <div class="tot"><span>${t('mkt.proceeds')}</span><span class="mono up">${moneyFull(gross - fee - tax)}</span></div>`;
         btn.disabled = q <= 0 || q > maxSell() + 1e-9;
       }
