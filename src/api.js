@@ -202,7 +202,9 @@ export function getState(uid, active = true) {
       speedMin: M.SPEED_MIN_MS, speedMax: M.SPEED_MAX_MS, speedDefault: M.SPEED_DEFAULT,
       ...M.pausedState() },
     player: {
-      nickname: p.nickname, cash: p.cash, bank: p.bank, creditScore: p.credit_score,
+      nickname: p.nickname,
+      username: db.prepare('SELECT username FROM users WHERE id=?').get(uid)?.username || '',
+      cash: p.cash, bank: p.bank, creditScore: p.credit_score,
       prestige, prestigeBonus: S.prestigeBonus(prestige), totalTax: p.total_tax,
       totalDividend: p.total_dividend, realizedPnl: p.realized_pnl, missedPay: p.missed_pay,
       bankrupt: !!p.bankrupt, peak: p.peak_networth, playedHours: hour - p.created_hour, monthProfit: p.month_profit,
@@ -860,6 +862,28 @@ export function hustle(uid) {
 }
 
 // ── 生活方式：吃什么、住哪儿 ────────────────────────────────
+// 改自己的名字：昵称随时能改，用户名（登录用的）也能改，但要保证不重名
+export function renameMe(uid, { nickname, username } = {}) {
+  S.advancePlayer(uid);
+  const out = {};
+  if (nickname != null) {
+    const n = String(nickname).trim().slice(0, 16);
+    if (n.length < 1) throw new Err('昵称不能为空 / Nickname cannot be empty');
+    db.prepare('UPDATE players SET nickname=? WHERE user_id=?').run(n, uid);
+    out.nickname = n;
+  }
+  if (username != null) {
+    const u = String(username).trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,16}$/.test(u))
+      throw new Err('用户名只能用 3~16 位字母、数字或下划线 / 3-16 letters, digits or underscore');
+    const taken = db.prepare('SELECT id FROM users WHERE username=? AND id<>?').get(u, uid);
+    if (taken) throw new Err('这个用户名已经有人用了 / That username is taken');
+    db.prepare('UPDATE users SET username=? WHERE id=?').run(u, uid);
+    out.username = u;
+  }
+  return { ok: true, ...out };
+}
+
 // 自动转存：现金超过这个数就自动进活期
 export function setSweep(uid, { keep } = {}) {
   S.advancePlayer(uid);

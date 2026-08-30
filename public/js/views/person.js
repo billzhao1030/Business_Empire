@@ -1,10 +1,13 @@
 // 人物：你长什么样，穿什么，衣柜里有什么。
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pctPlain, int, esc, toast, keepScroll } from '../util.js';
+import { $, $$, money, moneyFull, pctPlain, int, esc, toast, modal, keepScroll } from '../util.js';
 import { avatarSVG, SKINS, HAIRCOL } from '../avatar.js';
+import { Avatar3D } from '../avatar3d.js';
 
 let tab = 'wear', slotF = 'all';
+let use3D = (localStorage.getItem('be_avatar3d') ?? '1') === '1';
+let av3d = null;   // WebGL 人物，只在需要的时候建一次
 
 const STYLE_OF = (styles, id) => styles.find(x => x.id === id);
 
@@ -38,9 +41,18 @@ export default {
     <div class="grid" style="grid-template-columns:320px 1fr;gap:16px;align-items:start">
       <div class="card">
         <div class="card-b" style="text-align:center;padding:18px 14px">
-          <div class="avatar-wrap">${avatarSVG(lk)}</div>
-          <div style="font-weight:800;font-size:15px;margin-top:6px">${esc(s.player.nickname)}</div>
-          <div class="dim2" style="font-size:11.5px;margin-top:2px">${esc(s.title?.zh ? nm(s.title) : '')}</div>
+          <div class="avatar-wrap${use3D ? ' is3d' : ''}">
+            ${use3D ? `<canvas id="av3d"></canvas>
+              <div class="av-hint">${t('person.dragHint')}</div>` : avatarSVG(lk)}
+          </div>
+          <div class="segs" style="display:flex;margin-top:9px">
+            <button class="seg ${use3D ? 'active' : ''}" data-dim="3">🧍 ${t('person.d3')}</button>
+            <button class="seg ${!use3D ? 'active' : ''}" data-dim="2">🖼️ ${t('person.d2')}</button>
+          </div>
+          <div style="font-weight:800;font-size:15px;margin-top:9px">${esc(s.player.nickname)}
+            <button class="btn btn-xs btn-ghost" id="p-rename" title="${t('person.rename')}">✏️</button></div>
+          <div class="dim2" style="font-size:11.5px;margin-top:2px">${esc(s.title?.zh ? nm(s.title) : '')}
+            ${s.player.username ? `· @${esc(s.player.username)}` : ''}</div>
           <div class="wear-strip">
             ${lk.wearSlots.map(sl => { const w = lk.slots[sl.id];
               return `<div class="ws ${w ? 'on' : ''}" title="${esc(nm(sl))}">
@@ -59,6 +71,29 @@ export default {
       </div>
     </div>`;
 
+    // 3D 人物：视图重绘会换掉画布，所以每次都重新接管一次
+    if (use3D) {
+      const cv = $('#av3d');
+      if (cv) {
+        try {
+          if (av3d) av3d.dispose();
+          av3d = new Avatar3D(cv);
+          av3d.build(lk);
+          if (typeof window !== 'undefined') window.__av = av3d;   // 供自动化测试固定视角
+        } catch (e) {
+          av3d = null; use3D = false;            // 显卡不给力就退回 2D，别让页面开天窗
+          localStorage.setItem('be_avatar3d', '0');
+          return this.render(root, app);
+        }
+      }
+    } else if (av3d) { av3d.dispose(); av3d = null; }
+
+    $$('[data-dim]').forEach(b => b.onclick = () => {
+      use3D = b.dataset.dim === '3';
+      localStorage.setItem('be_avatar3d', use3D ? '1' : '0');
+      this.render(root, app);
+    });
+    $('#p-rename') && ($('#p-rename').onclick = () => this.renameModal(app));
     $$('[data-ptab]').forEach(b => b.onclick = () => { tab = b.dataset.ptab; this.render(root, app); });
     $$('[data-slotf]').forEach(b => b.onclick = () => { slotF = b.dataset.slotf; keepScroll(() => this.render(root, app)); });
     $$('[data-wear]').forEach(b => b.onclick = () =>
@@ -70,6 +105,35 @@ export default {
     $$('[data-skin]').forEach(b => b.onclick = () => app.act(() => api.setLook({ skin: +b.dataset.skin })).catch(() => {}));
     $$('[data-hair]').forEach(b => b.onclick = () => app.act(() => api.setLook({ hair: +b.dataset.hair })).catch(() => {}));
     $$('[data-hcol]').forEach(b => b.onclick = () => app.act(() => api.setLook({ haircol: +b.dataset.hcol })).catch(() => {}));
+  },
+
+  // 改名：昵称和登录用户名都能改
+  renameModal(app) {
+    const p = app.state.player;
+    modal({
+      title: t('person.rename'), icon: '✏️',
+      body: `
+        <label class="field"><span>${t('person.nickname')}</span>
+          <input id="rn-nick" maxlength="16" value="${esc(p.nickname || '')}"></label>
+        <label class="field"><span>${t('person.username')}
+          <span class="dim2" style="font-weight:400">${t('person.usernameHint')}</span></span>
+          <input id="rn-user" maxlength="16" value="${esc(p.username || '')}"></label>
+        <p class="dim2" style="font-size:11px;line-height:1.6;margin-top:4px">${t('person.renameNote')}</p>`,
+      footer: `<button class="btn btn-ghost" data-close>${t('common.cancel')}</button>
+               <button class="btn btn-primary" id="rn-go">${t('common.confirm')}</button>`,
+      onMount: (el, close) => {
+        el.querySelector('[data-close]').onclick = close;
+        el.querySelector('#rn-go').onclick = async () => {
+          const nick = el.querySelector('#rn-nick').value.trim();
+          const user = el.querySelector('#rn-user').value.trim();
+          try {
+            await api.renameMe({ nickname: nick,
+              username: user && user !== p.username ? user : undefined });
+            close(); toast(t('toast.success'), 'ok'); await app.refresh(true);
+          } catch (e) { toast(e.message.split(' / ')[0], 'err'); }
+        };
+      },
+    });
   },
 
   wardrobe(app, mine, bySlot, lk) {
