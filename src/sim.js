@@ -408,21 +408,22 @@ export function prestigeOf(userId) {
 }
 // 声望对生意的加成。
 //
-// 原来是「每点 0.12%、到 60% 封顶」，两头都不合理：
-//   · 60% 太离谱——买一艘游艇就让全部店铺的营收涨六成，这不是声望是魔法；
-//   · 线性到 500 点戛然而止——第 500 点值 0.12%，第 501 点值 0。
-//     500 分以后再攒声望完全没有意义，这是个台阶，不是个模型。
+// 它<b>没有上限</b>。声望是跟着你的规模一起长的东西——庄园、私人海岛、
+// 一整支车队、把几家公司送上市——没有道理走到某个数就突然不算了。
+// 之前那两版都错在这儿：先是 60% 硬封顶（第 500 点值 0.12%，第 501 点值 0），
+// 后来换成 30% 的饱和曲线，等于把天花板压得更低。都不对。
 //
-// 换成饱和曲线：A · p/(p+K)。永远在涨，涨得越来越慢，永远够不到上限。
-// 前期一点声望很值钱（真实世界也是——从默默无闻到小有名气那一步最值），
-// 后面继续攒仍然有用，只是边际递减。上限 30%：名气确实能带来更好的铺位、
-// 更好的账期和免费的口碑，但它不可能顶得上把店开在对的地方。
-export const PRESTIGE_MAX = 0.30;      // 渐近线，永远达不到
-export const PRESTIGE_K = 500;         // 半程点：500 声望拿到一半的加成
+// 现在是幂律：c · p^0.73。指数小于 1，所以涨得越来越慢——不会因为多买一块表
+// 就翻倍；但它<b>永远在涨，没有尽头</b>。真把帝国堆到十万声望，加成就是四位数，
+// 那时候你本来也该是这个世界上最有名的人。
+export const PRESTIGE_C = 0.003;       // 系数
+export const PRESTIGE_EXP = 0.73;      // 指数：小于 1 = 边际递减，但不收敛
 export function prestigeBonus(prestige) {
   const p = Math.max(0, prestige);
-  return PRESTIGE_MAX * p / (p + PRESTIGE_K);
+  return p > 0 ? PRESTIGE_C * Math.pow(p, PRESTIGE_EXP) : 0;
 }
+// 声望带来的松弛是另一回事：名气再大也扛不住连轴转，这个必须有上限
+export const PRESTIGE_CALM_MAX = 0.9;
 
 export function ensurePlayer(userId, nickname) {
   const p = db.prepare('SELECT * FROM players WHERE user_id=?').get(userId);
@@ -639,7 +640,9 @@ export function advancePlayer(userId) {
       if (burden > BURDEN_SAFE) dStress += Math.min(STRESS_BURDEN_CAP, (burden - BURDEN_SAFE) * STRESS_BURDEN_K / 24);
     }
     if (p.cash < 0) dStress += 0.35;                     // 透支的焦虑
-    if (pb > 0.10) dStress -= pb * 1.2;                  // 房子、车、艺术品带来的生活质量
+    // 房子、车、艺术品带来的生活质量。但声望是无上限的，压力不能跟着无上限地掉——
+    // 再有名的人熬夜也一样垮，所以这一项单独封在 0.9。
+    if (pb > 0.10) dStress -= Math.min(PRESTIGE_CALM_MAX, pb * 1.2);
     if (p.stamina < 25) dStress += 0.25;
     if (sick) dStress += p.sick_treated ? 0.1 : 0.45;    // 硬扛比就医更煎熬
     p.stress = clamp(p.stress + dStress, 0, STRESS_MAX);
