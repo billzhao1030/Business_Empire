@@ -111,6 +111,20 @@ export function upgradeCost(def, city, level) { return Math.round(def.cost * cit
 export function marketingCost(def, city, m) { return Math.round(def.cost * city.costMult * 0.10 * Math.pow(1.6, m)); }
 export const MAX_LEVEL = 12, MAX_MARKETING = 6;
 export const JOB = Object.fromEntries(JOBS.map(j => [j.id, j]));
+
+// ── 你的履历不只有工时 ──────────────────────────────────────
+// 一个把公司做到九位数身家的人，去应聘还要从「需要 6000 小时工作经验」开始，
+// 这说不通。真实世界里，猎头看的是你办成过什么，不是你打过多少卡。
+// 所以有效经验 = 打工攒的工时 + 身家折算 + 名声折算。
+export const EXP_FROM_WORTH = 600;     // 净资产每涨一个数量级，折 600 点经验
+export const EXP_FROM_PRESTIGE = 0.8;  // 每点声望折 0.8 点经验
+export function worthExp(netWorth) {
+  return netWorth > 1e5 ? EXP_FROM_WORTH * Math.log10(netWorth / 1e5) : 0;
+}
+// 完整履历：打工的、做成事的、有名气的，加在一起才是你在人力市场上的分量
+export function effectiveExp(p, netWorth, prestige) {
+  return (p.job_exp || 0) + worthExp(netWorth) + (prestige || 0) * EXP_FROM_PRESTIGE;
+}
 export { JOBS, RIVALS };
 export function hasBike(userId) {
   return db.prepare('SELECT type_id FROM items WHERE user_id=?').all(userId).some(it => ITEM[it.type_id]?.bike);
@@ -692,6 +706,23 @@ export function advancePlayer(userId) {
         else if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
       }
     }
+    // 自动分红：每天把公司账上现金的一部分打给股东。
+    // 公司赚的钱是公司的，不是你的——这是把它变成你的钱的常规办法，
+    // 只是不用每天手动点一次。按持股比例分，股息税照扣。
+    if (h % DAY_HOURS === 0) {
+      for (const c of cos) {
+        if (!(c.auto_div > 0) || c.cash <= 0) continue;
+        const amt = c.cash * c.auto_div;
+        if (amt < 1) continue;
+        const stake = c.player_shares / c.shares;
+        const gross = amt * stake;
+        const tax = gross * RATES.divTax;
+        c.cash -= amt; c.dividends_paid = (c.dividends_paid || 0) + amt;
+        p.cash += gross - tax; p.total_dividend += gross - tax; p.total_tax += tax;
+        ledger.push([h, 'dividend', gross - tax, L('led.autoDiv', { name: c.name,
+          pct: Math.round(c.auto_div * 100), total: amt, net: gross - tax, tax }), '💵']);
+      }
+    }
     // 每家公司各算各的利润跑速：快慢两条线一拉开，就是在增长
     if (cos.length) {
       const rate = new Map();
@@ -933,8 +964,9 @@ export function advancePlayer(userId) {
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);
     if (cos.length) {
       const uc = db.prepare(`UPDATE companies SET cash=?,rate_fast=?,rate_slow=?,rate_vslow=?,growth=?,
-                             lifetime_profit=? WHERE id=?`);
-      for (const c of cos) uc.run(c.cash, c.rate_fast, c.rate_slow, c.rate_vslow, c.growth, c.lifetime_profit, c.id);
+                             lifetime_profit=?,dividends_paid=? WHERE id=?`);
+      for (const c of cos) uc.run(c.cash, c.rate_fast, c.rate_slow, c.rate_vslow, c.growth,
+                                  c.lifetime_profit, c.dividends_paid || 0, c.id);
     }
     const ui = db.prepare('UPDATE items SET value=? WHERE id=?');
     for (const it of items) ui.run(it.value, it.id);

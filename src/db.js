@@ -254,6 +254,8 @@ addColumn('businesses', 'price_tier',  'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses', 'staff',       'INTEGER NOT NULL DEFAULT 2');
 addColumn('businesses', 'auto_staff',  'INTEGER NOT NULL DEFAULT 1');
 addColumn('businesses', 'auto_repair', 'INTEGER NOT NULL DEFAULT 0');
+// 公司自动分红：每天把账上现金的这个比例发出来（0 = 关）
+addColumn('companies', 'auto_div', 'REAL NOT NULL DEFAULT 0');
 addColumn('businesses', 'understaffed','REAL    NOT NULL DEFAULT 0');
 addColumn('businesses', 'company_id', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('companies', 'rate_vslow', 'REAL NOT NULL DEFAULT 0');

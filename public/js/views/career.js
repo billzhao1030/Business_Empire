@@ -223,6 +223,9 @@ export default {
     <div class="card">
       <div class="card-h"><h3>🧭 ${t('career.jobList')}</h3>
         <span class="sub">${t('career.jobCount', { n: j.list.length, t: (j.tracks || []).length })}</span>
+        <span class="sub" style="margin-left:10px" title="${t('career.effExpHow')}">${t('career.effExp')}
+          <b class="gold">${int(j.effExp || 0)}</b>
+          <span class="dim2">= ${int(j.exp)} + ${int(j.expFromWorth || 0)}${t('career.fromWorth')} + ${int(j.expFromPrestige || 0)}${t('career.fromFame')}</span></span>
         <div class="right" style="display:flex;gap:8px;align-items:center">
           <select class="sel" id="job-sort">
             <option value="wage" ${jobSort === 'wage' ? 'selected' : ''}>${t('career.sortWage')}</option>
@@ -253,8 +256,11 @@ export default {
                 ${x.current ? `<span class="tag y">${t('career.current2')}</span>` : ''}
                 ${x.car ? `<span class="tag b">🚗</span>` : ''}</div>
               <div class="dim2" style="font-size:11px;margin-top:2px;line-height:1.5">${esc(nm({ zh: x.descZh, en: x.descEn }))}</div>
-              ${!x.unlocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needExp', { n: int(x.exp) })}</div>`
+              ${!x.unlocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">
+                  ${x.exp > (j.effExp || 0) ? t('career.needExp', { n: int(x.exp) }) + ` (${t('career.short', { n: int(x.exp - (j.effExp || 0)) })})` : ''}
+                  ${x.needWorth && (j.netWorth || 0) < x.needWorth ? ` · ${t('career.needWorth', { n: money(x.needWorth) })}` : ''}</div>`
                 : x.blocked ? `<div class="down" style="font-size:10.5px;margin-top:3px">${t('career.needCar')}</div>` : ''}
+              ${x.needWorth ? `<div class="dim2" style="font-size:10px;margin-top:2px">👑 ${t('career.elite')}</div>` : ''}
             </div>
             <div class="jw"><b class="mono gold" style="font-size:14px">${money(x.wage)}</b>
               <div class="dim2" style="font-size:10px">${t('common.perHour')} · ${money(x.wage * j.workHours)}/${t('common.day')}</div></div>
