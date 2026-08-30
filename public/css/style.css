@@ -600,3 +600,13 @@ button{cursor:pointer;border:none;background:none}
 .avatar-wrap.is3d canvas:active{cursor:grabbing}
 .av-hint{position:absolute;left:0;right:0;bottom:7px;text-align:center;font-size:10px;
   color:var(--dim2);pointer-events:none;letter-spacing:.3px}
+
+/* ══ 交易时的持股条：手上多少、公司一共多少、还能买多少 ══ */
+.share-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:11px;padding:10px 13px 12px;margin-bottom:12px;position:relative}
+.share-bar .sb label{display:block;font-size:10px;color:var(--dim2);font-weight:700;letter-spacing:.3px}
+.share-bar .sb b{display:block;font-size:15px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
+.share-bar .sb span{display:block;font-size:10px;color:var(--dim2);margin-top:1px}
+.sb-bar{grid-column:1/-1;position:relative;height:5px;border-radius:3px;background:var(--panel3);overflow:visible;margin-top:2px}
+.sb-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,var(--gold),#f5b942)}
+.sb-bar u{position:absolute;top:-3px;width:2px;height:11px;background:var(--dim2);opacity:.8}

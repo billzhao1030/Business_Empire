@@ -137,7 +137,7 @@ export function getState(uid, active = true) {
       id: a.id, symbol: a.symbol, name: a.name, zh: a.zh, kind: a.kind, sector: a.sector, unit: a.unit,
       qty: h.qty, cost: h.cost, avg: h.qty > 0 ? h.cost / h.qty : 0, price: a.price, value,
       pnl: value - h.cost, pnlPct: h.cost > 0 ? (value - h.cost) / h.cost : 0,
-      stake, maxStake: a.max_stake, divYield: a.div_yield, eps: a.eps,
+      stake, maxStake: a.max_stake, shares: a.shares, divYield: a.div_yield, eps: a.eps,
       monthlyDividend: stake >= 0.9995 ? a.eps * h.qty / 12 : h.qty * a.price * a.div_yield / 12 * (stake >= 0.5 ? 1.4 : 1) * (1 - RATES.divTax),
       change: (a.price - a.prev_close) / a.prev_close,
     };
