@@ -1,7 +1,7 @@
 // 创业：注册公司、把店铺装进去、看估值、融资、分红
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, pct, pctPlain, int, esc, toast, keepScroll} from '../util.js';
+import { $, $$, money, moneyFull, pct, pctPlain, int, esc, toast, modal, keepScroll} from '../util.js';
 
 let data = null, sector = '服务', picked = null, divAmt = null, fundAmt = null;
 let coId = null, founding = false;      // 当前查看的公司；founding = 正在开新的一家
@@ -186,7 +186,7 @@ export default {
               <div><span>${t('co.valuation')}</span><span class="mono">${moneyFull(v.value)}</span></div>
               <div><span>${t('co.ipoDisc')}</span><span class="mono ${d.ipo.disc >= 1 ? 'up' : ''}">${pctPlain(d.ipo.disc, 0)}
                 <span class="dim2" style="font-weight:400">${d.ipo.disc >= 1 ? t('co.ipoPremium') : t('co.ipoDiscount')}</span></span></div>
-              <div><span>${t('co.ipoPrice')}</span><span class="mono gold">${moneyFull(d.ipo.price)}</span></div>
+              <div><span>${t('co.ipoIndPrice')}</span><span class="mono gold">${moneyFull(d.ipo.indPrice)}</span></div>
               <div><span>${t('co.ipoFloat')}</span><span class="mono">${pctPlain(d.ipo.float, 0)}</span></div>
               <div><span>${t('co.ipoFee')}</span><span class="mono down">-${money(d.ipo.fee)}</span></div>
               <div class="tot"><span>${t('co.ipoRaise')}</span><span class="mono up">${moneyFull(d.ipo.net)}</span></div>
@@ -197,7 +197,8 @@ export default {
                 <div class="tot"><span>${t('co.stakeAfter')}</span>
                   <span class="mono">${pctPlain(d.ipo.stakeBefore, 1)} → <b>${pctPlain(d.ipo.stakeAfter, 1)}</b></span></div>
               </div>
-              <button class="btn btn-primary btn-block" id="co-ipo">🔔 ${t('co.ipoBtn', { amt: money(d.ipo.net) })}</button>
+              <button class="btn btn-primary btn-block" id="co-ipo">🔔 ${t('co.ipoOpen')}</button>
+              <div class="dim2" style="font-size:10.5px;margin-top:7px;line-height:1.6">${t('co.ipoPriceHint')}</div>
             </div>
           </div>
           <div class="dim2" style="font-size:10.5px;margin-top:10px;line-height:1.7">${t('co.ipoNote')}</div>`
@@ -298,8 +299,8 @@ export default {
       if (!/^[A-Za-z]{2,5}$/.test(ticker)) return toast(t('co.errTicker'), 'err');
       again(() => api.coFound(name, $('#co-name-en').value.trim(), ticker, sector, [...picked]));
     };
-    $('#co-raise') && ($('#co-raise').onclick = () => again(() => api.coRaise(coId)));
-    $('#co-ipo') && ($('#co-ipo').onclick = () => again(() => api.coIpo(coId)));
+    $('#co-raise') && ($('#co-raise').onclick = () => this.raiseModal(app, data, coId, again));
+    $('#co-ipo') && ($('#co-ipo').onclick = () => this.ipoModal(app, data, coId, again));
     $('#co-market') && ($('#co-market').onclick = () => app.go('market'));
     const dv = $('#co-div'), fd = $('#co-fund');
     if (dv) dv.oninput = () => { divAmt = dv.value; };
@@ -339,5 +340,113 @@ export default {
     const root = document.getElementById('view');
     const top = root.scrollTop;
     this.render(root, app).then(() => { root.scrollTop = top; });
+  },
+
+  // ── 融资：先看清楚稀释多少，再决定签不签 ──────────────────
+  raiseModal(app, d, coId, again) {
+    const o = d.offer;
+    modal({
+      title: t('co.raiseConfirmTitle', { round: nm({ zh: o.round.zh, en: o.round.en }) }), icon: '💰',
+      body: `
+        <p class="dim2" style="font-size:12px;line-height:1.7;margin-bottom:12px">${t('co.raiseConfirmBody')}</p>
+        <div class="summary">
+          <div><span>${t('co.preMoney')}</span><span class="mono">${moneyFull(o.pre)}</span></div>
+          <div><span>${t('co.raiseAmt')}</span><span class="mono up">+${moneyFull(o.raise)}</span></div>
+          <div><span>${t('co.postMoney')}</span><span class="mono">${moneyFull(o.post)}</span></div>
+          <div><span>${t('co.sellPct')}</span><span class="mono down">${pctPlain(o.round.sell, 0)}</span></div>
+          <div class="tot"><span>${t('co.stakeAfter')}</span>
+            <span class="mono">${pctPlain(o.stakeBefore, 1)} → <b class="${o.stakeAfter < 0.5 ? 'down' : ''}">${pctPlain(o.stakeAfter, 1)}</b></span></div>
+        </div>
+        ${o.stakeAfter < 0.5 ? `<p style="font-size:11.5px;margin-top:10px;color:var(--orange);line-height:1.6">⚠️ ${t('co.raiseLoseControl')}</p>` : ''}
+        <p class="dim2" style="font-size:11px;margin-top:10px;line-height:1.6">${t('co.dilutionNote')}</p>`,
+      footer: `<button class="btn btn-ghost" data-close>${t('common.cancel')}</button>
+               <button class="btn btn-primary" id="rc-go">${t('co.raiseConfirmBtn', { amt: money(o.raise) })}</button>`,
+      onMount: (el, close) => {
+        el.querySelector('[data-close]').onclick = close;
+        el.querySelector('#rc-go').onclick = () => { close(); again(() => api.coRaise(coId)); };
+      },
+    });
+  },
+
+  // ── 上市：发行价和发行比例都由你定，承销商只给建议 ──────────
+  ipoModal(app, d, coId, again) {
+    const base = d.ipo;
+    let price = Math.round(base.indPrice * 1e4) / 1e4;
+    let float = base.float;
+    let plan = base, busy = false, timer = null;
+
+    const refresh = async el => {
+      if (busy) return;
+      busy = true;
+      try { const r = await api.company(coId, { price, float }); if (r?.ipo) plan = r.ipo; }
+      catch {} finally { busy = false; paint(el); }
+    };
+    const paint = el => {
+      const box = el.querySelector('#ipo-body');
+      if (!box) return;
+      const pulled = plan.pulled;
+      const pop = plan.pop;
+      const ratio = plan.ratio;
+      const verdict = pulled ? { cls: 'down', txt: t('co.ipoVerdictPulled') }
+        : pop > 0.25 ? { cls: 'up', txt: t('co.ipoVerdictCheap') }
+        : pop > 0.02 ? { cls: 'up', txt: t('co.ipoVerdictGood') }
+        : pop > -0.10 ? { cls: '', txt: t('co.ipoVerdictTight') }
+        : { cls: 'down', txt: t('co.ipoVerdictBreak') };
+      box.innerHTML = `
+        <p class="dim2" style="font-size:12px;line-height:1.7;margin-bottom:14px">${t('co.ipoConfirmBody')}</p>
+
+        <label class="field"><span>${t('co.ipoPriceLabel')}
+          <span class="dim2" style="font-weight:400">${t('co.ipoIndIs', { p: moneyFull(plan.indPrice) })}</span></span>
+          <input id="ipo-price" type="number" step="0.01" min="${plan.priceMin.toFixed(2)}" max="${plan.priceMax.toFixed(2)}" value="${price}"></label>
+        <input id="ipo-price-r" type="range" class="rng" min="${plan.priceMin}" max="${plan.priceMax}" step="${(plan.priceMax - plan.priceMin) / 200}" value="${price}">
+        <div class="dim2" style="font-size:10.5px;display:flex;justify-content:space-between;margin:-2px 0 14px">
+          <span>${moneyFull(plan.priceMin)}</span>
+          <span class="${ratio > 1.02 ? 'down' : ratio < 0.98 ? 'up' : ''}">${(ratio * 100).toFixed(0)}% ${t('co.ipoOfInd')}</span>
+          <span>${moneyFull(plan.priceMax)}</span>
+        </div>
+
+        <label class="field"><span>${t('co.ipoFloatLabel')}</span>
+          <input id="ipo-float" type="number" step="1" min="${Math.round(plan.floatMin * 100)}" max="${Math.round(plan.floatMax * 100)}" value="${Math.round(float * 100)}"></label>
+        <input id="ipo-float-r" type="range" class="rng" min="${plan.floatMin * 100}" max="${plan.floatMax * 100}" step="1" value="${Math.round(float * 100)}">
+        <div class="dim2" style="font-size:10.5px;margin:-2px 0 14px">${t('co.ipoFloatHint')}</div>
+
+        <div class="summary">
+          <div><span>${t('co.ipoSub')}</span>
+            <span class="mono ${plan.fill >= 1 ? 'up' : 'down'}">${(plan.sub * 100).toFixed(0)}%
+              <span class="dim2" style="font-weight:400">· ${t('co.ipoFilled', { p: Math.round(plan.fill * 100) })}</span></span></div>
+          <div><span>${t('co.ipoNewShares')}</span><span class="mono">${int(Math.round(plan.newShares))}</span></div>
+          <div><span>${t('co.ipoFee')}</span><span class="mono down">-${money(plan.fee)}</span></div>
+          <div><span>${t('co.ipoRaise')}</span><span class="mono up">${moneyFull(plan.net)}</span></div>
+          <div><span>${t('co.ipoOpenPrice')}</span><span class="mono">${moneyFull(plan.openPrice)}
+            <span class="${pop >= 0 ? 'up' : 'down'}">(${pop >= 0 ? '+' : ''}${(pop * 100).toFixed(0)}%)</span></span></div>
+          <div class="tot"><span>${t('co.stakeAfter')}</span>
+            <span class="mono">${pctPlain(plan.stakeBefore, 1)} → <b class="${plan.stakeAfter < 0.5 ? 'down' : ''}">${pctPlain(plan.stakeAfter, 1)}</b></span></div>
+        </div>
+        <p style="font-size:11.5px;margin-top:11px;line-height:1.6" class="${verdict.cls}">${verdict.txt}</p>`;
+
+      const pn = box.querySelector('#ipo-price'), pr = box.querySelector('#ipo-price-r');
+      const fn = box.querySelector('#ipo-float'), fr = box.querySelector('#ipo-float-r');
+      const bump = () => { clearTimeout(timer); timer = setTimeout(() => refresh(el), 180); };
+      const setP = v => { price = Math.min(plan.priceMax, Math.max(plan.priceMin, +v || plan.indPrice)); bump(); };
+      const setF = v => { float = Math.min(plan.floatMax, Math.max(plan.floatMin, (+v || 25) / 100)); bump(); };
+      pn.oninput = () => setP(pn.value); pr.oninput = () => { pn.value = (+pr.value).toFixed(2); setP(pr.value); };
+      fn.oninput = () => setF(fn.value); fr.oninput = () => { fn.value = Math.round(+fr.value); setF(fr.value); };
+
+      const go = el.querySelector('#ipo-go');
+      go.disabled = pulled;
+      go.textContent = pulled ? t('co.ipoWouldFail') : t('co.ipoConfirmBtn', { amt: money(plan.net) });
+    };
+
+    modal({
+      wide: true, title: t('co.ipoConfirmTitle', { name: d.co.name, ticker: d.co.ticker }), icon: '🔔',
+      body: `<div id="ipo-body"></div>`,
+      footer: `<button class="btn btn-ghost" data-close>${t('common.cancel')}</button>
+               <button class="btn btn-primary" id="ipo-go"></button>`,
+      onMount: (el, close) => {
+        paint(el);
+        el.querySelector('[data-close]').onclick = close;
+        el.querySelector('#ipo-go').onclick = () => { close(); again(() => api.coIpo(coId, price, float)); };
+      },
+    });
   },
 };

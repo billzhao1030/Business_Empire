@@ -82,9 +82,21 @@ export const MIN_DIVIDEND = 100;
 export const IPO_MIN_ROUNDS = 2;          // 至少走完天使 + A 轮
 export const IPO_MIN_VAL = 5_000_000;
 export const IPO_MIN_SHOPS = 12;
-export const IPO_FLOAT = 0.25;            // 向公众增发的比例
+export const IPO_FLOAT = 0.25;            // 向公众增发的比例（默认值，可自己调）
 export const IPO_DISCOUNT = 0.85;         // 发行价对估值的折让（真实 IPO 都要留出上涨空间）
 export const IPO_FEE = 0.05;              // 承销费
+
+// ── 自己定价：承销商给个建议价，敢不敢偏离是你的事 ──────────
+export const IPO_PRICE_MIN = 0.50;        // 最低只能定到建议价的五折
+export const IPO_PRICE_MAX = 3.00;        // 最高三倍——但那个价格簿记根本填不满，这单会被撤回
+export const IPO_FLOAT_MIN = 0.10;        // 最少卖一成
+export const IPO_FLOAT_MAX = 0.40;        // 最多卖四成，再多就不是「上市」是卖公司了
+// 认购倍数：定价越高，愿意接的人越少。建议价上认购 1.5 倍，是个健康的簿记
+export const IPO_SUB_AT_PAR = 1.5;
+export const IPO_SUB_ELAST = 1.6;         // 需求对价格的弹性
+export const IPO_PULL_FILL = 0.35;        // 认购不足这个比例，这单就发不出去了
+// 卖得越多，机构越要压价——大单不好消化
+export const IPO_FLOAT_DRAG = 0.55;
 export const IPO_HISTORY_HOURS = 168;     // 上市时补一段价格历史，图不至于是一个点
 
 // 公司赛道 → 行情页里挂靠的板块（板块热度和轮动都跟着它走）

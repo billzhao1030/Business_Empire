@@ -186,10 +186,14 @@ export function distanceKm(a, b) {
 }
 export const HOMES_AVAILABLE = () => DESTINATIONS.filter(d => d.home);
 // 某条航线的票价与时长（含偏远地区的交通溢价）
+// 单程票不是往返的一半——现实里从来不是。往返是打包价，拆开买要贵。
+export const ONEWAY_RATE = 0.62;
 export function routeOf(home, dest) {
   const km = distanceKm(home, dest);
   const mult = dest.fareMult || 1;
-  return { km, fare: Math.round(fareFor(km) * mult / 5) * 5, hours: flightHoursFor(km) * (dest.fareMult > 2 ? 1.6 : 1) };
+  const fare = Math.round(fareFor(km) * mult / 5) * 5;      // 往返票价
+  return { km, fare, fareOneWay: Math.round(fare * ONEWAY_RATE / 5) * 5,
+           hours: flightHoursFor(km) * (dest.fareMult > 2 ? 1.6 : 1) };
 }
 const CURATED = Object.fromEntries(DESTINATIONS.map(d => [d.id, d]));
 

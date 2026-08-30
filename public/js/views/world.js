@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, durText, gDate, keepScroll} from '../util.js';
 import { WorldMap } from '../worldmap.js';
 
-let data = null, selected = null, hovered = null, nights = 5, cabin = 'economy', hotel = 'std', regionF = '';
+let data = null, selected = null, hovered = null, nights = 5, cabin = 'economy', hotel = 'std', regionF = '', oneWay = false;
 // 图集里的城市不在 data.places 里，选中时单独去服务端要一份
 let picked = null, query = '', results = null, searching = false;
 
@@ -99,16 +99,18 @@ export default {
         <div class="card-h"><h3>🎫 ${t('world.book')}</h3></div>
         <div class="card-b">
           ${!sel ? `<div class="empty" style="padding:36px 12px"><div class="e-ico">🗺️</div><p>${t('world.pick')}</p></div>`
-            : sel.isHome || sel.id === data.home.id ? `<div class="empty" style="padding:36px 12px"><div class="e-ico">🏠</div>
-                <h4>${sel.flag} ${esc(nm(sel))}</h4><p>${t('world.isHome')}</p></div>` : (() => {
+            : sel.isHere || sel.id === data.home.id ? `<div class="empty" style="padding:36px 12px"><div class="e-ico">${sel.isBirth ? '🏠' : '📍'}</div>
+                <h4>${sel.flag} ${esc(nm(sel))}</h4><p>${sel.isBirth ? t('world.isHome') : t('world.isHere')}</p></div>` : (() => {
             const c = data.cabins.find(x => x.id === cabin) || data.cabins[0];
             const ht = data.hotels.find(x => x.id === hotel) || data.hotels[1];
-            const n = Math.max(sel.minNights || 1, nights);
-            const air = Math.round(sel.flight * (c.mult || 0));
+            // 单程票不强制住够最少晚数——你是搬过去，不是去度假
+            const n = oneWay ? Math.max(0, nights) : Math.max(sel.minNights || 1, nights);
+            const fare = oneWay ? (sel.flightOneWay ?? Math.round(sel.flight * 0.62)) : sel.flight;
+            const air = Math.round(fare * (c.mult || 0));
             const stay = Math.round(sel.hotel * ht.mult * n);
             const daily = Math.round(sel.spend * n * (ht.mult > 1 ? 1.3 : 1));
             const total = air + stay + daily;
-            const hours = Math.round(sel.hours * 2 + n * 24);
+            const hours = Math.round(sel.hours * (oneWay ? 1 : 2) + n * 24);
             const relief = Math.min(100, Math.round(sel.relief * n * c.relief * ht.relief * 0.55));
             const prestige = Math.round(sel.prestige * c.prestige * ht.prestige);
             const afford = s.player.cash >= total && !away && !s.health.sick;
@@ -120,8 +122,18 @@ export default {
             </div>
             <p class="dim2" style="font-size:11.5px;line-height:1.6;margin-bottom:12px">${esc(nm({ zh: sel.descZh, en: sel.descEn }))}</p>
 
-            <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:5px">${t('world.nightsLabel')} · <b class="gold">${n}</b></div>
-            <input class="rng" id="w-nights" type="range" min="${sel.minNights || 1}" max="30" value="${n}">
+            <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:5px">${t('world.ticket')}</div>
+            <div class="segs" style="width:100%;display:flex;margin-bottom:9px">
+              <button class="seg ${!oneWay ? 'active' : ''}" data-ow="0" style="flex:1;font-size:11px">🔁 ${t('world.return')}
+                <span class="dim2">${money(Math.round(sel.flight * (c.mult || 0)))}</span></button>
+              <button class="seg ${oneWay ? 'active' : ''}" data-ow="1" style="flex:1;font-size:11px">➡️ ${t('world.oneWay')}
+                <span class="dim2">${money(Math.round((sel.flightOneWay ?? sel.flight * 0.62) * (c.mult || 0)))}</span></button>
+            </div>
+            <div class="dim2" style="font-size:10.5px;margin:-4px 0 10px;line-height:1.55">
+              ${oneWay ? t('world.oneWayHint', { place: esc(nm(sel)) }) : t('world.returnHint', { place: esc(nm({ zh: sel.fromZh || data.home.zh, en: sel.fromEn || data.home.en })) })}</div>
+
+            <div class="dim2" style="font-size:10.5px;font-weight:700;margin-bottom:5px">${oneWay ? t('world.nightsHotel') : t('world.nightsLabel')} · <b class="gold">${n}</b></div>
+            <input class="rng" id="w-nights" type="range" min="${oneWay ? 0 : (sel.minNights || 1)}" max="30" value="${n}">
 
             <div class="dim2" style="font-size:10.5px;font-weight:700;margin:8px 0 5px">${t('world.cabin')}</div>
             <div class="segs" style="width:100%;display:flex;flex-wrap:wrap">
@@ -134,10 +146,11 @@ export default {
             </div>
 
             <div class="summary" style="margin-top:12px">
-              <div><span>✈️ ${t('world.airfare')}（${esc(nm(c))}）</span><span class="mono">${moneyFull(air)}</span></div>
+              <div><span>✈️ ${oneWay ? t('world.airfareOne') : t('world.airfare')}（${esc(nm(c))}）</span><span class="mono">${moneyFull(air)}</span></div>
               <div><span>🏨 ${t('world.hotelCost')}（${n} ${t('world.night')}）</span><span class="mono">${moneyFull(stay)}</span></div>
               <div><span>🍽️ ${t('world.dailySpend')}</span><span class="mono">${moneyFull(daily)}</span></div>
               <div><span>⏱️ ${t('world.duration')}</span><span class="mono">${(hours / 24).toFixed(1)} ${t('common.day')}</span></div>
+              ${oneWay ? `<div><span>📍 ${t('world.newBase')}</span><span class="mono gold">${sel.flag} ${esc(nm(sel))}</span></div>` : ''}
               <div><span>😌 ${t('world.relief')}</span><span class="mono up">-${relief}</span></div>
               <div><span>⭐ ${t('common.prestige')}</span><span class="mono gold">+${prestige}</span></div>
               <div class="tot"><span>${t('common.total')}</span><span class="mono ${total > s.player.cash ? 'down' : ''}">${moneyFull(total)}</span></div>
@@ -242,6 +255,7 @@ export default {
     }
     const cl = $('#w-clear');
     if (cl) cl.onclick = (e) => { e.preventDefault(); query = ''; results = null; keepScroll(() => this.render(root, app)); };
+    $$('[data-ow]').forEach(b => b.onclick = () => { oneWay = b.dataset.ow === '1'; keepScroll(() => this.render(root, app)); });
     $$('[data-cab]').forEach(b => b.onclick = () => { cabin = b.dataset.cab; keepScroll(() => this.render(root, app)); });
     $$('[data-hot]').forEach(b => b.onclick = () => { hotel = b.dataset.hot; keepScroll(() => this.render(root, app)); });
     const rg = $('#w-nights');
@@ -250,7 +264,7 @@ export default {
     if (go) go.onclick = async () => {
       go.disabled = true;
       try {
-        const r = await app.guard(() => api.travel(selected, nights, cabin, hotel));
+        const r = await app.guard(() => api.travel(selected, nights, cabin, hotel, oneWay));
         toast(t('world.departed', { place: nm(sel), d: (r.hours / 24).toFixed(1) }), 'ok');
         data = null;
         await app.refresh(true);
