@@ -15,6 +15,12 @@ import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, rout
          destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES, ATLAS } from './catalog-world.js';
 
 const { RATES, L } = S;
+// 这个人名下每一处归属对应的总部等级：0 是个人名下的店，其余是各家公司
+function hqMap(uid, p) {
+  const out = { 0: p?.hq || 'none' };
+  for (const c of db.prepare('SELECT id,hq FROM companies WHERE user_id=?').all(uid)) out[c.id] = c.hq || 'none';
+  return out;
+}
 class Err extends Error { constructor(m, code = 400) { super(m); this.code = code; } }
 const num = (v, min = -Infinity, max = Infinity) => {
   const n = Number(v);
@@ -220,6 +226,31 @@ export function getState(uid, active = true) {
       // 店铺实际吃到的是「老板加成」：声望一份，脑子一份
       ownerBonus: S.ownerBonus(uid, p), knowBonus: S.attrEffects(p).biz - 1,
     },
+    // ── 总部：个人名下和每一家公司各有一个，覆盖不到的店还得你自己盯 ──
+    hq: (() => {
+      const all = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
+      const cos = db.prepare('SELECT id,name,name_en,hq,cash FROM companies WHERE user_id=?').all(uid);
+      const row = (key, name, nameEn, id, purse) => {
+        const list = all.filter(b => (b.company_id || 0) === key);
+        const n = list.length, t = S.HQ[id] || S.HQ.none;
+        const bill = S.hqBill(t.id, list);
+        return { key, name, nameEn, tier: t.id, shops: n, purse,
+          covers: t.covers === Infinity ? null : t.covers,
+          uncovered: Math.max(0, n - bill.covered),
+          monthly: bill.monthly, daily: bill.monthly / 30,
+          // 每一级各要多少钱、各能盖住几家——工资跟着它管的那批店走
+          options: S.HQ_TIERS.map(x => { const bx = S.hqBill(x.id, list);
+            return { id: x.id, zh: x.zh, en: x.en, emoji: x.emoji,
+              descZh: x.descZh, descEn: x.descEn,
+              covers: x.covers === Infinity ? null : x.covers,
+              monthly: bx.monthly, covered: bx.covered }; }) };
+      };
+      const p0 = P(uid);
+      return { tiers: S.HQ_TIERS,
+        rows: [row(0, '个人名下', 'Held personally', p0.hq || 'none', p0.cash),
+               ...cos.map(c => row(c.id, c.name, c.name_en || c.name, c.hq || 'none', c.cash))]
+                 .filter(r => r.shops > 0 || r.tier !== 'none') };
+    })(),
     // ── 属性：三条自己养出来的能力，以及它们此刻各自在给你什么 ──
     attrs: (() => {
       const e = S.attrEffects(p);
@@ -238,7 +269,8 @@ export function getState(uid, active = true) {
       const otUsed = p.ot_day === day ? p.ot_hours : 0;
       const busy = p.ot_pending > 0 && hour < p.ot_until;
       const tb = S.timeBudget(db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid),
-        { mealHours: S.mealOf(p).hours || 0, commuteHours: S.commuteOf(p, carOwned, bikeOwned).hours || 0 });
+        { hqOf: hqMap(uid, p), mealHours: S.mealOf(p).hours || 0,
+          commuteHours: S.commuteOf(p, carOwned, bikeOwned).hours || 0 });
       let block = null;
       if (!job) block = 'nojob';
       else if (!tb.canJob) block = 'owner';
@@ -264,6 +296,7 @@ export function getState(uid, active = true) {
         workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
         otUsed, otMax: tb.otMax, otMult: S.OVERTIME_MULT,
         mgmtHours: tb.mgmt, freeHours: tb.free, shiftHours: tb.shift, canJob: tb.canJob,
+        mgmtRaw: tb.mgmtRaw, mgmtSaved: tb.saved, hqCovered: tb.covered, shopCount: tb.shops,
         choreHours: tb.chores, mealHours: tb.meal, commuteHours: tb.commute,
         streak: p.work_streak, restQuality: S.restQuality(p.work_streak),
         streakStress: S.streakStress(p.work_streak) * 24,
@@ -901,7 +934,8 @@ export function hustle(uid) {
 
   const bizAll = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
   const tb = S.timeBudget(bizAll,
-    { mealHours: S.mealOf(p).hours || 0, commuteHours: S.commuteOf(p, S.hasCar(uid)).hours || 0 });
+    { hqOf: hqMap(uid, p), mealHours: S.mealOf(p).hours || 0,
+      commuteHours: S.commuteOf(p, S.hasCar(uid)).hours || 0 });
   const used = p.ot_day === day ? p.ot_hours : 0;
   if (tb.otMax <= 0)
     throw new Err(`店铺管理已经占满你的时间（每天 ${tb.mgmt.toFixed(1)} 小时），没空加班了 / Managing your businesses takes ${tb.mgmt.toFixed(1)}h a day — no time left`);
@@ -1354,6 +1388,39 @@ export function setAutoDividend(uid, { pct, coId } = {}) {
   const v = Math.max(0, Math.min(AUTO_DIV_MAX, Number(pct) || 0));
   db.prepare('UPDATE companies SET auto_div=? WHERE id=?').run(v, co.id);
   return { ok: true, autoDiv: v, ...coState(uid, co.id) };
+}
+
+// 设总部：coId 传 0 或不传，管的是你个人名下那些店；传公司 id，管那家公司的店。
+// 工资从谁的账上出，看店归谁——总部服务谁，谁付账。
+export function setHQ(uid, { tier, coId } = {}) {
+  S.advancePlayer(uid);
+  const t = S.HQ[tier];
+  if (!t) throw new Err('没有这一级总部 / No such head office tier');
+  const id = Number(coId) || 0;
+  const p = P(uid);
+  if (id) {
+    const co = CO.companyOf(uid, id);
+    if (!co) throw new Err('没有这家公司 / No such company');
+    const list = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, co.id);
+    const n = list.length, monthly = S.hqBill(t.id, list).monthly;
+    // 一个月的工资都发不出来，就别谈搭总部了
+    if (t.id !== 'none' && co.cash < monthly)
+      throw new Err(`「${co.name}」账上不够发一个月的工资：需要 ${S.fmt(monthly)}，现有 ${S.fmt(co.cash)}`
+        + ` / ${co.name} cannot cover one month at ${S.fmt(monthly)}`);
+    db.prepare('UPDATE companies SET hq=? WHERE id=?').run(t.id, co.id);
+    ledger(uid, 'company', 0, L('led.hqSet', { name: co.name, tier: { zh: t.zh, en: t.en },
+      n, monthly }), t.emoji === '—' ? '🏢' : t.emoji);
+    return { ok: true, hq: t.id, ...coState(uid, co.id) };
+  }
+  const own = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=0').all(uid);
+  const n = own.length, monthly = S.hqBill(t.id, own).monthly;
+  if (t.id !== 'none' && p.cash < monthly)
+    throw new Err(`发不出一个月的工资：需要 ${S.fmt(monthly)}，你有 ${S.fmt(p.cash)}`
+      + ` / One month costs ${S.fmt(monthly)}, you have ${S.fmt(p.cash)}`);
+  db.prepare('UPDATE players SET hq=? WHERE user_id=?').run(t.id, uid);
+  ledger(uid, 'company', 0, L('led.hqSetOwn', { tier: { zh: t.zh, en: t.en }, n, monthly }),
+    t.emoji === '—' ? '🏢' : t.emoji);
+  return { ok: true, hq: t.id };
 }
 
 // 给公司注资：把个人的钱投进去（不稀释，你本来就是股东）

@@ -181,6 +181,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/company/rename':   return send(res, 200, API.renameCompany(uid, body));
       case '/api/company/split':    return send(res, 200, API.splitCompany(uid, body));
       case '/api/company/autodiv':  return send(res, 200, API.setAutoDividend(uid, body));
+      case '/api/hq':               return send(res, 200, API.setHQ(uid, body));
       case '/api/company/ipo':      return send(res, 200, API.listCompany(uid, body));
       case '/api/biz/action':  return send(res, 200, API.bizAction(uid, body));
       case '/api/bank':        return send(res, 200, API.bank(uid, body));

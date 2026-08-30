@@ -8,6 +8,7 @@ import { LEISURE, LEISURE_CATS, REPEAT_DECAY } from './catalog-leisure.js';
 import { BIZ_TYPES, CITIES, ITEM_TYPES, ITEM_CATS, REGIONS, LIFE_EVENTS, JOBS, JOB_TRACKS, RIVALS,
          ILLNESSES, TRIPS, FLIGHT_CLASSES, isOpenAt, openHours,
          COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB,
+         HQ_TIERS, HQ, hqMonthly,
          BIZ_CATS, seasonMult as seasonMultOf,
          MEALS, HOMES, COMMUTES, LOTTERIES } from './catalog-content.js';
 
@@ -295,6 +296,7 @@ export const PRICE_TIERS = [
   { v: 2, zh:'奢华定位', en:'Luxury Harvest', descZh:'客单价 +44%，客流大幅萎缩，长期会流失客户', descEn:'Ticket +44%, traffic collapses, customers churn over time' },
 ];
 export { COGS_RATE, REV_PER_WAGE, MGMT_WITH_MANAGER, AWAKE_HOURS, MGMT_MAX_WITH_JOB, MEALS, HOMES, COMMUTES, LOTTERIES, BIZ_CATS };
+export { HQ_TIERS, HQ, hqMonthly };
 export const MEAL = Object.fromEntries(MEALS.map(m => [m.id, m]));
 export const HOME = Object.fromEntries(HOMES.map(h => [h.id, h]));
 export const COMMUTE = Object.fromEntries(COMMUTES.map(c => [c.id, c]));
@@ -444,10 +446,62 @@ export function bizRates(b, pb = 0, prosp = 1, macro = 1, month = 0) {
            cycMult, seasonMult, macro, month };
 }
 
+// 一家店每天要占掉老板多少小时。店长把它压到 0.15，但压不到 0——
+// 店长管的是这家店，不是你的时间表。
+export function mgmtOf(b) {
+  return b.manager ? MGMT_WITH_MANAGER : (BIZ[b.type_id]?.mgmt || 0);
+}
+// 哪些店已经被总部接管了。按归属分组（个人的归 0，公司的归各自的 id），
+// 每个总部先盖最费神的那几家——同样一份工资，当然先解放你花时间最多的地方。
+export function hqCoverage(biz, hqOf = {}) {
+  const covered = new Set();
+  const groups = new Map();
+  for (const b of biz) {
+    const key = b.company_id || 0;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(b);
+  }
+  for (const [key, list] of groups) {
+    const tier = HQ[hqOf[key] || 'none'] || HQ.none;
+    if (!(tier.covers > 0)) continue;
+    const sorted = list.slice().sort((x, y) => mgmtOf(y) - mgmtOf(x));
+    for (const b of sorted.slice(0, tier.covers)) covered.add(b.id);
+  }
+  return covered;
+}
+// 一家店店长的月薪——总部的工资是按它管的这批人往上叠的
+export function managerPayOf(b) {
+  const def = BIZ[b.type_id];
+  return def ? def.managerSalary * bizCity(b).wageMult : 0;
+}
+// 这一级总部管这一批店：管得住几家、工资单多少。
+// 覆盖顺序和 hqCoverage 一致——先接最费神的那几家。
+export function hqBill(tierId, shops) {
+  const t = HQ[tierId] || HQ.none;
+  if (!t.covers) return { monthly: 0, covered: 0, payroll: 0, tier: t };
+  const sorted = shops.slice().sort((a, b) => mgmtOf(b) - mgmtOf(a));
+  const take = t.covers === Infinity ? sorted : sorted.slice(0, t.covers);
+  const payroll = take.reduce((a, b) => a + managerPayOf(b), 0);
+  return { monthly: hqMonthly(t.id, payroll), covered: take.length, payroll, tier: t };
+}
+// 每个总部每小时烧多少钱，按归属分开——公司的店走公司账，个人的店走你自己的
+export function hqCostPerHour(biz, hqOf = {}) {
+  const groups = new Map();
+  for (const b of biz) { const k = b.company_id || 0; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(b); }
+  const out = new Map();
+  for (const [k, list] of groups) {
+    const id = hqOf[k] || 'none';
+    if (id === 'none' || !HQ[id]) continue;
+    out.set(k, hqBill(id, list).monthly / (30 * 24));
+  }
+  return out;
+}
+
 // 你的时间：清醒 16 小时，先扣掉店铺管理、做饭和通勤，剩下的才能拿去打工
 export function timeBudget(biz, opts = {}) {
   let mgmt = 0;
-  for (const b of biz) mgmt += b.manager ? MGMT_WITH_MANAGER : (BIZ[b.type_id]?.mgmt || 0);
+  const covered = opts.covered || hqCoverage(biz, opts.hqOf || {});
+  for (const b of biz) if (!covered.has(b.id)) mgmt += mgmtOf(b);
   const meal = Math.max(0, opts.mealHours || 0);        // 自己做饭要占掉的时间
   const commute = Math.max(0, opts.commuteHours || 0);  // 路上耗掉的时间
   const chores = meal + commute;
@@ -455,7 +509,11 @@ export function timeBudget(biz, opts = {}) {
   const canJob = mgmt <= MGMT_MAX_WITH_JOB;
   const shift = canJob ? Math.min(WORK_HOURS_PER_DAY, free) : 0;
   const otMax = Math.max(0, Math.min(OVERTIME_MAX_HOURS, Math.floor(free - shift)));
-  return { mgmt, meal, commute, chores, free, canJob, shift, otMax };
+  // 没有总部的时候，这些店本来要占你多少——用来说明总部替你省下了什么
+  let mgmtRaw = 0;
+  for (const b of biz) mgmtRaw += mgmtOf(b);
+  return { mgmt, mgmtRaw, saved: mgmtRaw - mgmt, covered: covered.size, shops: biz.length,
+           meal, commute, chores, free, canJob, shift, otMax };
 }
 
 // 旺季：冰淇淋的七月，滑雪场的一月，殡仪馆没有旺季
@@ -612,11 +670,17 @@ export function advancePlayer(userId) {
   let meal = mealOf(p);
   const commute = commuteOf(p, carOwned, bikeOwned);
   // 做饭和通勤都是实打实的时间，先从一天里扣掉，剩下的才轮得到加班
-  const tb = timeBudget(biz, { mealHours: meal.hours || 0, commuteHours: commute.hours || 0 });
+  const hqOf = { 0: p.hq || 'none' };
+  for (const c of db.prepare('SELECT id,hq FROM companies WHERE user_id=?').all(userId)) hqOf[c.id] = c.hq || 'none';
+  const hqCovered = hqCoverage(biz, hqOf);
+  const tb = timeBudget(biz, { covered: hqCovered, mealHours: meal.hours || 0, commuteHours: commute.hours || 0 });
+  const hqCost = hqCostPerHour(biz, hqOf);        // 每小时的总部开销，按归属分开
   const working = !!job && (!job.car || carOwned) && tb.canJob;
   const sRate = savingsRate(), oRate = overdraftRate();
   let dayRev = 0, dayCost = 0, dayInterest = 0, dayOverdraft = 0, dayJob = 0, dayFood = 0, dayFare = 0;
-  const bizCommute = biz.some(b => !b.manager);          // 亲自看店，也得每天出门
+  // 亲自看店，也得每天出门。有店长的不用，被总部接管的更不用——
+  // 总部存在的意义就是没有一件事非得你到场
+  const bizCommute = biz.some(b => !b.manager && !hqCovered.has(b.id));
   // 装进公司的店铺，利润归各自公司的账上，不再直接进你口袋
   const cos = db.prepare('SELECT * FROM companies WHERE user_id=? ORDER BY id').all(userId);
   const coById = new Map(cos.map(c => [c.id, c]));
@@ -782,6 +846,17 @@ export function advancePlayer(userId) {
         else if (p.cash > rc * 3) { p.cash -= rc; b.condition = 1; }
       }
     }
+    // 总部的工资单：管理层不看营业时间，24 小时都在花钱。
+    // 公司的店由公司出，个人名下的店由你出——总部服务谁，谁付账。
+    for (const [key, perHour] of hqCost) {
+      if (!(perHour > 0)) continue;
+      if (key === 0) { payFrom(p, perHour); dayCost += perHour; p.month_profit -= perHour; }
+      else {
+        const owner = coById.get(key);
+        if (owner) { owner.cash -= perHour; owner.lifetime_profit -= perHour; dayCost += perHour; }
+      }
+    }
+
     // 自动分红：每天把公司账上现金的一部分打给股东。
     // 公司赚的钱是公司的，不是你的——这是把它变成你的钱的常规办法，
     // 只是不用每天手动点一次。按持股比例分，股息税照扣。

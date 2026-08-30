@@ -24,6 +24,47 @@ export const managerSalary = cost => staffWage(cost) * 360;
 export const AWAKE_HOURS = 16;          // 07:00–23:00
 export const MGMT_MAX_WITH_JOB = 8;     // 管理时间超过这个数就没法再打工了
 
+// ── 总部：把管理这件事本身外包出去 ──────────────────────────
+// 店长解决的是一家店，不是一个人的时间。43 家店每家 0.15 小时，还是 6.5 个
+// 小时——一天就没了，再开十家你连班都上不了。现实里没有人这么撑着：到了
+// 一定规模就该搭管理层，区域经理管片区，运营总监管区域经理，再往上是总部。
+//
+// 每一级覆盖一定数量的店，被覆盖的店<b>管理时间归 0</b>；超出覆盖数的还得
+// 自己盯。工资从谁的账上出，看店归谁：公司的店走公司账，个人的店走你自己的。
+// covers 覆盖店数 · monthly 月薪总额 · per 每家店再摊多少（只有不限量那一级有）
+// 每一级覆盖一定数量的店，被覆盖的店<b>管理时间归 0</b>；超出覆盖数的还得
+// 自己盯。工资从谁的账上出，看店归谁：公司的店走公司账，个人的店走你自己的。
+//
+// 工资不是一个死数：它跟着这个总部实际管的摊子走。现实里区域经理拿的就是
+// 店长的一点几倍，往上每一层按同样的比例叠——管 25 家便利店和管 25 家酒店，
+// 不该是一个价。所以每一级给的是「倍数 rate」和「起薪 floor」，最后按它管的
+// 那批店的店长工资合计来算。
+// covers 覆盖店数 · rate 相对店长工资合计的倍数 · floor 这一级的起薪
+export const HQ_TIERS = [
+  { id:'none',  zh:'没有总部',     en:'No head office',      emoji:'—',  covers:0,        rate:0,    floor:0,
+    descZh:'每家店都要你自己盯着，哪怕它有店长。',
+    descEn:'Every shop still wants a piece of your day, manager or not.' },
+  { id:'area',  zh:'区域经理',     en:'Area manager',        emoji:'🧑‍💼', covers:8,      rate:0.55, floor:9_000,
+    descZh:'一个人管一片。八家店以内，他替你走完所有的巡店和排班。',
+    descEn:'One person, one patch. Up to eight shops, they do the walking and the rotas.' },
+  { id:'ops',   zh:'运营总监',     en:'Operations director', emoji:'👔', covers:25,       rate:0.80, floor:30_000,
+    descZh:'底下带着几个区域经理。你从此只看报表，不看排班表。',
+    descEn:'Area managers report to them. From here you read numbers, not rotas.' },
+  { id:'hq',    zh:'总部管理团队', en:'Head office',         emoji:'🏢', covers:80,       rate:1.10, floor:110_000,
+    descZh:'运营、人事、采购、财务各一条线。这已经是一家真正的连锁总部了。',
+    descEn:'Operations, people, buying and finance, each with its own line. This is a real chain now.' },
+  { id:'group', zh:'集团总部',     en:'Group head office',   emoji:'🏛️', covers:Infinity, rate:1.50, floor:260_000,
+    descZh:'不限店数。开销跟着摊子一起长——它管多大的盘子，就是多大的开销。',
+    descEn:'No cap on shops. The bill grows with what it runs, because that is what a head office is.' },
+];
+export const HQ = Object.fromEntries(HQ_TIERS.map(h => [h.id, h]));
+// 这一级总部管着一批店长工资合计为 payroll 的店，一个月要发多少钱
+export function hqMonthly(tier, payroll) {
+  const t = HQ[tier?.id || tier] || HQ.none;
+  if (!t.covers) return 0;
+  return Math.round(Math.max(t.floor, t.rate * Math.max(0, payroll)));
+}
+
 export function openHours(h) { return h[1] > h[0] ? h[1] - h[0] : 24 - h[0] + h[1]; }
 export function isOpenAt(h, hod) {
   return h[1] > h[0] ? (hod >= h[0] && hod < h[1]) : (hod >= h[0] || hod < h[1]);
