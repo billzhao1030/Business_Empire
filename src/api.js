@@ -1642,7 +1642,17 @@ export function marketOverview(uid) {
     macro: M.regimeState(),
     news: M.latestNews(20),
     // 市场传闻：只说迹象，不说方向。看得懂就看得懂。
-    rumors: db.prepare("SELECT hour,target,headline FROM news WHERE scope='rumor' ORDER BY id DESC LIMIT 12").all(),
+    // target 现在是股票代码；老存档里还留着一批指向板块的旧记录，
+    // 这里把它们分辨出来，前端才知道该跳到哪支股票、还是退回按板块筛。
+    rumors: (() => {
+      const rows = db.prepare("SELECT hour,target,headline FROM news WHERE scope='rumor' ORDER BY id DESC LIMIT 12").all();
+      const bySym = new Map(M.allAssets().map(a => [a.symbol, a]));
+      return rows.map(r => {
+        const a = bySym.get(r.target);
+        return { ...r, symbol: a ? a.symbol : null, zh: a?.zh || null, en: a?.name || null,
+                 sector: a ? a.sector : r.target, isStock: !!a };
+      });
+    })(),
   };
 }
 
