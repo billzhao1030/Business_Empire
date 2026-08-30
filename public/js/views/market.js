@@ -122,11 +122,14 @@ export default {
       <div class="card"><div class="card-h"><h3>🕯️ ${t('mkt.rumors')}</h3>
         <span class="sub">${t('mkt.rumorsSub')}</span></div>
         <div class="card-b" style="padding:6px 18px;max-height:280px;overflow:auto">
-          ${(d.rumors || []).length ? d.rumors.map(n => `<div class="news-item rumor clickable" data-rsym="${esc(n.target)}" style="cursor:pointer">
+          ${(d.rumors || []).length ? d.rumors.map(n => `<div class="news-item rumor clickable"
+            ${n.isStock ? `data-rsym="${esc(n.symbol)}"` : `data-rsec="${esc(n.sector)}"`} style="cursor:pointer">
             <span class="news-time">${gShort(n.hour).split(' ')[0]}</span>
             <i class="news-dot" style="background:var(--purple)"></i>
             <span style="flex:1">${newsLine(n.headline)}
-              <b class="sym" style="margin-left:5px">${esc(n.target)}</b></span>
+              ${n.isStock ? `<b class="sym" style="margin-left:5px">${esc(n.symbol)}</b>
+                <span class="dim2" style="font-size:10.5px">${esc(nm({ zh: n.zh, en: n.en }))} →</span>`
+                : `<span class="tag" style="margin-left:4px">${esc(n.sector)}</span>`}</span>
           </div>`).join('')
           : `<div class="dim2" style="font-size:11.5px;padding:14px 0">${t('mkt.rumorsNone')}</div>`}
         </div>
