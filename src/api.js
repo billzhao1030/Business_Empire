@@ -155,6 +155,9 @@ export function getState(uid, active = true) {
       region: region ? NM(region) : null, regionFlag: region?.flag, indexSym: d?.index || null,
       value, paid: it.paid, gain: value - it.paid, rented: !!it.rented, canRent: !!d?.rent,
       canLive: d?.cat === 'estate', isHome: homeItem?.id === it.id, live: d?.live || null,
+      wearable: !!d?.wearable, slot: d?.slot || null, style: d?.style || null,
+      worn: d?.wearable ? p[S.WEAR_COLS[d.slot]] === it.id : false,
+      shape: d?.shape, col: d?.col, col2: d?.col2,
       prestige: d?.prestige, upkeep: value * (d?.upkeep || 0), rent: it.rented ? value * (d?.rent || 0) : value * (d?.rent || 0),
       resale: value * (['estate', 'art', 'watch'].includes(d?.cat) ? 0.95 : 0.85),
       mortgage: loan ? { id: loan.id, balance: loan.balance, payment: loan.payment, rate: loan.rate, monthsLeft: loan.months_left } : null };
@@ -177,12 +180,12 @@ export function getState(uid, active = true) {
     progress: Math.min(1, (hour - d.start_hour) / Math.max(1, d.mature_hour - d.start_hour)),
   }));
 
-  const carOwned = S.hasCar(uid);
+  const carOwned = S.hasCar(uid), bikeOwned = S.hasBike(uid);
   const job = S.jobOf(p);
   const nwTmp = nw.total;
   const jobs = JOBS.map(j => ({ id: j.id, zh: j.zh, en: j.en, emoji: j.emoji, wage: j.wage, exp: j.exp,
     car: !!j.car, descZh: j.descZh, descEn: j.descEn,
-    unlocked: p.job_exp >= j.exp, blocked: !!j.car && !carOwned, current: p.job_id === j.id }));
+    unlocked: p.job_exp >= j.exp, blocked: !!j.car && !carOwned, current: p.job_id === j.id, track: j.track }));
   const prestige = S.prestigeOf(uid) + p.prestige;
   const personalDebt = loans.filter(l => l.kind !== 'mortgage').reduce((s, l) => s + l.balance, 0);
   const creditLimit = Math.max(0, Math.max(100_000, nw.total * 0.6 + Math.max(0, nw.bizNetPerHour) * M.YEAR_HOURS * 0.5) - personalDebt);
@@ -210,7 +213,7 @@ export function getState(uid, active = true) {
       const otUsed = p.ot_day === day ? p.ot_hours : 0;
       const busy = p.ot_pending > 0 && hour < p.ot_until;
       const tb = S.timeBudget(db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid),
-        { mealHours: S.mealOf(p).hours || 0, commuteHours: S.commuteOf(p, carOwned).hours || 0 });
+        { mealHours: S.mealOf(p).hours || 0, commuteHours: S.commuteOf(p, carOwned, bikeOwned).hours || 0 });
       let block = null;
       if (!job) block = 'nojob';
       else if (!tb.canJob) block = 'owner';
@@ -227,7 +230,7 @@ export function getState(uid, active = true) {
       return {
         current: job ? { id: job.id, zh: job.zh, en: job.en, emoji: job.emoji, wage: job.wage } : null,
         exp: p.job_exp, hours: p.job_hours, income: p.job_income,
-        working: !!job && (!job.car || carOwned), carOwned, list: jobs,
+        working: !!job && (!job.car || carOwned), carOwned, list: jobs, tracks: S.JOB_TRACKS,
         stamina: p.stamina, staminaMax: S.STAMINA_MAX, efficiency: S.efficiency(p.stamina),
         phase, hod, wakeHour: S.WAKE_HOUR, sleepHour: S.SLEEP_HOUR,
         workStart: S.WORK_START, workEnd: S.WORK_END, workHours: S.WORK_HOURS_PER_DAY,
@@ -274,12 +277,12 @@ export function getState(uid, active = true) {
     living: (() => {
       const estates = rawItems.filter(it => S.ITEM[it.type_id]?.cat === 'estate');
       const meal = S.mealOf(p), home = S.homeOf(p, homeItem);
-      const commute = S.commuteOf(p, carOwned);
+      const commute = S.commuteOf(p, carOwned, bikeOwned);
       const dailyWage = (job ? job.wage : 0) * 8;
       // 通勤费只在出门的日子花：一周按上五天算
       const commuteDays = 22;
       return {
-        meal: { ...meal }, home: { ...home }, commute: { ...commute }, carOwned,
+        meal: { ...meal }, home: { ...home }, commute: { ...commute }, carOwned, bikeOwned,
         ownsEstate: !!homeItem, estateCount: estates.length,
         rentedOut: estates.filter(it => it.rented).length,
         // 名下每一套房：住着的、空着的、租出去的
@@ -302,10 +305,37 @@ export function getState(uid, active = true) {
         lottoSpent: p.lotto_spent, lottoWon: p.lotto_won, lottoTickets: p.lotto_tickets,
       };
     })(),
+    // ── 人物：性别、长相、身上这一套 ──
+    look: (() => {
+      const lk = S.lookOf(p, rawItems);
+      const slots = {};
+      for (const [k, v] of Object.entries(lk.slots))
+        slots[k] = v ? { itemId: v.itemId, id: v.id, zh: v.name, en: v.en, emoji: v.emoji,
+                         style: v.style, shape: v.shape, col: v.col, col2: v.col2, prestige: v.prestige } : null;
+      return { gender: p.gender || 'x', skin: p.skin | 0, hair: p.hair | 0, haircol: p.haircol | 0,
+        slots, score: lk.score, style: lk.style, coherence: lk.coherence,
+        prestige: lk.prestige, worn: lk.worn, filled: lk.filled,
+        genders: S.GENDERS, wearSlots: S.WEAR_SLOTS, styles: S.STYLES,
+        wardrobe: rawItems.filter(it => S.ITEM[it.type_id]?.wearable).length };
+    })(),
+    // ── 消遣：做过什么、什么时候能再做 ──
+    leisure: (() => {
+      const done = Object.fromEntries(db.prepare('SELECT act_id,last_hour,times,spent FROM leisure WHERE user_id=?')
+        .all(uid).map(r => [r.act_id, r]));
+      return { cats: S.LEISURE_CATS,
+        acts: S.LEISURE.map(a => { const r = done[a.id]; const since = r ? hour - r.last_hour : 1e9;
+          const decay = Number.isFinite(S.REPEAT_DECAY) ? S.REPEAT_DECAY : 0.55;
+  const fresh = since >= a.cool ? 1 : decay + (1 - decay) * (since / a.cool);
+          return { ...a, times: r?.times || 0, spent: r?.spent || 0, fresh,
+                   readyIn: Math.max(0, a.cool - since) }; }),
+        spent: p.leisure_spent || 0, count: p.leisure_n || 0,
+        busyUntil: p.busy_until || 0, busy: (p.busy_until || 0) > hour };
+    })(),
     macro: M.regimeState(),
     prosperity: M.cityProsperity(),
     businesses, companies: myCompanies, holdings, items, loans, deposits,
-    bank: { savingsRate: S.savingsRate(), overdraftRate: S.overdraftRate(), fixedRates: S.fixedRates(),
+    bank: { sweepKeep: p.sweep_keep || 0,
+      savingsRate: S.savingsRate(), overdraftRate: S.overdraftRate(), fixedRates: S.fixedRates(),
       policyRate: M.policyRate(),
       loanRate: S.loanRate(p.credit_score), mortgageRate: S.mortgageRate(p.credit_score),
       creditLimit, totalDebt: nw.debt, mortgageDebt: nw.mortgage },
@@ -736,6 +766,9 @@ export function itemAction(uid, { id, action }) {
     }
     const net = gross - payoff;
     if (net >= 0) p.cash += net; else S.payFrom(p, -net);
+    // 身上穿着的卖掉了，格子也要跟着空出来
+    for (const col of Object.values(S.WEAR_COLS))
+      if (p[col] === it.id) db.prepare(`UPDATE players SET ${col}=0 WHERE user_id=?`).run(uid);
     db.prepare('DELETE FROM items WHERE id=?').run(it.id);
     savePlayer(p);
     ledger(uid, 'item', net, L('led.itemSell', { item: NM(def), value: gross, delta: value - it.paid, payoff }), '🤝');
@@ -749,6 +782,13 @@ export function itemAction(uid, { id, action }) {
     if (on && p.home_item_id === it.id) db.prepare('UPDATE players SET home_item_id=0 WHERE user_id=?').run(uid);
     ledger(uid, 'item', 0, L('led.itemRent', { item: NM(def), on, rent: value * def.rent }), '🔑');
     return { ok: true, rented: !!on };
+  }
+  if (action === 'wear') {
+    if (!def.wearable) throw new Err('这个穿不上 / Not something you can wear');
+    const col = S.WEAR_COLS[def.slot];
+    const on = p[col] === it.id ? 0 : it.id;              // 再点一次就脱下来
+    db.prepare(`UPDATE players SET ${col}=? WHERE user_id=?`).run(on, uid);
+    return { ok: true, worn: !!on, slot: def.slot };
   }
   if (action === 'live') {
     if (def.cat !== 'estate') throw new Err('这不是能住的地方 / You cannot live there');
@@ -820,6 +860,69 @@ export function hustle(uid) {
 }
 
 // ── 生活方式：吃什么、住哪儿 ────────────────────────────────
+// 自动转存：现金超过这个数就自动进活期
+export function setSweep(uid, { keep } = {}) {
+  S.advancePlayer(uid);
+  const v = Math.max(0, Math.min(1e12, Number(keep) || 0));
+  db.prepare('UPDATE players SET sweep_keep=? WHERE user_id=?').run(v, uid);
+  return { ok: true, keep: v };
+}
+
+// ── 人物：性别与长相 ────────────────────────────────────────
+export function setLook(uid, { gender, skin, hair, haircol } = {}) {
+  S.advancePlayer(uid);
+  const p = P(uid);
+  if (gender != null) {
+    if (!S.GENDERS.some(g => g.id === gender)) throw new Err('性别无效 / Invalid');
+    db.prepare('UPDATE players SET gender=? WHERE user_id=?').run(gender, uid);
+  }
+  const set = (k, v, max) => { if (v != null) db.prepare(`UPDATE players SET ${k}=? WHERE user_id=?`)
+    .run(Math.max(0, Math.min(max, v | 0)), uid); };
+  set('skin', skin, 5); set('hair', hair, 7); set('haircol', haircol, 7);
+  return { ok: true };
+}
+
+// ── 消遣：花钱花时间，把压力压下去 ──────────────────────────
+export function doLeisure(uid, { actId } = {}) {
+  S.advancePlayer(uid);
+  const a = S.ACT[actId];
+  if (!a) throw new Err('没有这个活动 / No such activity');
+  const p = P(uid), hour = curHour();
+  if (p.sick_until > hour) throw new Err('生着病，先把身体养好 / Not while you are ill');
+  if (p.trip_until > hour) throw new Err('你正在外地 / You are away');
+  if (p.cash < a.cost) throw new Err(`现金不足，需要 ${S.fmt(a.cost)} / Need ${S.fmt(a.cost)}`);
+
+  // 同一项刚做过，这次的效果要打折——连着看三场电影，第三场就没意思了
+  const row = db.prepare('SELECT * FROM leisure WHERE user_id=? AND act_id=?').get(uid, actId);
+  const since = row ? hour - row.last_hour : 1e9;
+  const decay = Number.isFinite(S.REPEAT_DECAY) ? S.REPEAT_DECAY : 0.55;
+  const fresh = since >= a.cool ? 1 : decay + (1 - decay) * (since / a.cool);
+  const relief = a.relief * fresh;
+  const stamina = a.stamina * fresh;
+
+  const num = (v, d = 0) => (Number.isFinite(v) ? v : d);   // 算出 NaN 就不许落库
+  if (a.cost) p.cash -= a.cost;
+  p.stress = Math.max(0, num(p.stress) - num(relief));
+  p.stamina = Math.min(100, Math.max(0, num(p.stamina) + num(stamina)));
+  p.job_exp = num(p.job_exp) + Math.round(num((a.exp || 0) * fresh));
+  p.prestige = num(p.prestige) + num(a.prestige);
+  p.leisure_spent = (p.leisure_spent || 0) + a.cost;
+  p.leisure_n = (p.leisure_n || 0) + 1;
+  // 活动本身要占掉游戏时间：这段时间上不了班
+  const until = hour + a.hours;
+  db.prepare(`UPDATE players SET cash=?, stress=?, stamina=?, job_exp=?, prestige=?,
+              leisure_spent=?, leisure_n=?, busy_until=? WHERE user_id=?`)
+    .run(p.cash, p.stress, p.stamina, p.job_exp, p.prestige, p.leisure_spent, p.leisure_n,
+         Math.max(p.busy_until || 0, until), uid);
+  db.prepare(`INSERT INTO leisure(user_id,act_id,last_hour,times,spent) VALUES(?,?,?,1,?)
+              ON CONFLICT(user_id,act_id) DO UPDATE SET last_hour=excluded.last_hour,
+              times=times+1, spent=spent+excluded.spent`).run(uid, actId, hour, a.cost);
+  if (a.cost) ledger(uid, 'leisure', -a.cost, L('led.leisure', { act: { zh: a.name, en: a.en },
+    cost: a.cost, relief: Math.round(relief), hours: a.hours }), a.emoji);
+  return { ok: true, relief: Math.round(relief), stamina: Math.round(stamina),
+           exp: Math.round((a.exp || 0) * fresh), fresh, until, hours: a.hours };
+}
+
 export function setLiving(uid, { mealId, homeId, commuteId }) {
   S.advancePlayer(uid);
   if (mealId) {
@@ -1457,6 +1560,8 @@ export function scale() {
     biz: BIZ_TYPES.length,
     items: ITEM_TYPES.length,
     jobs: JOBS.length,
+    wardrobe: S.WEARABLES.length,
+    leisure: S.LEISURE.length,
     destinations: DESTINATIONS.length,
   };
 }
@@ -1467,7 +1572,8 @@ export function catalog() {
   return {
     biz: BIZ_TYPES, bizCats: S.BIZ_CATS, cities: CITIES, regions: REGIONS, cogsRate: S.COGS_RATE,
     items: ITEM_TYPES.map(i => ({ ...i, listPrice: i.index ? i.price * (idx[i.index] || 100) / 100 : i.price })),
-    itemCats: ITEM_CATS, priceTiers: S.PRICE_TIERS, titles: S.TITLES, jobs: JOBS,
+    itemCats: ITEM_CATS, priceTiers: S.PRICE_TIERS, titles: S.TITLES, jobs: JOBS, jobTracks: S.JOB_TRACKS,
+    wearSlots: S.WEAR_SLOTS, styles: S.STYLES, genders: S.GENDERS, leisureCats: S.LEISURE_CATS,
     regimes: M.REGIMES, hustleCooldown: S.HUSTLE_COOLDOWN_MS,
     maxLevel: S.MAX_LEVEL, maxMarketing: S.MAX_MARKETING,
     mortgageTerms: S.MORTGAGE_TERMS, minDown: S.MIN_DOWN,

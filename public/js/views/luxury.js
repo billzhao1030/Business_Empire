@@ -4,7 +4,7 @@ import { $, $$, money, moneyFull, price, pct, pctPlain, cls, arrow, esc, toast, 
 import { sparkline } from '../chart.js';
 import market from './market.js';
 
-let tab = 'car', regionF = '', sparks = null;
+let catF = 'all', sparks = null;
 
 export default {
   async render(root, app) {
@@ -15,8 +15,10 @@ export default {
     const rentIncome = mine.filter(i => i.rented).reduce((a, i) => a + i.rent, 0);
     const upkeep = mine.reduce((a, i) => a + i.upkeep, 0);
 
-    const market_ = cat.items.filter(i => i.cat === tab && (tab !== 'estate' || !regionF || i.region === regionF));
     const idxMap = Object.fromEntries(s.indices.map(i => [i.symbol, i]));
+    const byCat = {};
+    for (const i of mine) (byCat[i.cat] ??= []).push(i);
+    const shown = catF === 'all' ? mine : (byCat[catF] || []);
 
     root.innerHTML = `
     <div class="grid g4" style="margin-bottom:16px">
@@ -27,9 +29,17 @@ export default {
     </div>
 
     ${mine.length ? `<div class="card" style="margin-bottom:16px">
-      <div class="card-h"><h3>${t('lux.myItems')}</h3><span class="sub">${t('lux.indexHint')}</span></div>
-      <div style="max-height:340px;overflow:auto">
-      ${mine.map(i => `<div class="item-row">
+      <div class="card-h"><h3>${t('lux.myItems')}</h3><span class="sub">${t('lux.indexHint')}</span>
+        <div class="right"><button class="btn btn-sm btn-primary" data-goshop="1">🛍️ ${t('shop.title')}</button></div></div>
+      <div class="card-b" style="padding:11px 16px;border-bottom:1px solid var(--line)">
+        <div class="chips">
+          <button class="chip ${catF === 'all' ? 'active' : ''}" data-catf="all">${t('mkt.all')} ${mine.length}</button>
+          ${Object.keys(byCat).map(c => `<button class="chip ${catF === c ? 'active' : ''}" data-catf="${c}">
+            ${cat.itemCats[c]?.emoji || '📦'} ${esc(nm({ zh: cat.itemCats[c]?.name, en: cat.itemCats[c]?.en }))} ${byCat[c].length}</button>`).join('')}
+        </div>
+      </div>
+      <div style="max-height:520px;overflow:auto">
+      ${shown.map(i => `<div class="item-row">
         <div class="ico lg">${i.emoji}</div>
         <div class="i-main">
           <div class="i-title">${esc(nm(i.item))}
@@ -49,66 +59,22 @@ export default {
           </div>
         </div>
         <div class="i-act">
+          ${i.wearable ? `<button class="btn btn-xs ${i.worn ? 'btn-primary' : ''}" data-wear2="${i.id}">${i.worn ? '✓ ' + t('person.worn') : t('person.wearIt')}</button>` : ''}
           ${i.canLive && !i.isHome ? `<button class="btn btn-xs" data-live="${i.id}">🏡 ${t('lux.liveHere')}</button>` : ''}
           ${i.canRent ? `<button class="btn btn-xs" data-rent="${i.id}" ${i.isHome && !i.rented ? `title="${t('lux.rentedNoLive')}"` : ''}>${i.rented ? t('lux.stopRent') : t('lux.rentOut')}</button>` : ''}
           ${i.indexSym ? `<button class="btn btn-xs btn-ghost" data-idx="${i.indexSym}">📈</button>` : ''}
           <button class="btn btn-xs btn-danger" data-sell="${i.id}">${t('lux.sellIt')} ${money(i.resale)}</button>
         </div></div>`).join('')}
-      </div></div>` : ''}
+      </div></div>`
+      : `<div class="card"><div class="empty" style="padding:40px"><div class="e-ico">💎</div>
+          <h4>${t('lux.noneYet')}</h4><p>${t('lux.noneYetHint')}</p>
+          <button class="btn btn-primary" style="margin-top:14px" data-goshop="1">🛍️ ${t('shop.title')}</button></div></div>`}`;
 
-    <div class="card">
-      <div class="card-h"><h3>🛒 ${t('lux.market')}</h3>
-        <div class="right"><div class="segs">${cats.map(c => `<button class="seg ${tab === c ? 'active' : ''}" data-tab="${c}">${cat.itemCats[c].emoji} ${esc(nm({ zh: cat.itemCats[c].name, en: cat.itemCats[c].en }))}</button>`).join('')}</div></div>
-      </div>
-      ${tab === 'car' && !app.state.job.carOwned ? `<div class="card-b" style="padding:11px 18px;border-bottom:1px solid var(--line);color:var(--gold);font-size:12.5px">${t('lux.carJobHint')}</div>` : ''}
-      ${tab === 'estate' ? `<div class="card-b" style="padding:12px 18px;border-bottom:1px solid var(--line)">
-        <div class="dim2" style="font-size:11.5px;margin-bottom:10px">🏡 ${t('lux.liveHint')}</div>
-        <div class="chips">
-          <button class="chip ${!regionF ? 'active' : ''}" data-reg="">${t('mkt.all')}</button>
-          ${cat.regions.map(r => { const ix = idxMap[r.index]; return `<button class="chip ${regionF === r.id ? 'active' : ''}" data-reg="${r.id}">
-            ${r.flag} ${esc(nm({ zh: r.name, en: r.en }))} <b class="mono ${cls(ix?.change || 0)}">${ix ? ix.price.toFixed(0) : ''}</b></button>`; }).join('')}
-        </div>
-        ${regionF ? (() => { const r = cat.regions.find(x => x.id === regionF); const ix = idxMap[r.index];
-          return `<div style="display:flex;align-items:center;gap:14px;margin-top:12px;padding:11px 14px;background:var(--bg2);border-radius:10px;border:1px solid var(--line)">
-            <div><div class="dim2" style="font-size:10.5px">${t('lux.regionIndex')}</div>
-              <div style="font-size:19px;font-weight:800" class="mono">${ix.price.toFixed(1)} <span class="${cls(ix.change)}" style="font-size:12px">${arrow(ix.change)} ${pct(ix.change)}</span></div></div>
-            <canvas class="spark" data-sp="${r.index}" style="width:140px;height:34px"></canvas>
-            <div class="dim2" style="font-size:11.5px;flex:1">${esc(ix.desc)}</div>
-            <button class="btn btn-xs btn-ghost" data-idx="${r.index}">${t('mkt.detail')} →</button></div>`; })() : ''}
-      </div>` : ''}
-      <div class="card-b">
-        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px">
-        ${market_.map(i => {
-          const afford = s.player.cash >= i.listPrice;
-          const canMortgage = !!i.mortgage;
-          const down = i.listPrice * cat.minDown;
-          return `<div class="card" style="background:var(--bg2)">
-            <div class="card-b" style="padding:14px">
-              <div style="display:flex;gap:10px;align-items:flex-start">
-                <div class="ico">${i.emoji}</div>
-                <div style="flex:1;min-width:0">
-                  <div style="font-weight:700;font-size:13px">${esc(nm({ zh: i.name, en: i.en }))}</div>
-                  <div class="dim2" style="font-size:10.5px;margin-top:2px">⭐ ${i.prestige} · ${t('lux.upkeep')} ${money(i.listPrice * i.upkeep)}${i.rent ? ` · ${t('lux.rentIncome')} ${money(i.listPrice * i.rent)}` : ''}</div>
-                </div>
-              </div>
-              <div class="mono" style="font-size:17px;font-weight:800;margin:10px 0 4px">${money(i.listPrice)}</div>
-              <p class="dim2" style="font-size:11px;line-height:1.55;min-height:32px">${esc(nm({ zh: i.desc, en: i.descEn }))}</p>
-              <div style="display:flex;gap:6px;margin-top:8px">
-                <button class="btn btn-sm ${afford ? 'btn-primary' : ''}" style="flex:1" data-buy="${i.id}" ${afford ? '' : 'disabled'}>${t('lux.buy')}</button>
-                ${canMortgage ? `<button class="btn btn-sm" data-mort="${i.id}" ${s.player.cash >= down ? '' : 'disabled'} title="${t('lux.mortgage')}">🏦</button>` : ''}
-              </div>
-            </div></div>`;
-        }).join('')}
-        </div>
-      </div>
-    </div>`;
-
-    $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; regionF = ''; this.render(root, app); });
-    $$('[data-reg]').forEach(b => b.onclick = () => { regionF = b.dataset.reg; keepScroll(() => this.render(root, app)); });
-    $$('[data-buy]').forEach(b => b.onclick = () => app.act(() => api.itemBuy(b.dataset.buy), t('toast.success')).catch(() => {}));
-    $$('[data-mort]').forEach(b => b.onclick = () => this.mortgageModal(app, b.dataset.mort));
+    $$('[data-goshop]').forEach(b => b.onclick = () => app.go('shop'));
+    $$('[data-catf]').forEach(b => b.onclick = () => { catF = b.dataset.catf; keepScroll(() => this.render(root, app)); });
     $$('[data-rent]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.rent, 'rent'), t('toast.success')).catch(() => {}));
     $$('[data-live]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.live, 'live'), t('toast.success')).catch(() => {}));
+    $$('[data-wear2]').forEach(b => b.onclick = () => app.act(() => api.itemAction(+b.dataset.wear2, 'wear'), t('toast.success')).catch(() => {}));
     $$('[data-idx]').forEach(b => b.onclick = () => market.openDetail(b.dataset.idx, app));
     $$('[data-sell]').forEach(b => b.onclick = async () => {
       const it = s.items.find(x => x.id === +b.dataset.sell);

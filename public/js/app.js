@@ -16,8 +16,10 @@ import career from './views/career.js';
 import about from './views/about.js';
 import world from './views/world.js';
 import company from './views/company.js';
+import person from './views/person.js';
+import shop from './views/shop.js';
 
-const VIEWS = { dashboard, career, business, company, market, portfolio, bank, luxury, world, ledger, rank, about };
+const VIEWS = { dashboard, person, career, business, company, market, portfolio, bank, shop, luxury, world, ledger, rank, about };
 export const THEMES = ['neon', 'midnight', 'daylight'];
 export function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);

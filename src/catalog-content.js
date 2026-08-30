@@ -107,9 +107,15 @@ const PROP_TIERS = [
   { id:'room',  name:'单间出租屋', en:'Studio Room', emoji:'🚪', base:32_000,     prestige:1,   upkeep:0.0018, rent:0.0048, live:{ stress:-0.02, stamina:0.01 }, desc:'十几平米，厨卫共用，但它是你的。', descEn:'Fifteen square metres, shared bathroom — but it is yours.' },
   { id:'old',   name:'老式两居',  en:'Old Two-Bed',  emoji:'🏚️', base:88_000,     prestige:3,   upkeep:0.0020, rent:0.0045, live:{ stress:-0.05, stamina:0.03 }, desc:'楼梯房、没电梯，胜在便宜又好租。', descEn:'Walk-up, no lift — cheap and easy to let.' },
   { id:'apt',   name:'公寓',     en:'Apartment',    emoji:'🏢', base:180_000,    prestige:4,   upkeep:0.0020, rent:0.0042, live:{ stress:-0.09, stamina:0.06 }, desc:'紧凑实用，最容易出租。', descEn:'Compact, practical, easiest to rent out.' },
+  { id:'loft',  name:'旧厂房 Loft',en:'Warehouse Loft',emoji:'🧱', base:320_000,   prestige:7,   upkeep:0.0022, rent:0.0041, live:{ stress:-0.10, stamina:0.06 }, desc:'挑高六米，暖气费也是六米的。', descEn:'Six-metre ceilings, and a heating bill to match.' },
+  { id:'town',  name:'联排别墅', en:'Townhouse',    emoji:'🏘️', base:430_000,    prestige:9,   upkeep:0.0020, rent:0.0041, live:{ stress:-0.11, stamina:0.07 }, desc:'三层带小院，邻居就在一墙之隔。', descEn:'Three floors and a courtyard, with neighbours through the wall.' },
   { id:'house', name:'独栋住宅', en:'Detached House',emoji:'🏡', base:620_000,    prestige:11,  upkeep:0.0020, rent:0.0040, live:{ stress:-0.12, stamina:0.08 }, desc:'带院子和车库，家庭首选。', descEn:'Yard and garage — the family choice.' },
+  { id:'cabin', name:'湖畔木屋', en:'Lakeside Cabin',emoji:'🛶', base:880_000,    prestige:15,  upkeep:0.0026, rent:0.0036, live:{ stress:-0.16, stamina:0.11 }, desc:'手机没信号，这正是它最贵的地方。', descEn:'No signal. That is the expensive part.' },
+  { id:'farm',  name:'乡间农庄', en:'Country Farmhouse',emoji:'🌾', base:1_300_000,prestige:19,  upkeep:0.0028, rent:0.0035, live:{ stress:-0.15, stamina:0.10 }, desc:'几公顷地，一口井，和很多要修的东西。', descEn:'A few hectares, a well, and a great many things to fix.' },
   { id:'villa', name:'豪华别墅', en:'Luxury Villa', emoji:'🏘️', base:2_600_000,  prestige:28,  upkeep:0.0024, rent:0.0037, live:{ stress:-0.15, stamina:0.10 }, desc:'泳池、影音室、24 小时安保。', descEn:'Pool, screening room, round-the-clock security.' },
   { id:'penth', name:'顶层公寓', en:'Penthouse',    emoji:'🌆', base:6_800_000,  prestige:52,  upkeep:0.0028, rent:0.0035, live:{ stress:-0.17, stamina:0.11 }, desc:'整层视野，专属电梯直达。', descEn:'Full-floor views, private elevator access.' },
+  { id:'ski',   name:'雪山别墅', en:'Ski Chalet',   emoji:'🎿', base:4_200_000,  prestige:40,  upkeep:0.0030, rent:0.0034, live:{ stress:-0.17, stamina:0.12 }, desc:'推开门就是雪道，一年用得上四个月。', descEn:'The piste starts at the door, four months a year.' },
+  { id:'beach', name:'海景别墅', en:'Beachfront Villa',emoji:'🏖️', base:9_500_000, prestige:64,  upkeep:0.0032, rent:0.0033, live:{ stress:-0.18, stamina:0.12 }, desc:'浪声是免费的，防潮维护不是。', descEn:'The surf is free. The salt-air maintenance is not.' },
   { id:'manor', name:'庄园',     en:'Grand Estate', emoji:'🏰', base:24_000_000, prestige:120, upkeep:0.0032, rent:0.0032, live:{ stress:-0.18, stamina:0.12 }, desc:'占地数公顷，有自己的名字。', descEn:'Hectares of land, and a name of its own.' },
 ];
 
@@ -132,10 +138,19 @@ const LANDMARKS = [
 ];
 
 const VEHICLES = [
+  // ── 两个轮子的：买不起车的时候，这些才是真的交通工具 ──
+  // bike:1 表示能骑着上下班——比走路快，比公交自由，而且不烧油
+  { id:'bike_used',  cat:'car', name:'二手自行车',      en:'Second-hand Bicycle',  emoji:'🚲', price:60,        prestige:0,   upkeep:0.010, drift:-0.030, bike:1, desc:'链条会响，刹车要捏两下，但它带你去任何地方。', descEn:'The chain rattles and the brakes need two pulls, but it goes anywhere.' },
+  { id:'bike_city',  cat:'car', name:'通勤自行车',      en:'City Bicycle',         emoji:'🚲', price:280,       prestige:0,   upkeep:0.008, drift:-0.026, bike:1, desc:'带挡泥板和车筐，为下雨天和买菜准备的。', descEn:'Mudguards and a basket — built for rain and groceries.' },
+  { id:'bike_road',  cat:'car', name:'公路车',          en:'Road Bike',            emoji:'🚴', price:1_400,     prestige:1,   upkeep:0.009, drift:-0.022, bike:1, desc:'碳纤维车架，周末能骑一百公里回来还想再骑。', descEn:'Carbon frame. A hundred kilometres on Sunday and you want more.' },
+  { id:'bike_ebike', cat:'car', name:'电助力自行车',    en:'E-Bike',               emoji:'🔋', price:2_200,     prestige:1,   upkeep:0.012, drift:-0.024, bike:1, desc:'上坡不喘气，到公司也不用换衣服。', descEn:'Hills without sweat, and no change of shirt at the office.' },
+  { id:'bike_cargo', cat:'car', name:'载货自行车',      en:'Cargo Bike',           emoji:'📦', price:3_800,     prestige:1,   upkeep:0.011, drift:-0.021, bike:1, desc:'前面那个斗能装两箱货，或者两个小孩。', descEn:'The front box takes two crates, or two children.' },
+  { id:'bike_track', cat:'car', name:'手工钢架车',      en:'Hand-built Steel Frame',emoji:'🛠️', price:9_500,     prestige:3,   upkeep:0.008, drift:-0.012, bike:1, desc:'有人花了三个月给你焊这一副车架。', descEn:'Someone spent three months brazing this frame for you.' },
   { id:'car_scooter',cat:'car', name:'二手电动车',      en:'Used E-Scooter',       emoji:'🛵', price:900,       prestige:0,   upkeep:0.004, drift:-0.022, car:1, desc:'风吹日晒，但它是你第一件属于自己的交通工具。', descEn:'Rain or shine — but it is the first vehicle you ever owned.' },
   { id:'car_moto',   cat:'car', name:'二手摩托车',      en:'Used Motorcycle',      emoji:'🏍️', price:2_600,     prestige:1,   upkeep:0.005, drift:-0.020, car:1, desc:'穿街过巷比谁都快，送外卖的神器。', descEn:'Quicker through traffic than anything — a courier legend.' },
   { id:'car_van',    cat:'car', name:'二手面包车',      en:'Used Cargo Van',       emoji:'🚐', price:7_500,     prestige:1,   upkeep:0.006, drift:-0.019, car:1, desc:'能拉货能睡觉，个体户的移动仓库。', descEn:'Hauls goods, doubles as a bed. The hustler mobile warehouse.' },
   { id:'car_used',   cat:'car', name:'二手代步车',      en:'Used Commuter Car',    emoji:'🚙', price:9_000,     prestige:2,   upkeep:0.006, drift:-0.018, car:1, desc:'能跑就行，先解决有没有的问题。', descEn:'It runs. That is the entire value proposition.' },
+  { id:'car_kei',    cat:'car', name:'日规小车',        en:'Kei Car',              emoji:'🚗', price:13_000,    prestige:2,   upkeep:0.004, drift:-0.016, car:1, desc:'方盒子，一箱油能跑很远，停哪儿都塞得下。', descEn:'A little box that sips fuel and parks anywhere.' },
   { id:'car_corolla',cat:'car', name:'丰田野 卡罗兰',   en:'Toyoda Corolla',       emoji:'🚗', price:19_000,    prestige:3,   upkeep:0.005, drift:-0.014, car:1, desc:'全世界卖得最多的车，理由只有一个：它不坏。', descEn:'The best-selling car on earth for one reason: it never breaks.' },
   { id:'car_civic',  cat:'car', name:'本田 思阈',       en:'Handa Civix',          emoji:'🚙', price:26_000,    prestige:4,   upkeep:0.005, drift:-0.014, car:1, desc:'年轻人的第一台改装车。', descEn:'Everyone first tuner project.' },
   { id:'car_golf',   cat:'car', name:'大众高尔夫 GTI',  en:'Volks Golf GTI',       emoji:'🚗', price:32_000,    prestige:3,   upkeep:0.006, drift:-0.015, desc:'钢炮之王，年轻人的第一台性能车。', descEn:'The hot hatch king — everyone’s first fast car.' },
@@ -151,6 +166,10 @@ const VEHICLES = [
   { id:'car_f8',     cat:'car', name:'法拉力 F8',       en:'Ferrar-E F8 Tributo',  emoji:'🔴', price:420_000,   prestige:28,  upkeep:0.012, drift:-0.008, car:1, desc:'红色，V8，跃马车标。', descEn:'Red. V8. The prancing horse.' },
   { id:'car_lambo',  cat:'car', name:'兰博鸡尼 Revuelto', en:'Lamborgini Revuelto',emoji:'🟡', price:620_000,   prestige:32,  upkeep:0.013, drift:-0.008, desc:'剪刀门打开的瞬间，整条街都在看你。', descEn:'The scissor doors open and the whole street turns.' },
   { id:'car_rolls',  cat:'car', name:'劳斯莱丝 幻影',   en:'Royce Phantom',        emoji:'👑', price:850_000,   prestige:42,  upkeep:0.011, drift:-0.007, desc:'后座才是主角。星空顶下谈成的合同格外顺利。', descEn:'The back seat is the point. Deals close easier under the starlight headliner.' },
+  { id:'car_gwagon', cat:'car', name:'大 G 越野',        en:'G-Wagen',              emoji:'🟩', price:195_000,   prestige:18,  upkeep:0.011, drift:-0.012, car:1, desc:'方得理直气壮，四十年没换过设计。', descEn:'Unapologetically square, and unchanged in forty years.' },
+  { id:'car_gt3',    cat:'car', name:'保世捷 GT3 RS',    en:'Porsch GT3 RS',        emoji:'🏁', price:520_000,   prestige:30,  upkeep:0.013, drift:-0.006, car:1, desc:'尾翼大得像块门板，为赛道而生。', descEn:'A wing the size of a door. Built for the track and nothing else.' },
+  { id:'car_ff',     cat:'car', name:'法拉力 SF90',      en:'Ferrar-E SF90',        emoji:'⚡', price:780_000,   prestige:38,  upkeep:0.014, drift:-0.007, car:1, desc:'混动的跃马，一千匹马力还能纯电进城。', descEn:'A hybrid prancing horse: a thousand horsepower that can creep into town silently.' },
+  { id:'car_vintage',cat:'car', name:'1962 经典跑车',    en:'1962 Classic Roadster',emoji:'🏆', price:1_900_000, prestige:55,  upkeep:0.016, drift:0.012,  index:'CIDX', desc:'越放越值钱的那一种车，开一次要请技师随行。', descEn:'The kind that appreciates. You take a mechanic along when you drive it.' },
   { id:'car_bugatti',cat:'car', name:'布加缇 Chiron',   en:'Bugati Chiron',        emoji:'💠', price:3_600_000, prestige:80,  upkeep:0.018, drift:0, index:'CIDX', desc:'1500 匹马力，换一次轮胎够买一台车。', descEn:'1500 hp. A set of tyres costs more than a car.' },
   { id:'car_koenig', cat:'car', name:'柯尼赛格 Jesko',  en:'Koenigsig Jesko',      emoji:'🛸', price:5_400_000, prestige:110, upkeep:0.020, drift:0, index:'CIDX', car:1, desc:'全球限量，交付名单比钱更难搞定。', descEn:'Strictly limited — the allocation list is harder to get than the money.' },
   { id:'yacht_speed',cat:'yacht', name:'12 米快艇',     en:'12m Speedboat',        emoji:'🚤', price:280_000,   prestige:10,  upkeep:0.014, drift:-0.012, desc:'周末去海上兜风的入门票。', descEn:'Your weekend ticket to open water.' },
@@ -178,9 +197,15 @@ const COLLECTIBLES = [
   { id:'art_davin', cat:'art', index:'AIDX', name:'达文西 失落手稿',  en:'Da Vinchi Lost Codex',emoji:'📜', price:640_000_000,prestige:900,upkeep:0.0016,drift:0, desc:'不只是收藏品，是人类文明的一部分。', descEn:'Not merely a collectible — a piece of civilisation.' },
 ];
 
-export const ITEM_TYPES = [...VEHICLES, ...ESTATES, ...LANDMARKS, ...COLLECTIBLES];
+import { WEARABLES, WEAR_SLOTS } from './catalog-wardrobe.js';
+export const ITEM_TYPES = [...VEHICLES, ...ESTATES, ...LANDMARKS, ...COLLECTIBLES, ...WEARABLES];
 
 export const ITEM_CATS = {
+  top:    { name:'上装',   en:'Tops',        emoji:'👕', wear:1 },
+  bottom: { name:'下装',   en:'Bottoms',     emoji:'👖', wear:1 },
+  outer:  { name:'外套',   en:'Outerwear',   emoji:'🧥', wear:1 },
+  shoes:  { name:'鞋',     en:'Shoes',       emoji:'👟', wear:1 },
+  acc:    { name:'配饰',   en:'Accessories', emoji:'🕶️', wear:1 },
   car:    { name:'座驾',   en:'Vehicles',    emoji:'🚗' },
   yacht:  { name:'游艇',   en:'Yachts',      emoji:'🛥️' },
   jet:    { name:'飞机',   en:'Aircraft',    emoji:'✈️' },
@@ -283,20 +308,100 @@ export const SECTOR_EN = {
 export const sectorEn = s => SECTOR_EN[s] || s;
 
 // ── 打工：白手起家的第一步（wage = 每游戏小时工资，exp = 解锁所需工作经验）──
-export const JOBS = [
-  { id:'flyer',    zh:'发传单',        en:'Flyer Handout',       emoji:'📄', wage:8,    exp:0,     descZh:'街口站一天，嗓子哑了，钱也就那么点。', descEn:'A day on the corner. Your voice goes; the money barely comes.' },
-  { id:'delivery', zh:'送外卖',        en:'Food Courier',        emoji:'🛵', wage:14,   exp:8,    descZh:'风里雨里，超时就扣钱。', descEn:'Rain or shine — every late order costs you.' },
-  { id:'clerk',    zh:'便利店店员',    en:'Store Clerk',         emoji:'🏪', wage:16,   exp:24,    descZh:'上夜班加班费更高，但生物钟废了。', descEn:'Night shifts pay more and wreck your sleep.' },
-  { id:'waiter',   zh:'餐厅服务员',    en:'Restaurant Server',   emoji:'🍽️', wage:20,   exp:60,   descZh:'小费是真正的收入来源。', descEn:'Tips are the real income.' },
-  { id:'rideshare',zh:'网约车司机',    en:'Rideshare Driver',    emoji:'🚕', wage:28,   exp:130,   car:true, descZh:'需要一辆自己的车。跑得越晚，单价越高。', descEn:'Requires your own car. The later you drive, the better the fares.' },
-  { id:'trucker',  zh:'长途货车司机',  en:'Long-haul Trucker',   emoji:'🚚', wage:38,   exp:250,   car:true, descZh:'需要一辆车。一趟三天，路上全是风景和困意。', descEn:'Requires a vehicle. Three days out, all scenery and sleep debt.' },
-  { id:'sales',    zh:'销售代表',      en:'Sales Rep',           emoji:'💼', wage:55,  exp:450, descZh:'底薪很低，提成才是本体。', descEn:'Low base, the commission is the job.' },
-  { id:'coder',    zh:'软件工程师',    en:'Software Engineer',   emoji:'💻', wage:85,  exp:750, descZh:'一边写代码，一边看招聘网站。', descEn:'Writing code with the job board open in another tab.' },
-  { id:'analyst',  zh:'金融分析师',    en:'Financial Analyst',   emoji:'📊', wage:115,  exp:1_200, descZh:'终于坐到了离钱最近的位置。', descEn:'Finally seated close to where the money is.' },
-  { id:'manager',  zh:'部门经理',      en:'Department Manager',  emoji:'👔', wage:165,  exp:1_900, descZh:'开会的时间比干活多。', descEn:'More time in meetings than doing the work.' },
-  { id:'vp',       zh:'投行副总裁',    en:'Investment Bank VP',  emoji:'🏦', wage:260,exp:3_000, descZh:'年终奖比年薪多，代价是没有周末。', descEn:'The bonus beats the salary; the cost is your weekends.' },
-  { id:'ceo',      zh:'职业经理人 CEO',en:'Professional CEO',    emoji:'👑', wage:650,exp:4_500,descZh:'替别人打理帝国——直到你有自己的。', descEn:'Running someone else empire — until you build your own.' },
+// ── 职业阶梯 ────────────────────────────────────────────────
+// track 行业方向 · 同一条线上往上走比横跳快，但横跳能换更高的天花板。
+// exp 是入职门槛（每工作一小时 +1）；wage 是时薪，按真实水平定。
+export const JOB_TRACKS = [
+  { id:'odd',     zh:'零工',   en:'Odd Jobs',   emoji:'🧢' },
+  { id:'service', zh:'服务业', en:'Service',    emoji:'🍽️' },
+  { id:'trade',   zh:'技术工', en:'Trades',     emoji:'🔧' },
+  { id:'drive',   zh:'驾驶',   en:'Driving',    emoji:'🚗' },
+  { id:'office',  zh:'白领',   en:'Office',     emoji:'💼' },
+  { id:'tech',    zh:'技术',   en:'Technology', emoji:'💻' },
+  { id:'finance', zh:'金融',   en:'Finance',    emoji:'🏦' },
+  { id:'care',    zh:'医护',   en:'Healthcare', emoji:'🩺' },
+  { id:'edu',     zh:'教育',   en:'Education',  emoji:'📚' },
+  { id:'create',  zh:'创意',   en:'Creative',   emoji:'🎨' },
+  { id:'exec',    zh:'管理层', en:'Leadership', emoji:'👑' },
 ];
+
+const J = [
+// [id, 中文, English, emoji, track, 时薪, 门槛经验, 需要车?, 中文, English]
+// ── 零工：$0 起家的人从这里开始 ──
+['flyer','发传单','Flyer Handout','📄','odd',8,0,0,'街口站一天，嗓子哑了，钱也就那么点。','A day on the corner. Your voice goes; the money barely comes.'],
+['dishwash','洗碗工','Dishwasher','🍽️','odd',11,4,0,'后厨最热的那个角落，但没人管你。','The hottest corner of the kitchen, and nobody bothers you.'],
+['mover','搬运工','Removals Hand','📦','odd',13,10,0,'一天下来腰是直不起来的，现钱当天结。','Your back gives out by evening and you are paid in cash.'],
+['carwasher','洗车工','Car Washer','🚿','odd',12,6,0,'夏天还行，冬天的水是刺骨的。','Bearable in summer. In winter the water bites.'],
+['shelver','超市理货','Shelf Stacker','🛒','odd',13,12,0,'凌晨四点补货，超市空得像另一个世界。','Restocking at four. The empty aisles are another planet.'],
+['petsit','遛狗','Dog Walker','🐕','odd',15,8,0,'一次遛四条，全程都在被拖着走。','Four leads at once, and they decide the route.'],
+// ── 服务业 ──
+['delivery','送外卖','Food Courier','🛵','service',14,8,0,'风里雨里，超时就扣钱。','Rain or shine — every late order costs you.'],
+['clerk','便利店店员','Store Clerk','🏪','service',16,24,0,'上夜班加班费更高，但生物钟废了。','Night shifts pay more and wreck your sleep.'],
+['barista','咖啡师','Barista','☕','service',18,40,0,'拉花练了三个月，客人只看有没有糖。','Three months on latte art; they only ask about sugar.'],
+['waiter','餐厅服务员','Restaurant Server','🍽️','service',20,60,0,'小费是真正的收入来源。','Tips are the real income.'],
+['bartend','调酒师','Bartender','🍸','service',26,120,0,'听了太多别人的故事，自己的没人听。','You hear everyone’s story and tell none of your own.'],
+['concierge','酒店礼宾','Hotel Concierge','🛎️','service',30,200,0,'能搞定一切，前提是对方给得起小费。','You can arrange anything, for the right gratuity.'],
+['chef','主厨','Head Chef','👨‍🍳','service',52,620,0,'菜单是你的名字，压力也是。','The menu carries your name, and so does the pressure.'],
+// ── 技术工：不需要学位，需要手艺 ──
+['apprentice','学徒工','Trade Apprentice','🔩','trade',15,20,0,'师傅让你递工具的那两年。','Two years of handing someone else the tools.'],
+['painter','油漆工','Painter','🎨','trade',24,90,0,'刷完一整栋楼，指甲缝里三个月都是白的。','A whole building later, your nails stay white for months.'],
+['welder','焊工','Welder','⚡','trade',34,240,0,'手稳的人到哪儿都缺。','A steady hand is short everywhere.'],
+['plumber','水管工','Plumber','🔧','trade',42,380,0,'半夜的急修，收的是加急费。','The midnight call-out is the one that pays.'],
+['electrician','电工','Electrician','💡','trade',46,460,0,'牌照难考，考到就不愁活。','The licence is hard to get and never idle afterwards.'],
+['crane','塔吊司机','Crane Operator','🏗️','trade',58,700,0,'一个人在天上待一整天，风大的时候摇。','A whole day alone up there. It sways in the wind.'],
+// ── 驾驶 ──
+['courier_bike','骑手快递','Bike Courier','🚲','drive',17,30,0,'城里最快的两个轮子。','The fastest two wheels in the city.'],
+['rideshare','网约车司机','Rideshare Driver','🚕','drive',28,130,1,'需要一辆自己的车。跑得越晚，单价越高。','Requires your own car. The later you drive, the better the fares.'],
+['trucker','长途货车司机','Long-haul Trucker','🚚','drive',38,250,1,'一趟三天，路上全是风景和困意。','Three days out, all scenery and sleep debt.'],
+['busdriver','公交司机','Bus Driver','🚌','drive',34,300,1,'同一条路线开五年，闭着眼都知道下一站。','Five years on one route. You could do it blind.'],
+['chauffeur','私人司机','Private Chauffeur','🎩','drive',48,520,1,'后座说的话，你一句都不能往外说。','Whatever is said in the back stays in the back.'],
+['pilot','商业飞行员','Commercial Pilot','✈️','drive',150,2_400,0,'训练花了六位数，回本要十年。','Six figures of training and a decade to earn it back.'],
+// ── 白领 ──
+['admin','行政助理','Office Admin','📎','office',22,110,0,'谁都能给你派活，这就是这份工作。','Anyone can hand you work. That is the job.'],
+['csr','客服专员','Customer Support','🎧','office',24,160,0,'一天一百通电话，九十通是骂人的。','A hundred calls a day, ninety of them angry.'],
+['hr','人力资源专员','HR Officer','📋','office',38,340,0,'知道所有人的工资，除了自己满意的那份。','You know everyone’s salary except a satisfying one.'],
+['sales','销售代表','Sales Rep','💼','office',55,450,0,'底薪很低，提成才是本体。','Low base, the commission is the job.'],
+['marketer','市场经理','Marketing Manager','📣','office',72,900,0,'一半预算花得有道理，问题是不知道哪一半。','Half the budget works. Nobody knows which half.'],
+['manager','部门经理','Department Manager','👔','office',165,1_900,0,'开会的时间比干活多。','More time in meetings than doing the work.'],
+// ── 技术 ──
+['itsupport','IT 支持','IT Support','🖥️','tech',30,220,0,'「你重启过没有？」——真的有用。','"Have you restarted it?" — it genuinely works.'],
+['qa','测试工程师','QA Engineer','🐞','tech',48,520,0,'专门找别人的错，还得说得客气。','Paid to find other people’s mistakes, politely.'],
+['coder','软件工程师','Software Engineer','💻','tech',85,750,0,'一边写代码，一边看招聘网站。','Writing code with the job board open in another tab.'],
+['datasci','数据科学家','Data Scientist','📈','tech',105,1_400,0,'八成时间在洗数据，两成在做模型。','Eighty percent cleaning data, twenty percent modelling.'],
+['secops','安全工程师','Security Engineer','🛡️','tech',120,1_800,0,'做得好的时候，没人知道你在。','When you do it well, nobody knows you exist.'],
+['archit','架构师','Principal Architect','🏛️','tech',185,3_200,0,'画一张图，五十个人照着干半年。','One diagram, fifty people, six months.'],
+// ── 金融 ──
+['teller','银行柜员','Bank Teller','🏧','finance',24,180,0,'数别人的钱，数到手上起茧。','Counting other people’s money until your fingers callus.'],
+['bookkeep','会计','Bookkeeper','🧾','finance',36,300,0,'两边对不上的时候，天塌下来也得对上。','When the two columns disagree, nothing else happens until they agree.'],
+['analyst','金融分析师','Financial Analyst','📊','finance',115,1_200,0,'终于坐到了离钱最近的位置。','Finally seated close to where the money is.'],
+['trader','交易员','Trader','⚡','finance',175,2_200,0,'一天的盈亏比一年的工资多。','A day’s P&L exceeds a year’s salary.'],
+['vp','投行副总裁','Investment Bank VP','🏦','finance',260,3_000,0,'年终奖比年薪多，代价是没有周末。','The bonus beats the salary; the cost is your weekends.'],
+['pm_fund','基金经理','Fund Manager','💹','finance',420,4_000,0,'替别人管一百亿，替自己管不好情绪。','Ten billion of other people’s money, and none of your own composure.'],
+// ── 医护 ──
+['aide','护工','Care Assistant','🧑‍⚕️','care',19,70,0,'最累也最被需要的一份工作。','The hardest job, and the most needed.'],
+['nurse','护士','Nurse','💉','care',52,760,0,'十二小时的班，中间坐下的时间不到十分钟。','Twelve-hour shifts with under ten minutes seated.'],
+['pharma','药剂师','Pharmacist','💊','care',72,1_300,0,'柜台后面站一天，救过的人自己都不知道。','A day behind the counter, saving people who never find out.'],
+['dentist','牙医','Dentist','🦷','care',140,2_600,0,'所有人都怕你，但都得来。','Everyone fears you and everyone comes anyway.'],
+['surgeon','外科医生','Surgeon','🔬','care',230,4_200,0,'十年的书，换手上那八个小时。','A decade of study for eight hours of hands.'],
+// ── 教育 ──
+['tutor','家教','Private Tutor','📖','edu',26,140,0,'一对一两小时，比上一天班还费嗓子。','Two hours one-to-one costs more voice than a full day.'],
+['teacher','中学教师','School Teacher','🍎','edu',44,600,0,'寒暑假是真的，备课到半夜也是真的。','The holidays are real. So is planning until midnight.'],
+['lecturer','大学讲师','University Lecturer','🎓','edu',68,1_500,0,'台下四百人，认识你的不到十个。','Four hundred in the room and fewer than ten know your name.'],
+['prof','教授','Professor','📜','edu',105,3_000,0,'一半时间做研究，一半时间申请经费。','Half research, half applying for the money to do research.'],
+// ── 创意 ──
+['designer','平面设计','Graphic Designer','🖌️','create',38,280,0,'「能不能再大一点」——第七版了。','"Can it be a bit bigger" — this is version seven.'],
+['photog','摄影师','Photographer','📷','create',45,420,0,'拍一天，修图三天。','One day shooting, three days retouching.'],
+['writer','文案／编剧','Writer','✍️','create',52,560,0,'写得好没人提，写砸了全世界都知道。','Nobody mentions the good ones. Everyone sees the bad one.'],
+['artdir','艺术总监','Art Director','🎬','create',110,1_700,0,'最后拍板的那个人，也是被骂的那个人。','The one who decides, and the one who gets blamed.'],
+// ── 管理层 ──
+['coo','运营总监','Operations Director','⚙️','exec',300,3_600,0,'把一团乱麻理成流程，是门手艺。','Turning a mess into a process is a craft.'],
+['cfo','首席财务官','CFO','💰','exec',480,4_200,0,'每一分钱都要向你解释。','Every dollar has to explain itself to you.'],
+['ceo','职业经理人 CEO','Professional CEO','👑','exec',650,4_500,0,'替别人打理帝国——直到你有自己的。','Running someone else’s empire — until you build your own.'],
+['chair','跨国集团董事长','Group Chairman','🗿','exec',980,6_000,0,'不再管事，只决定谁来管事。','You no longer run anything. You decide who does.'],
+];
+
+export const JOBS = J.map(([id,zh,en,emoji,track,wage,exp,car,descZh,descEn]) =>
+  ({ id, zh, en, emoji, track, wage, exp, car: !!car, descZh, descEn }));
 
 // ── 世界富豪榜（化名，财富与游戏内公司股价实时联动）──
 export const RIVALS = [
@@ -412,9 +517,13 @@ export const MEALS = [
 // ── 通勤：没有车就得走路或者坐公交，出门的日子每天都在花 ──
 // cost 是出门那天的往返交通费，hours 是路上耗掉的时间，会直接吃掉加班的余量。
 export const COMMUTES = [
-  { id:'walk',  emoji:'🚶', zh:'走路 / 骑车', en:'Walk or cycle',   cost:0,    hours:1.4,  stamina:-6,   stress:0.10,
+  { id:'walk',  emoji:'🚶', zh:'走路',     en:'Walk',            cost:0,    hours:1.4,  stamina:-6,   stress:0.10,
     descZh:'一分钱不花，一个半小时的腿脚。刚起步时你也只有这个选择。',
     descEn:'Costs nothing but an hour and a half on your feet. At the start it is the only option you have.' },
+  // 一辆 $60 的二手自行车，就能把每天路上的一小时买回来，而且不烧一分钱油
+  { id:'bike',  emoji:'🚲', zh:'骑车',     en:'Cycle',           cost:0,    hours:0.65, stamina:-3,   stress:-0.05, needsBike:true,
+    descZh:'不花钱，比走路快一倍，还顺便把身体练了。前提是有一辆车。',
+    descEn:'Free, twice as fast as walking, and it counts as exercise. You need a bicycle first.' },
   { id:'transit', emoji:'🚌', zh:'公共交通', en:'Public transport', cost:6,    hours:0.9,  stamina:-2.5, stress:0.45,
     descZh:'公交加地铁，一天一张日票。挤是挤了点，比走路快。',
     descEn:'Bus and metro on a day pass. Crowded, but faster than walking.' },

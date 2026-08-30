@@ -1,6 +1,6 @@
 import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
-import { $, $$, money, moneyFull, price, pct, pctPlain, qty as fmtQty, cls, arrow, esc, toast, modal, confirmBox, newsLine, gShort } from '../util.js';
+import { $, $$, money, moneyFull, price, pct, pctPlain, qty as fmtQty, cls, arrow, esc, toast, modal, confirmBox, newsLine, gShort , tabBar, getTab, wireTabs } from '../util.js';
 import { PriceChart, sparkline, movingAvg } from '../chart.js';
 
 let assets = [], sparks = {}, kind = 'overview', sortKey = 'marketCap', sortDir = -1, search = '', sectorF = '';
@@ -13,6 +13,12 @@ const KINDS = [
 ];
 const kindLabel = k => ({ overview: t('mkt.overview'), stock: t('mkt.stocks'), district: t('mkt.districts'),
   commodity: t('mkt.commodities'), crypto: t('mkt.crypto'), index: t('mkt.indices') }[k]);
+
+const OTABS = d => [
+  { id: 'index',  emoji: '📊', label: t('mkt.tabIndex') },
+  { id: 'movers', emoji: '🚀', label: t('mkt.tabMovers') },
+  { id: 'news',   emoji: '📰', label: t('mkt.tabNews'), badge: (d.rumors || []).length || '' },
+];
 
 export default {
   async render(root, app) {
@@ -39,6 +45,7 @@ export default {
   // ── 大盘概览 ──────────────────────────────────────────────
   paintOverview(root, app) {
     const d = ovData, s = app.state;
+    const otab = getTab('mkt', 'index');
     const br = d.breadth.stock;
     const pos = d.sectors.filter(x => x.change > 0).length;
     root.innerHTML = `
@@ -48,6 +55,9 @@ export default {
       <div class="dim2" style="font-size:11.5px">${t('macro.policy')} <b class="mono gold">${pctPlain(d.macro.policyRate)}</b></div>
     </div></div>
 
+    ${tabBar('mkt', OTABS(d), otab)}
+
+    ${otab === 'index' ? `
     <div class="grid" style="grid-template-columns:1.7fr 1fr;margin-bottom:16px">
       <div class="card">
         <div class="card-h"><h3>📊 ${t('mkt.marketIndex')} · BEXI</h3>
@@ -70,8 +80,9 @@ export default {
           <div class="dim2" style="font-size:11px;line-height:1.6;margin-top:4px">
             ${lang === 'zh' ? `${pos} / ${d.sectors.length} 个板块上涨` : `${pos} of ${d.sectors.length} sectors advancing`}</div>
         </div></div>
-    </div>
+    </div>` : ''}
 
+    ${otab === 'movers' ? `
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:16px">
       <div class="card"><div class="card-h"><h3>🚀 ${t('mkt.gainers')}</h3></div>
         <div class="card-b" style="padding:8px 16px">
@@ -95,8 +106,9 @@ export default {
               <div class="sector-bar"><i style="${x.change >= 0 ? `left:50%;width:${w / 2}%;background:var(--up)` : `right:50%;width:${w / 2}%;background:var(--down)`}"></i></div>
               <b class="mono ${cls(x.change)}" style="width:56px;text-align:right;font-size:11px">${pct(x.change)}</b></div>`; }).join('')}
         </div></div>
-    </div>
+    </div>` : ''}
 
+    ${otab === 'news' ? `
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card"><div class="card-h"><h3>📰 ${t('dash.news')}</h3></div>
         <div class="card-b" style="padding:6px 18px;max-height:280px;overflow:auto">
@@ -120,8 +132,9 @@ export default {
         </div>
         <div class="card-b" style="padding:0 18px 14px"><div class="dim2" style="font-size:10.5px;line-height:1.7">${t('mkt.rumorsHint')}</div></div>
       </div>
-    </div>`;
+    </div>` : ''}`;
 
+    wireTabs('mkt', () => this.paint(root, app));
     // 点传闻 → 直接筛出那个板块的股票
     $$('[data-rsec]').forEach(b => b.onclick = async () => {
       kind = 'stock'; sectorF = b.dataset.rsec;
@@ -134,8 +147,9 @@ export default {
       await this.load(app); this.paint(root, app);
     });
     $$('[data-sym]').forEach(x => x.onclick = () => this.openDetail(x.dataset.sym, app));
-    ovChart = new PriceChart($('#ov-chart'), { height: 220 });
-    ovChart.setData(d.index.history);
+    // 图表只在「大盘」这一页上，切走了就别去构造它
+    const oc = $('#ov-chart');
+    if (oc) { ovChart = new PriceChart(oc, { height: 220 }); ovChart.setData(d.index.history); }
   },
 
   paint(root, app) {

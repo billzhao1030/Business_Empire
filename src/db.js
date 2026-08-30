@@ -167,6 +167,16 @@ CREATE TABLE IF NOT EXISTS items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id);
 
+-- 消遣记录：同一项连着做效果递减，冷却过了才回满
+CREATE TABLE IF NOT EXISTS leisure (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  act_id     TEXT NOT NULL,
+  last_hour  INTEGER NOT NULL DEFAULT 0,
+  times      INTEGER NOT NULL DEFAULT 0,
+  spent      REAL NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, act_id)
+);
+
 CREATE TABLE IF NOT EXISTS loans (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -305,6 +315,22 @@ addColumn('players','home_id',        "TEXT    NOT NULL DEFAULT 'shared'");
 addColumn('players','home_item_id',   'INTEGER NOT NULL DEFAULT 0');
 // 人现在在哪儿。空 = 在出生地。买单程票飞走了就留在那儿，下一程从这里起算
 addColumn('players','at_id',          "TEXT    NOT NULL DEFAULT ''");
+// 人物：性别与穿在身上的那一套（每个部位存 items.id，0 = 空着）
+addColumn('players','gender',         "TEXT    NOT NULL DEFAULT 'x'");
+addColumn('players','wear_top',       'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','wear_bottom',    'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','wear_outer',     'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','wear_shoes',     'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','wear_acc',       'INTEGER NOT NULL DEFAULT 0');
+addColumn('players','skin',           'INTEGER NOT NULL DEFAULT 2');   // 肤色 0-5
+addColumn('players','hair',           'INTEGER NOT NULL DEFAULT 0');   // 发型 0-7
+addColumn('players','haircol',        'INTEGER NOT NULL DEFAULT 0');   // 发色 0-7
+addColumn('players','leisure_spent',  'REAL    NOT NULL DEFAULT 0');
+addColumn('players','leisure_n',      'INTEGER NOT NULL DEFAULT 0');
+// 正在做一件占时间的事（消遣），这段时间上不了班
+addColumn('players','busy_until',     'INTEGER NOT NULL DEFAULT 0');
+// 自动转存：手上现金超过这个数，多出来的自动进活期吃利息（0 = 关）
+addColumn('players','sweep_keep',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','food_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','rent_spent',     'REAL    NOT NULL DEFAULT 0');
 addColumn('players','commute_id',     "TEXT    NOT NULL DEFAULT 'walk'");

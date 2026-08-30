@@ -67,5 +67,8 @@ export const api = {
   bank: (action, p = {}) => post('/api/bank', { action, ...p }),
   itemBuy: (typeId, fin) => post('/api/item/buy', { typeId, ...(fin || {}) }),
   itemAction: (id, action) => post('/api/item/action', { id, action }),
+  setLook: (o) => post('/api/look', o),
+  setSweep: (keep) => post('/api/sweep', { keep }),
+  leisure: (actId) => post('/api/leisure', { actId }),
   reset: () => post('/api/reset', {}),
 };
