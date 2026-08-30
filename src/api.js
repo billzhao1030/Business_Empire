@@ -83,6 +83,8 @@ function buildOfflineReport(uid, p, hour, nwNow) {
 
 // ── 状态 ────────────────────────────────────────────────────
 export function getState(uid) {
+  // 有人在玩了：把「世界最多再往前 7 天」的锚点推到此刻
+  M.markActive();
   S.advancePlayer(uid);
   const p = P(uid);
   const hour = curHour();
@@ -154,6 +156,11 @@ export function getState(uid) {
       resale: value * (['estate', 'art', 'watch'].includes(d?.cat) ? 0.95 : 0.85),
       mortgage: loan ? { id: loan.id, balance: loan.balance, payment: loan.payment, rate: loan.rate, monthsLeft: loan.months_left } : null };
   });
+
+  // 实业按归属分组要用：哪家店在哪家公司名下
+  const myCompanies = CO.companiesOf(uid).map(c => ({
+    id: c.id, name: c.name, nameEn: c.name_en || c.name, ticker: c.ticker,
+    cash: c.cash, stage: c.stage, listed: c.stage === 'public', sector: c.sector }));
 
   const loans = db.prepare("SELECT * FROM loans WHERE user_id=? AND status='active' ORDER BY id").all(uid).map(l => ({
     id: l.id, kind: l.kind, itemId: l.item_id, principal: l.principal, balance: l.balance, rate: l.rate,
@@ -289,7 +296,7 @@ export function getState(uid) {
     })(),
     macro: M.regimeState(),
     prosperity: M.cityProsperity(),
-    businesses, holdings, items, loans, deposits,
+    businesses, companies: myCompanies, holdings, items, loans, deposits,
     bank: { savingsRate: S.savingsRate(), overdraftRate: S.overdraftRate(), fixedRates: S.fixedRates(),
       policyRate: M.policyRate(),
       loanRate: S.loanRate(p.credit_score), mortgageRate: S.mortgageRate(p.credit_score),

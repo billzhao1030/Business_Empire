@@ -487,3 +487,24 @@ button{cursor:pointer;border:none;background:none}
 .trait label{display:block;font-size:10px;color:var(--dim2);font-weight:700;letter-spacing:.4px;margin-bottom:3px}
 .trait .tv{font-size:12.5px;font-weight:700;margin-bottom:5px}
 .bar.sm{height:3px}
+
+/* ══ 实业分组：按归属折叠，同一业态再折叠一层 ══ */
+.fold-card{overflow:hidden}
+.fold-h{display:flex;align-items:center;gap:11px;padding:13px 16px;cursor:pointer;user-select:none;transition:background .14s}
+.fold-h:hover{background:var(--glow3)}
+.fold-h.sm{padding:9px 12px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);margin-bottom:8px}
+.fold-h.sm:hover{border-color:var(--line2)}
+.chev{display:inline-block;font-size:11px;color:var(--dim2);transition:transform .16s;flex:0 0 10px}
+.chev.open{transform:rotate(90deg)}
+.fold-t{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fold-h.sm .fold-t{font-size:12.5px}
+.fold-s{font-size:10.5px;color:var(--dim2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fold-n{text-align:right;flex:0 0 auto}
+.fold-n .n{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.fold-h.sm .fold-n .n{font-size:13.5px}
+.fold-n .l{font-size:10px;color:var(--dim2);margin-top:1px}
+.fold-b{padding:0 16px 14px;border-top:1px solid var(--line)}
+.fold-b > .cluster:first-child > .fold-h.sm,.fold-b > .grid:first-child{margin-top:12px}
+.cluster{margin-bottom:4px}
+.cluster.open > .fold-h.sm{background:var(--panel3);border-color:var(--line2)}
+@media(max-width:720px){.fold-n .l{display:none}}

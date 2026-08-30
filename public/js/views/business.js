@@ -31,6 +31,48 @@ function seasonText(d) {
 
 const bar = (v, color, max = 1) => `<div class="bar"><i style="width:${Math.min(100, v / max * 100)}%;background:${color}"></i></div>`;
 
+// ── 折叠状态：跨 5 秒轮询、跨刷新都要记住，不然点开一次就被冲掉了 ──
+const FOLD_KEY = 'be_biz_folds';
+let folds = (() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY)) || {}; } catch { return {}; } })();
+const saveFolds = () => { try { localStorage.setItem(FOLD_KEY, JSON.stringify(folds)); } catch {} };
+// 归属分组默认展开；同一种店有两家以上时默认收起来——「十个街头小摊」占十屏，就是这么来的
+const isOpen = (key, dflt) => (folds[key] === undefined ? dflt : !!folds[key]);
+// 翻转的是「现在看起来是开还是关」，不是存里那个可能还没写过的值——
+// 没写过时 !undefined === true，归属分组本来就是开的，一点反而又「开」了一次
+const toggle = (key, dflt) => { folds[key] = !isOpen(key, dflt); saveFolds(); };
+
+const sum = (list, f) => list.reduce((a, b) => a + f(b), 0);
+const chev = open => `<span class="chev ${open ? 'open' : ''}">▸</span>`;
+
+// 按归属分组：个人一组，每家公司各一组
+function groupByOwner(bs, companies) {
+  const groups = [];
+  const mine = bs.filter(b => !b.companyId);
+  if (mine.length) groups.push({ key: 'own:self', emoji: '👤', name: t('biz.grpSelf'), sub: null, list: mine });
+  for (const c of companies || []) {
+    const list = bs.filter(b => b.companyId === c.id);
+    if (!list.length) continue;
+    groups.push({ key: 'own:co' + c.id, emoji: '🏢', name: nm({ zh: c.name, en: c.nameEn || c.name }),
+      sub: c.ticker + (c.listed ? ' · ' + t('biz.grpListed') : ''), list, company: c });
+  }
+  // 公司已经没了但店还挂着（理论上不该发生），别把它们藏起来
+  const known = new Set(groups.flatMap(g => g.list.map(b => b.id)));
+  const orphan = bs.filter(b => !known.has(b.id));
+  if (orphan.length) groups.push({ key: 'own:other', emoji: '❓', name: t('biz.grpOther'), sub: null, list: orphan });
+  return groups;
+}
+// 组内再按业态归类：同一种店有多家的收成一行
+function clusterByType(list) {
+  const map = new Map();
+  for (const b of list) {
+    const k = b.typeId;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(b);
+  }
+  return [...map.entries()].map(([typeId, shops]) => ({ typeId, shops }))
+    .sort((a, b) => sum(b.shops, x => x.dailyNet) - sum(a.shops, x => x.dailyNet));
+}
+
 export default {
   render(root, app) {
     const s = app.state, cat = app.catalog;
@@ -50,17 +92,89 @@ export default {
     <div class="card" style="margin-bottom:16px">
       <div class="card-h"><h3>${t('biz.title')}</h3>
         <span class="sub">${t('common.prestige')} ${int(s.player.prestige)} · ${t('dash.prestigeBonus')} <b class="gold">+${pctPlain(s.player.prestigeBonus)}</b></span>
-        <div class="right"><button class="btn btn-primary btn-sm" id="b-new">+ ${t('biz.open')}</button></div></div>
+        <div class="right" style="display:flex;gap:8px">
+          ${bs.length ? `<button class="btn btn-sm btn-ghost" id="b-foldall">${
+            groupByOwner(bs, s.companies).some(g => isOpen(g.key, true)) ? t('biz.foldAll') : t('biz.unfoldAll')}</button>` : ''}
+          <button class="btn btn-primary btn-sm" id="b-new">+ ${t('biz.open')}</button></div></div>
     </div>
 
-    ${bs.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">
-      ${bs.map(b => this.card(b, s, cat)).join('')}</div>`
+    ${bs.length ? groupByOwner(bs, s.companies).map(g => this.ownerGroup(g, s, cat)).join('')
       : `<div class="card"><div class="empty"><div class="e-ico">🏪</div><h4>${t('biz.empty')}</h4><p>${t('biz.emptyHint')}</p>
           <button class="btn btn-primary" style="margin-top:16px" id="b-new2">+ ${t('biz.open')}</button></div></div>`}`;
 
     $('#b-new') && ($('#b-new').onclick = () => this.openNew(app));
     $('#b-new2') && ($('#b-new2').onclick = () => this.openNew(app));
+    $$('[data-fold]').forEach(el => el.onclick = () => {
+      toggle(el.dataset.fold, el.dataset.dflt === '1');
+      keepScroll(() => this.render(root, app));
+    });
+    $('#b-foldall') && ($('#b-foldall').onclick = () => {
+      const gs = groupByOwner(bs, s.companies);
+      const anyOpen = gs.some(g => isOpen(g.key, true));
+      for (const g of gs) {
+        folds[g.key] = !anyOpen;
+        for (const c of clusterByType(g.list)) folds[g.key + '/' + c.typeId] = !anyOpen;
+      }
+      saveFolds();
+      keepScroll(() => this.render(root, app));
+    });
     this.wire(root, app);
+  },
+
+  // ── 一个归属分组：个人，或者某一家公司 ──
+  ownerGroup(g, s, cat) {
+    const open = isOpen(g.key, true);
+    const net = sum(g.list, b => b.dailyNet);
+    const rev = sum(g.list, b => b.dailyRev);
+    const clusters = clusterByType(g.list);
+    return `<div class="card fold-card" style="margin-bottom:14px">
+      <div class="fold-h" data-fold="${g.key}" data-dflt="1">
+        ${chev(open)}
+        <div class="ico">${g.emoji}</div>
+        <div style="min-width:0;flex:1">
+          <div class="fold-t">${esc(g.name)}${g.sub ? ` <span class="tag">${esc(g.sub)}</span>` : ''}</div>
+          <div class="fold-s">${t('biz.grpShops', { n: g.list.length })} · ${t('biz.grpTypes', { n: clusters.length })}${
+            g.company ? ` · ${t('biz.grpCash')} ${money(g.company.cash)}` : ''}</div>
+        </div>
+        <div class="fold-n">
+          <div class="n ${cls(net)}">${money(net)}</div>
+          <div class="l">${t('dash.perDayNet')} · ${t('biz.dailyRev')} ${money(rev)}</div>
+        </div>
+      </div>
+      ${open ? `<div class="fold-b">${clusters.map(c => this.typeCluster(g, c, s, cat)).join('')}</div>` : ''}
+    </div>`;
+  },
+
+  // ── 组内的一种业态。只有一家就直接摊开，多家才值得收起来 ──
+  typeCluster(g, c, s, cat) {
+    const grid = list => `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">
+      ${list.map(b => this.card(b, s, cat)).join('')}</div>`;
+    if (c.shops.length === 1) return grid(c.shops);
+    const key = g.key + '/' + c.typeId;
+    const open = isOpen(key, false);
+    const b0 = c.shops[0];
+    const net = sum(c.shops, b => b.dailyNet);
+    const rev = sum(c.shops, b => b.dailyRev);
+    const cities = [...new Set(c.shops.map(b => nm(b.city)))];
+    const worst = c.shops.reduce((a, b) => (b.condition < a.condition ? b : a));
+    const under = c.shops.filter(b => b.util < 0.98).length;
+    return `<div class="cluster ${open ? 'open' : ''}">
+      <div class="fold-h sm" data-fold="${key}" data-dflt="0">
+        ${chev(open)}
+        <div class="ico">${b0.emoji}</div>
+        <div style="min-width:0;flex:1">
+          <div class="fold-t">${esc(nm(b0.type))} <span class="tag b">×${c.shops.length}</span>
+            ${under ? `<span class="tag r">${t('biz.grpUnder', { n: under })}</span>` : ''}
+            ${worst.condition < 0.6 ? `<span class="tag r">${t('biz.grpWorn', { p: pctPlain(worst.condition, 0) })}</span>` : ''}</div>
+          <div class="fold-s">${esc(cities.slice(0, 3).join(' · '))}${cities.length > 3 ? ` +${cities.length - 3}` : ''}</div>
+        </div>
+        <div class="fold-n">
+          <div class="n ${cls(net)}">${money(net)}</div>
+          <div class="l">${t('dash.perDayNet')} · ${t('biz.dailyRev')} ${money(rev)}</div>
+        </div>
+      </div>
+      ${open ? `<div style="padding:10px 0 2px">${grid(c.shops)}</div>` : ''}
+    </div>`;
   },
 
   card(b, s, cat) {
