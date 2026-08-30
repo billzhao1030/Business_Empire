@@ -573,3 +573,21 @@ button{cursor:pointer;border:none;background:none}
 .ckbox{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim2);cursor:pointer;user-select:none;white-space:nowrap}
 .ckbox input{accent-color:var(--gold);cursor:pointer}
 .ckbox:hover{color:var(--txt)}
+
+/* ══ 开店筛选面板：条件可叠加，维度可综合 ══ */
+.filt-panel{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:12px}
+.filt-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.filt-row + .filt-row{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.filt-row .fl{font-size:10.5px;color:var(--dim2);font-weight:700;white-space:nowrap}
+.filt-row .fi{width:78px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel3);color:var(--txt);font-size:11.5px;font-variant-numeric:tabular-nums}
+.filt-row .fi:focus{outline:none;border-color:var(--gold)}
+.mixchip{padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel3);
+  color:var(--dim2);font-size:11px;font-weight:700;cursor:pointer;transition:.13s;white-space:nowrap}
+.mixchip:hover{color:var(--txt);border-color:var(--line2)}
+.mixchip.on{background:var(--glow3);border-color:var(--gold);color:var(--gold)}
+.mixscore{display:inline-block;min-width:24px;padding:1px 4px;margin-right:5px;border-radius:5px;
+  background:var(--bg2);border:1px solid var(--line);font-size:10px;font-weight:800;
+  color:var(--dim2);text-align:center;font-variant-numeric:tabular-nums}
+.mixscore.mid{color:var(--txt);border-color:var(--line2)}
+.mixscore.hi{color:var(--gold);border-color:var(--gold);background:var(--glow3)}

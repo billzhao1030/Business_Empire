@@ -3,6 +3,11 @@ import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, modal, confirmBox, durText, keepScroll} from '../util.js';
 
 let pickType = null, pickCity = 'city', pickCat = 'all', typeQuery = '', sortBy = 'cost', adOnly = false;
+// 可叠加的筛选条件：每一条都是「不满足就滤掉」，彼此互不干扰
+let fMaxCost = '', fMaxDays = '', fMinMargin = '', fSeason = 'any', fCycle = 'any';
+// 综合排名：点亮几个维度，就按这几个维度的加权总分排。全不点就是单键排序。
+let mix = {};
+let scoreOf = null;   // 综合排名开着的时候，用来给每一行打分
 
 // 每种店的「性格」：直接把模拟里用的那几个数翻译成一句人话
 const TRAIT_ROWS = [
@@ -56,6 +61,12 @@ export function marketingInfo(def, city) {
     ratio: net0 > 0 ? cost / net0 : Infinity,        // 广告费 = 多少天的日净利
     worth: gain > 0 };
 }
+
+// 综合排名可以点亮的六个维度
+const MIX_KEYS = [
+  { id:'payback', emoji:'⏱️' }, { id:'margin', emoji:'💰' }, { id:'steady', emoji:'🛡️' },
+  { id:'ad', emoji:'📣' }, { id:'cheap', emoji:'🪙' }, { id:'easy', emoji:'😌' },
+];
 
 const MONTHS_ZH = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
 const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -335,15 +346,53 @@ export default {
     };
     await loadCities('');
     pickCity = (cities[0] && cities[0].id) || pickCity;
+    // 每一条筛选独立生效，可以随便叠；排序要么单键，要么按点亮的维度综合打分
     const buildList = (city) => {
       const q = typeQuery.trim().toLowerCase();
       const ad = x => marketingInfo(x, city);
-      let l = cat.biz.filter(x => (pickCat === 'all' || x.catId === pickCat)
+      const pb = x => paybackInfo(x, city);
+      const cost = x => Math.round(x.cost * city.costMult) + Math.round(city.travelCost || 0);
+      const num = v => { const n = Number(String(v).replace(/[^0-9.]/g, '')); return Number.isFinite(n) && String(v).trim() !== '' ? n : null; };
+      const mc = num(fMaxCost), md = num(fMaxDays), mm = num(fMinMargin);
+
+      let l = cat.biz.filter(x =>
+           (pickCat === 'all' || x.catId === pickCat)
         && (!q || x.name.toLowerCase().includes(q) || x.en.toLowerCase().includes(q)
             || x.cat.toLowerCase().includes(q) || x.catEn.toLowerCase().includes(q))
-        && (!adOnly || ad(x).worth));
-      const pb = x => paybackInfo(x, city);
-      const by = { cost: (a, b) => a.cost - b.cost,
+        && (!adOnly || ad(x).worth)
+        && (mc == null || cost(x) <= mc)
+        && (md == null || (pb(x).ok && pb(x).days <= md))
+        && (mm == null || (1 - x.cogs) * 100 >= mm)
+        && (fSeason === 'any' || (fSeason === 'yes' ? !!x.season : !x.season))
+        && (fCycle === 'any'
+            || (fCycle === 'defensive' && x.cyc < 0.7)
+            || (fCycle === 'counter' && x.cyc < 0)
+            || (fCycle === 'cyclical' && x.cyc >= 1.3)));
+
+      // ── 综合排名 ──
+      // 六个维度，每个都换算成「在当前这批里排第几」的百分位（0~1，越大越好），
+      // 然后把点亮的那几个平均一下。这样各维度量纲差得再远也能放在一起比。
+      const keys = Object.keys(mix).filter(k => mix[k]);
+      if (keys.length && l.length) {
+        const raw = {
+          payback: x => (pb(x).ok ? -pb(x).days : -1e9),      // 回本越快越好
+          margin:  x => 1 - x.cogs,                            // 毛利越高越好
+          steady:  x => -(x.vol + Math.abs(x.cyc)),            // 越不折腾越好
+          ad:      x => (ad(x).worth ? -ad(x).payback : -1e9), // 广告越快回本越好
+          cheap:   x => -cost(x),                              // 本金越低越好
+          easy:    x => -(x.mgmt + x.wear),                    // 越省心越好
+        };
+        const pct = {};
+        for (const k of keys) {
+          const vals = l.map(raw[k]);
+          const lo = Math.min(...vals), hi = Math.max(...vals);
+          pct[k] = new Map(l.map((x, i) => [x.id, hi > lo ? (vals[i] - lo) / (hi - lo) : 1]));
+        }
+        scoreOf = x => Math.round(100 * keys.reduce((a, k) => a + pct[k].get(x.id), 0) / keys.length);
+        return l.sort((a, b) => scoreOf(b) - scoreOf(a));
+      }
+      scoreOf = null;
+      const by = { cost: (a, b) => cost(a) - cost(b),
                    payback: (a, b) => pb(a).days - pb(b).days,
                    margin: (a, b) => a.cogs - b.cogs,
                    steady: (a, b) => (a.vol + Math.abs(a.cyc)) - (b.vol + Math.abs(b.cyc)),
@@ -354,6 +403,8 @@ export default {
       const city = cities.find(c => c.id === pickCity) || picked;
       if (!city) return;
       const list = buildList(city);
+      const nFilters = [pickCat !== 'all', !!typeQuery.trim(), adOnly, !!fMaxCost, !!fMaxDays,
+                        !!fMinMargin, fCycle !== 'any', fSeason !== 'any'].filter(Boolean).length;
       if (!list.some(x => x.id === pickType) && list.length) pickType = list[0].id;
       const def = cat.biz.find(x => x.id === pickType);
       if (!def) return;
@@ -390,16 +441,47 @@ export default {
         <label class="ckbox" title="${t('biz.adOnlyTip')}">
           <input type="checkbox" id="nb-adonly" ${adOnly ? 'checked' : ''}> ${t('biz.adOnly')}</label>
         <input id="nb-type-q" type="search" placeholder="${t('biz.typeSearchPh')}" value="${esc(typeQuery)}"
-          style="flex:1;min-width:130px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-size:12px">
-        <span class="dim2" style="font-size:10.5px">${t('biz.typeCount', { n: list.length })}</span>
+          style="flex:1;min-width:120px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-size:12px">
+        <span class="dim2" style="font-size:10.5px">${t('biz.typeCount', { n: list.length })}${
+          nFilters ? ` <b class="gold">${t('biz.nFilters', { n: nFilters })}</b>` : ''}</span>
+        ${nFilters ? `<button class="btn btn-xs btn-ghost" id="nb-clear">${t('biz.clearFilters')}</button>` : ''}
+      </div>
+
+      <div class="filt-panel">
+        <div class="filt-row">
+          <span class="fl">${t('biz.fBudget')}</span>
+          <input class="fi" id="f-cost" inputmode="decimal" placeholder="${t('biz.fAny')}" value="${esc(fMaxCost)}">
+          <span class="fl">${t('biz.fDays')}</span>
+          <input class="fi" id="f-days" inputmode="numeric" placeholder="${t('biz.fAny')}" value="${esc(fMaxDays)}">
+          <span class="fl">${t('biz.fMargin')}</span>
+          <input class="fi" id="f-margin" inputmode="numeric" placeholder="${t('biz.fAny')}" value="${esc(fMinMargin)}">
+          <select class="sel" id="f-cycle">
+            <option value="any" ${fCycle === 'any' ? 'selected' : ''}>${t('biz.fCycleAny')}</option>
+            <option value="defensive" ${fCycle === 'defensive' ? 'selected' : ''}>${t('biz.fCycleDef')}</option>
+            <option value="counter" ${fCycle === 'counter' ? 'selected' : ''}>${t('biz.fCycleCounter')}</option>
+            <option value="cyclical" ${fCycle === 'cyclical' ? 'selected' : ''}>${t('biz.fCycleCyc')}</option>
+          </select>
+          <select class="sel" id="f-season">
+            <option value="any" ${fSeason === 'any' ? 'selected' : ''}>${t('biz.fSeasonAny')}</option>
+            <option value="yes" ${fSeason === 'yes' ? 'selected' : ''}>${t('biz.fSeasonYes')}</option>
+            <option value="no" ${fSeason === 'no' ? 'selected' : ''}>${t('biz.fSeasonNo')}</option>
+          </select>
+        </div>
+        <div class="filt-row">
+          <span class="fl">${t('biz.mixLabel')}</span>
+          ${MIX_KEYS.map(k => `<button class="mixchip ${mix[k.id] ? 'on' : ''}" data-mix="${k.id}">${k.emoji} ${t('biz.mix.' + k.id)}</button>`).join('')}
+          <span class="dim2" style="font-size:10.5px;margin-left:auto">${
+            Object.values(mix).filter(Boolean).length ? t('biz.mixOn', { n: Object.values(mix).filter(Boolean).length }) : t('biz.mixOff')}</span>
+        </div>
       </div>
       <div class="opt-grid" style="max-height:250px;overflow:auto;margin-bottom:16px">
         ${list.length ? list.map(x => {
           const c = Math.round(x.cost * city.costMult) + Math.round(city.travelCost || 0);
           const afford = s.player.cash >= c;
           const sea = seasonText(x);
+          const sc = scoreOf ? scoreOf(x) : null;
           return `<button class="opt ${x.id === pickType ? 'active' : ''}" data-type="${x.id}" ${afford ? '' : 'style="opacity:.45"'}>
-            <div class="t">${x.emoji} ${esc(nm({ zh: x.name, en: x.en }))}</div>
+            <div class="t">${sc != null ? `<span class="mixscore ${sc >= 75 ? 'hi' : sc >= 50 ? 'mid' : ''}">${sc}</span>` : ''}${x.emoji} ${esc(nm({ zh: x.name, en: x.en }))}</div>
             <div class="s">${money(c)} · ${t('biz.grossMargin')} ${Math.round((1 - x.cogs) * 100)}% · ${(() => {
                 const p = paybackInfo(x, city);
                 return p.ok ? `<b class="${p.days < 60 ? 'up' : p.days > 240 ? 'down' : ''}">${Math.round(p.days)}${t('biz.dPayback')}</b>`
@@ -473,6 +555,21 @@ export default {
       box.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { pickType = b.dataset.type; render(el); });
       const ao = box.querySelector('#nb-adonly');
       if (ao) ao.onchange = () => { adOnly = ao.checked; render(el); };
+      // 数值类筛选：边打字边筛，打完把光标留在原处
+      const typed = (id, set) => { const n = box.querySelector(id); if (!n) return;
+        n.oninput = () => { set(n.value); clearTimeout(this._fT);
+          this._fT = setTimeout(() => { render(el);
+            const k = el.querySelector(id); if (k) { k.focus(); k.setSelectionRange(k.value.length, k.value.length); } }, 220); }; };
+      typed('#f-cost', v => { fMaxCost = v; });
+      typed('#f-days', v => { fMaxDays = v; });
+      typed('#f-margin', v => { fMinMargin = v; });
+      const cy = box.querySelector('#f-cycle'); if (cy) cy.onchange = () => { fCycle = cy.value; render(el); };
+      const se = box.querySelector('#f-season'); if (se) se.onchange = () => { fSeason = se.value; render(el); };
+      box.querySelectorAll('[data-mix]').forEach(b => b.onclick = () => {
+        mix[b.dataset.mix] = !mix[b.dataset.mix]; render(el); });
+      const cl = box.querySelector('#nb-clear');
+      if (cl) cl.onclick = () => { pickCat = 'all'; typeQuery = ''; adOnly = false;
+        fMaxCost = fMaxDays = fMinMargin = ''; fCycle = fSeason = 'any'; render(el); };
       const catSel = box.querySelector('#nb-cat');
       if (catSel) catSel.onchange = () => { pickCat = catSel.value; render(el); };
       const sortSel = box.querySelector('#nb-sort');
