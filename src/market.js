@@ -34,6 +34,7 @@ const SQDT = Math.sqrt(DT);
 
 const MKT_MU = 0.075, MKT_SIGMA = 0.155;
 const HISTORY_KEEP = 900;
+export const NEWS_KEEP_HOURS = 720;   // 新闻和传闻只留最近一个月（30 个游戏日）
 let pendingEvent = null;
 let sectorMom = {};          // 每个资产保留的历史小时数
 
@@ -53,6 +54,11 @@ export const RUMOR_RUN_MIN = 46, RUMOR_RUN_MAX = 76;      // 兑现之后走多�
 export const RUMOR_RUN_HOURS = 60;        // 给界面看的中位数
 // 幅度：点名到公司的传闻，兑现起来是「大幅」，不是挠痒痒
 export const RUMOR_MAG_MIN = 0.24, RUMOR_MAG_MAX = 0.50;
+// 传闻的方向：多数指向上涨。
+// 这游戏里没有做空的工具，一条「某支你根本没碰过的票要跌」除了看看没有别的
+// 用处——听到了也做不了什么。所以看涨的占大头，看跌的那部分只落在有人真拿着
+// 的仓位上：那才是一句能照着做的警告，而不是一条读完就过去的噪声。
+export const RUMOR_UP_RATE = 0.72;
 export const RUMOR_SPILL = 0.22;          // 同板块其他股票跟着沾多少光
 const MAX_DETAIL_TICKS = 600;      // 单次补算的最大精细步数
 export const START_HOD = 8;        // 世界起点落在早上 8:00
@@ -333,8 +339,17 @@ function tickOnce(assetList, hour, sectorSet) {
   if (!catalyst && !activeCat && Math.random() < 0.012) {
     // 传闻点名到具体一家上市公司——你至少知道该盯哪一支票了。
     const stocks = assetList.filter(a => a.kind === 'stock');
-    const a = pick(stocks);
-    const up = Math.random() < 0.5;
+    let up = Math.random() < RUMOR_UP_RATE;
+    let a;
+    if (up) a = pick(stocks);
+    else {
+      // 看跌的传闻只放在有人真持有的票上。自己一手创办上市的公司除外——
+      // 关于自己公司的小道消息，你比放风的人知道得多。
+      const held = heldStocks();
+      const pool = stocks.filter(s => held.has(s.id));
+      if (pool.length) a = pick(pool);
+      else { up = true; a = pick(stocks); }   // 没有仓位可警告，就转成看涨的
+    }
     const lead = RUMOR_LEAD_MIN + Math.floor(Math.random() * (RUMOR_LEAD_MAX - RUMOR_LEAD_MIN));
     const run = RUMOR_RUN_MIN + Math.floor(Math.random() * (RUMOR_RUN_MAX - RUMOR_RUN_MIN));
     // 整条线卡死在 7 个游戏日之内
@@ -523,11 +538,13 @@ export function advanceMarket() {
     setMeta('market_hour', String(target));
     db.exec('COMMIT');
 
+    saveRumors();          // 传闻的进度每批都落盘，重启不会把它回退掉
     // 清理历史
     if (target % 40 === 0) {
       setMeta('sector_mom', JSON.stringify(sectorMom));
-      saveRumors();
       db.prepare('DELETE FROM prices WHERE hour < ?').run(target - HISTORY_KEEP);
+      // 新闻只留最近一个月，行数上限只是兜底
+      db.prepare('DELETE FROM news WHERE hour < ?').run(target - NEWS_KEEP_HOURS);
       db.prepare('DELETE FROM news WHERE id NOT IN (SELECT id FROM news ORDER BY id DESC LIMIT 400)').run();
     }
   } finally { advancing = false; }
@@ -624,6 +641,12 @@ export function applySplits() {
 export function pushNews(scope, target, headline, impact = 0) {
   db.prepare('INSERT INTO news(hour,scope,target,headline,impact) VALUES(?,?,?,?,?)')
     .run(currentGameHour(), scope, target, JSON.stringify(headline), impact);
+}
+// 有人真拿着的股票（自己创办上市的那几家不算——你比放风的人清楚）
+function heldStocks() {
+  const rows = db.prepare(`SELECT DISTINCT h.asset_id id FROM holdings h
+    WHERE h.qty > 0 AND h.asset_id NOT IN (SELECT asset_id FROM companies WHERE asset_id > 0)`).all();
+  return new Set(rows.map(r => r.id));
 }
 export function loadSectorMom() { try { sectorMom = JSON.parse(getMeta('sector_mom', '{}')); } catch { sectorMom = {}; } }
 export function loadRumors() {
