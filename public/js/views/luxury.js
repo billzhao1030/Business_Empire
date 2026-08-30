@@ -23,7 +23,9 @@ export default {
     root.innerHTML = `
     <div class="grid g4" style="margin-bottom:16px">
       <div class="stat accent"><label>🏛️ ${t('lux.myItems')}</label><div class="v">${money(totalVal)}</div><div class="d">${mine.length} ${t('common.owned')}</div></div>
-      <div class="stat"><label>⭐ ${t('common.prestige')}</label><div class="v gold">${int(s.player.prestige)}</div><div class="d">${t('lux.prestigeInfo')} <b class="gold">+${pctPlain(s.player.prestigeBonus)}</b></div></div>
+      <div class="stat"><label>⭐ ${t('common.prestige')}</label><div class="v gold">${int(s.player.prestige)}</div>
+        <div class="d" title="${t('lux.prestigeCurve', { max: pctPlain(s.player.prestigeMax || 0.3, 0), half: int(s.player.prestigeHalf || 500) })}">${t('lux.prestigeInfo')} <b class="gold">+${pctPlain(s.player.prestigeBonus)}</b>
+        <span class="dim2">${t('lux.prestigeNext', { n: pctPlain(s.player.prestigeNext || 0, 2) })}</span></div></div>
       <div class="stat"><label>🔑 ${t('lux.rentIncome')}</label><div class="v up">${money(rentIncome)}</div><div class="d">${t('common.perMonth')}</div></div>
       <div class="stat"><label>🧰 ${t('lux.upkeep')}</label><div class="v down">${money(upkeep)}</div><div class="d">${t('common.perMonth')}</div></div>
     </div>

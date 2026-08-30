@@ -206,6 +206,9 @@ export function getState(uid, active = true) {
       username: db.prepare('SELECT username FROM users WHERE id=?').get(uid)?.username || '',
       cash: p.cash, bank: p.bank, creditScore: p.credit_score,
       prestige, prestigeBonus: S.prestigeBonus(prestige), totalTax: p.total_tax,
+      // 声望是饱和曲线：下一点还值多少、离上限还有多远，摆出来才知道该不该继续攒
+      prestigeNext: S.prestigeBonus(prestige + 100) - S.prestigeBonus(prestige),
+      prestigeMax: S.PRESTIGE_MAX, prestigeHalf: S.PRESTIGE_K,
       totalDividend: p.total_dividend, realizedPnl: p.realized_pnl, missedPay: p.missed_pay,
       bankrupt: !!p.bankrupt, peak: p.peak_networth, playedHours: hour - p.created_hour, monthProfit: p.month_profit,
     },
