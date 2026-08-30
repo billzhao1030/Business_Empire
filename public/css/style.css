@@ -570,3 +570,6 @@ button{cursor:pointer;border:none;background:none}
 .rl label{display:block;font-size:10px;color:var(--dim2);font-weight:700;margin-bottom:3px}
 .rl b{font-size:15px;font-weight:800;display:block}
 .rl span{font-size:10px;display:block;margin-top:2px}
+.ckbox{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim2);cursor:pointer;user-select:none;white-space:nowrap}
+.ckbox input{accent-color:var(--gold);cursor:pointer}
+.ckbox:hover{color:var(--txt)}

@@ -2,7 +2,7 @@ import { t, nm, lang } from '../i18n.js';
 import { api } from '../api.js';
 import { $, $$, money, moneyFull, pct, pctPlain, int, cls, esc, toast, modal, confirmBox, durText, keepScroll} from '../util.js';
 
-let pickType = null, pickCity = 'city', pickCat = 'all', typeQuery = '', sortBy = 'cost';
+let pickType = null, pickCity = 'city', pickCat = 'all', typeQuery = '', sortBy = 'cost', adOnly = false;
 
 // 每种店的「性格」：直接把模拟里用的那几个数翻译成一句人话
 const TRAIT_ROWS = [
@@ -19,6 +19,31 @@ const TRAIT_ROWS = [
   { k: 'mktg',   get: d => d.mktg,      fmt: v => v > 1.5 ? t('biz.tr.adDriven') : v < 0.6 ? t('biz.tr.adDeaf') : t('biz.tr.normal'),
     hue: () => '', scale: v => Math.min(1, v / 2) },
 ];
+// ── 广告到底划不划算 ──────────────────────────────────────
+// 投放营销要花一笔钱（开店成本的 10%），换来营收上涨；但房租也按同样的
+// 系数涨——营销在这个模型里是持续的支出，不是一次性买断。所以真正该看的
+// 是：这笔广告费，要靠它多赚出来的利润赚多少天才回得来。
+// 这里用的是和服务端 bizRates 同一套算法，数字对得上。
+function dailyNetAt(def, city, marketing) {
+  const H = def.openHours;
+  const mk = 1 + 0.10 * marketing * (def.mktg ?? 1);
+  const rev = def.rev * city.revMult * mk;
+  const wage = def.wage * city.wageMult;
+  const staff = Math.max(1, Math.ceil(rev / (wage * (def.revPerWage ?? 4.5))));
+  const served = Math.min(rev, staff * wage * (def.revPerWage ?? 4.5));
+  const rentH = def.hourlyRent * city.rentMult * mk;
+  return H * (served - served * (def.cogs ?? 0.42) - staff * wage) - 24 * rentH;
+}
+export function marketingInfo(def, city) {
+  const cost = Math.round(def.cost * city.costMult * 0.10);
+  const net0 = dailyNetAt(def, city, 0);
+  const gain = dailyNetAt(def, city, 1) - net0;
+  return { cost, net0, gain,
+    payback: gain > 0 ? cost / gain : Infinity,      // 广告费多少天回本
+    ratio: net0 > 0 ? cost / net0 : Infinity,        // 广告费 = 多少天的日净利
+    worth: gain > 0 };
+}
+
 const MONTHS_ZH = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
 const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function seasonText(d) {
@@ -297,23 +322,28 @@ export default {
     };
     await loadCities('');
     pickCity = (cities[0] && cities[0].id) || pickCity;
-    const buildList = () => {
+    const buildList = (city) => {
       const q = typeQuery.trim().toLowerCase();
+      const ad = x => marketingInfo(x, city);
       let l = cat.biz.filter(x => (pickCat === 'all' || x.catId === pickCat)
         && (!q || x.name.toLowerCase().includes(q) || x.en.toLowerCase().includes(q)
-            || x.cat.toLowerCase().includes(q) || x.catEn.toLowerCase().includes(q)));
+            || x.cat.toLowerCase().includes(q) || x.catEn.toLowerCase().includes(q))
+        && (!adOnly || ad(x).worth));
       const by = { cost: (a, b) => a.cost - b.cost,
                    payback: (a, b) => a.payDays - b.payDays,
                    margin: (a, b) => a.cogs - b.cogs,
-                   steady: (a, b) => (a.vol + Math.abs(a.cyc)) - (b.vol + Math.abs(b.cyc)) };
+                   steady: (a, b) => (a.vol + Math.abs(a.cyc)) - (b.vol + Math.abs(b.cyc)),
+                   adback: (a, b) => ad(a).payback - ad(b).payback };
       return l.sort(by[sortBy] || by.cost);
     };
     const render = el => {
-      const list = buildList();
+      const city = cities.find(c => c.id === pickCity) || picked;
+      if (!city) return;
+      const list = buildList(city);
       if (!list.some(x => x.id === pickType) && list.length) pickType = list[0].id;
       const def = cat.biz.find(x => x.id === pickType);
-      const city = cities.find(c => c.id === pickCity) || picked;
-      if (!city || !def) return;
+      if (!def) return;
+      const ad = marketingInfo(def, city);
       const setup = Math.round(def.cost * city.costMult);
       const travel = Math.round(city.travelCost || 0);
       const cost = setup + travel;
@@ -340,7 +370,10 @@ export default {
           <option value="payback" ${sortBy === 'payback' ? 'selected' : ''}>${t('biz.sortPayback')}</option>
           <option value="margin" ${sortBy === 'margin' ? 'selected' : ''}>${t('biz.sortMargin')}</option>
           <option value="steady" ${sortBy === 'steady' ? 'selected' : ''}>${t('biz.sortSteady')}</option>
+          <option value="adback" ${sortBy === 'adback' ? 'selected' : ''}>${t('biz.sortAdback')}</option>
         </select>
+        <label class="ckbox" title="${t('biz.adOnlyTip')}">
+          <input type="checkbox" id="nb-adonly" ${adOnly ? 'checked' : ''}> ${t('biz.adOnly')}</label>
         <input id="nb-type-q" type="search" placeholder="${t('biz.typeSearchPh')}" value="${esc(typeQuery)}"
           style="flex:1;min-width:130px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--txt);font-size:12px">
         <span class="dim2" style="font-size:10.5px">${t('biz.typeCount', { n: list.length })}</span>
@@ -353,6 +386,9 @@ export default {
           return `<button class="opt ${x.id === pickType ? 'active' : ''}" data-type="${x.id}" ${afford ? '' : 'style="opacity:.45"'}>
             <div class="t">${x.emoji} ${esc(nm({ zh: x.name, en: x.en }))}</div>
             <div class="s">${money(c)} · ${t('biz.grossMargin')} ${Math.round((1 - x.cogs) * 100)}% · ${Math.round(x.payDays)}${t('biz.dPayback')}
+              ${(() => { const a = marketingInfo(x, city);
+                return a.worth ? `<span class="${a.payback < 30 ? 'up' : a.payback > 200 ? 'down' : 'dim2'}">· 📣${Math.round(a.payback)}${t('biz.dAd')}</span>`
+                               : `<span class="down">· 📣${t('biz.adNever')}</span>`; })()}
               ${sea ? `<span class="gold">· ${sea}</span>` : ''}</div></button>`;
         }).join('') : `<div class="dim2" style="font-size:11.5px;padding:10px">${t('biz.noType')}</div>`}
       </div>
@@ -394,6 +430,11 @@ export default {
         <div><span>${t('biz.rent')}</span><span class="mono down">-${money(rentM / 30)}/${t('common.day')}（${money(rentM)}/${t('common.month')}）</span></div>
         <div><span>${t('biz.mgmt')}</span><span class="mono">${def.mgmt.toFixed(1)} h/${t('common.day')}</span></div>
         <div><span>${t('biz.payback')}</span><span class="mono">${Math.round(def.payDays)} ${t('common.day')}</span></div>
+        <div><span>📣 ${t('biz.adCost')}</span><span class="mono">${moneyFull(ad.cost)}
+          <span class="dim2" style="font-weight:400">${ad.ratio < 1e6 ? t('biz.adRatio', { d: ad.ratio.toFixed(1) }) : ''}</span></span></div>
+        <div><span>📣 ${t('biz.adGain')}</span><span class="mono ${ad.gain > 0 ? 'up' : 'down'}">${ad.gain > 0 ? '+' : ''}${money(ad.gain)}/${t('common.day')}</span></div>
+        <div><span>📣 ${t('biz.adBack')}</span><span class="mono ${!ad.worth ? 'down' : ad.payback < 30 ? 'up' : ad.payback > 200 ? 'down' : ''}">${
+          ad.worth ? Math.round(ad.payback) + ' ' + t('common.day') : t('biz.adNeverLong')}</span></div>
         <div class="tot"><span>${t('biz.dailyNet')}</span><span class="mono ${net >= 0 ? 'up' : 'down'}">${money(net)}</span></div>
       </div>
       <p class="dim2" style="font-size:11px;margin-top:8px;line-height:1.6">🕐 ${t('biz.hoursHint')}</p>
@@ -408,6 +449,8 @@ export default {
       ${seasonText(def) ? `<div class="dim2" style="font-size:11px;margin-top:8px">🗓️ ${seasonText(def)}</div>` : ''}
       <p class="dim2" style="font-size:11.5px;margin-top:10px;line-height:1.6">${esc(nm({ zh: def.desc, en: def.descEn }))}</p>`;
       box.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { pickType = b.dataset.type; render(el); });
+      const ao = box.querySelector('#nb-adonly');
+      if (ao) ao.onchange = () => { adOnly = ao.checked; render(el); };
       const catSel = box.querySelector('#nb-cat');
       if (catSel) catSel.onchange = () => { pickCat = catSel.value; render(el); };
       const sortSel = box.querySelector('#nb-sort');
