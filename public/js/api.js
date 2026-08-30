@@ -70,6 +70,7 @@ export const api = {
   setSweep: (keep) => post('/api/sweep', { keep }),
   renameMe: (o) => post('/api/rename', o),
   coRename: (name, nameEn, coId) => post('/api/company/rename', { name, nameEn, coId }),
+  coSplit: (ratio, reverse, coId) => post('/api/company/split', { ratio, reverse, coId }),
   leisure: (actId) => post('/api/leisure', { actId }),
   reset: () => post('/api/reset', {}),
 };

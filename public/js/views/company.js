@@ -89,7 +89,8 @@ export default {
       <div class="stat c5"><label>🏢 ${t('co.company')}</label>
         <div class="v" style="font-size:19px">${esc(c.name)}
           <button class="btn btn-xs btn-ghost" id="co-ren" title="${t('co.rename')}">✏️</button></div>
-        <div class="d"><span class="tag y">${c.ticker}</span> ${esc(nm({ zh: c.stageZh, en: c.stageEn }))}</div></div>
+        <div class="d"><span class="tag y">${c.ticker}</span> ${esc(nm({ zh: c.stageZh, en: c.stageEn }))}
+          <button class="btn btn-xs btn-ghost" id="co-split" title="${t('co.split')}">🔀</button></div></div>
       <div class="stat c1"><label>💰 ${t('co.valuation')}</label><div class="v">${money(v.value)}</div>
         <div class="d">${nm({ zh: basis[0], en: basis[1] })}${v.basis === 'earnings' ? ` · ${v.mult.toFixed(1)}×` : ''}</div></div>
       <div class="stat c2"><label>📈 ${t('co.growth')}</label>
@@ -303,6 +304,40 @@ export default {
     $('#co-raise') && ($('#co-raise').onclick = () => this.raiseModal(app, data, coId, again));
     $('#co-ipo') && ($('#co-ipo').onclick = () => this.ipoModal(app, data, coId, again));
     $('#co-market') && ($('#co-market').onclick = () => app.go('market'));
+    // 拆股：股本乘以 n，每股价格除以 n。钱一分没变，只是把蛋糕切成更多份
+    $('#co-split') && ($('#co-split').onclick = () => {
+      const price = data.listed ? data.listed.price : (data.val.value / data.co.shares);
+      let n = 2, rev = false;
+      const box = () => `
+        <p class="dim2" style="font-size:12px;line-height:1.7;margin-bottom:12px">${t('co.splitBody')}</p>
+        <div class="segs" style="display:flex;margin-bottom:10px">
+          <button class="seg ${!rev ? 'active' : ''}" data-rev="0" style="flex:1">${t('co.splitFwd')}</button>
+          <button class="seg ${rev ? 'active' : ''}" data-rev="1" style="flex:1">${t('co.splitRev')}</button>
+        </div>
+        <div class="segs" style="display:flex;flex-wrap:wrap;margin-bottom:12px">
+          ${[2, 3, 4, 5, 10, 20].map(x => `<button class="seg ${x === n ? 'active' : ''}" data-n="${x}" style="flex:1;min-width:44px">${rev ? x + ':1' : '1:' + x}</button>`).join('')}
+        </div>
+        <div class="summary">
+          <div><span>${t('co.shares')}</span><span class="mono">${int(data.co.shares)} → <b class="gold">${int(rev ? data.co.shares / n : data.co.shares * n)}</b></span></div>
+          <div><span>${t('co.perShare')}</span><span class="mono">${moneyFull(price)} → <b>${moneyFull(rev ? price * n : price / n)}</b></span></div>
+          <div><span>${t('co.yourShares')}</span><span class="mono">${int(data.co.playerShares)} → ${int(rev ? data.co.playerShares / n : data.co.playerShares * n)}</span></div>
+          <div class="tot"><span>${t('co.yourValue')}</span><span class="mono">${money(data.stakeValue)} → <b>${money(data.stakeValue)}</b>
+            <span class="dim2" style="font-weight:400">${t('co.unchanged')}</span></span></div>
+        </div>`;
+      modal({ title: t('co.split'), icon: '🔀', body: `<div id="sp-body">${box()}</div>`,
+        footer: `<button class="btn btn-ghost" data-close>${t('common.cancel')}</button>
+                 <button class="btn btn-primary" id="sp-go">${t('common.confirm')}</button>`,
+        onMount: (el, close) => {
+          const wire = () => {
+            el.querySelector('#sp-body').innerHTML = box();
+            el.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { n = +b.dataset.n; wire(); });
+            el.querySelectorAll('[data-rev]').forEach(b => b.onclick = () => { rev = b.dataset.rev === '1'; wire(); });
+          };
+          wire();
+          el.querySelector('[data-close]').onclick = close;
+          el.querySelector('#sp-go').onclick = () => { close(); again(() => api.coSplit(n, rev, coId)); };
+        } });
+    });
     $('#co-ren') && ($('#co-ren').onclick = () => modal({
       title: t('co.rename'), icon: '✏️',
       body: `<label class="field"><span>${t('co.nameZh')}</span>
