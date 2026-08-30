@@ -108,6 +108,13 @@ export const app = {
     this.clockBase = base;
   },
   liveHour() {
+    // 世界已经走满离线上限、停下来等人了：别再本地外推，否则表上的时间会
+    // 一直往前爬，而服务端那边根本没动
+    if (this.state?.now?.paused) {
+      const b = this.clockBase;
+      this._lastTotal = b.hour + b.progress;
+      return { hour: b.hour, frac: b.progress };
+    }
     // 速率必须取服务端下发的值——写死会导致本地跑偏，然后被轮询拉回去（表现为时间倒退）
     const msPer = this.state?.now?.realMsPerHour || 60000;
     const el = (Date.now() - this.clockBase.at) / msPer;
@@ -119,6 +126,7 @@ export const app = {
   },
 
   startLoops() {
+    if (!this._presence) { this._presence = true; this.watchPresence(); }
     clearInterval(this._t1); clearInterval(this._t2);
     this._t1 = setInterval(() => this.paintClock(), 250);
     this._t2 = setInterval(() => this.refresh(), 5000);
@@ -138,6 +146,10 @@ export const app = {
       : hod < (j?.workStart ?? 9) ? 'morning' : hod < (j?.workEnd ?? 17) ? 'shift' : 'evening';
     ph.className = 'tc-phase ' + phase;
     ph.textContent = t('phase.' + phase);
+    // 停摆了就说一声，别让人以为游戏卡住了
+    const paused = !!this.state?.now?.paused;
+    dt.parentElement?.classList.toggle('paused', paused);
+    dt.title = paused ? t('clock.pausedTip', { d: Math.round((this.state.now.capHours || 168) / 24) }) : '';
     this.paintDayBar(hod, frac);
   },
 
@@ -168,10 +180,28 @@ export const app = {
     $('#offline-msg').textContent = msg || t('net.lost');
   },
 
+  // ── 「在玩」到底算什么 ──────────────────────────────────
+  // 标签页每 5 秒轮询一次，光看有没有请求进来是分不出「人在」和「窗口开着」的。
+  // 挂机一晚上回来发现游戏里过了半年，就是把后者当成了前者。
+  // 真正算数的是：页面看得见，而且最近确实有人碰过它。
+  IDLE_MS: 10 * 60 * 1000,
+  _lastInput: Date.now(),
+  watchPresence() {
+    const touch = () => { this._lastInput = Date.now(); };
+    for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove'])
+      addEventListener(ev, touch, { passive: true, capture: true });
+    addEventListener('visibilitychange', () => { if (!document.hidden) touch(); });
+    addEventListener('focus', touch);
+  },
+  isPresent() {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+    return Date.now() - this._lastInput < this.IDLE_MS;
+  },
+
   async refresh(full = false) {
     try {
       const prevOffline = this.state?.offline;
-      this.state = await api.state();
+      this.state = await api.state(this.isPresent());
       this.syncClock();
       this.paintTop();
       if (this.state.offline && !prevOffline) showOfflineReport(this.state.offline, this);

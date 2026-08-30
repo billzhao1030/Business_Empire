@@ -77,6 +77,14 @@ function activeHour() {
   setMeta('active_hour', String(h));
   return h;
 }
+// 世界是不是已经走满上限、停在那儿等人回来了
+export function pausedState() {
+  if (!Number(getMeta('market_hour', '0'))) return { paused: false, capHour: 0, idleHours: 0 };
+  const ah = activeHour();
+  const capHour = ah + OFFLINE_CAP_HOURS;
+  return { paused: currentGameHour() >= capHour, capHour, sinceHour: ah,
+           idleHours: Math.max(0, currentGameHour() - ah), capHours: OFFLINE_CAP_HOURS };
+}
 export function clampOfflineGap() {
   if (!Number(getMeta('market_hour', '0'))) return 0;   // 世界还没初始化
   const cap = activeHour() + OFFLINE_CAP_HOURS;

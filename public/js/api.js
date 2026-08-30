@@ -28,7 +28,7 @@ export const api = {
   register: (username, password, nickname) => post('/api/register', { username, password, nickname }),
   login: (username, password) => post('/api/login', { username, password }),
   logout: () => post('/api/logout', {}),
-  state: () => req('/api/state'),
+  state: (active = true) => req('/api/state?active=' + (active ? 1 : 0)),
   market: kind => req('/api/market' + (kind ? '?kind=' + kind : '')),
   sparks: () => req('/api/sparks'),
   asset: (symbol, points = 300) => req(`/api/asset?symbol=${encodeURIComponent(symbol)}&points=${points}`),
