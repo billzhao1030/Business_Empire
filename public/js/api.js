@@ -48,7 +48,6 @@ export const api = {
   coRaise: (coId) => post('/api/company/raise', { coId }),
   coDividend: (amount, coId) => post('/api/company/dividend', { amount, coId }),
   coFund: (amount, coId) => post('/api/company/fund', { amount, coId }),
-  coRename: (name, nameEn) => post('/api/company/rename', { name, nameEn }),
   coIpo: (coId, price, float) => post('/api/company/ipo', { coId, price, float }),
   bizCities: (q, typeId) => post('/api/biz/cities', { q, typeId }),
   place: (id) => post('/api/place', { id }),
@@ -69,6 +68,8 @@ export const api = {
   itemAction: (id, action) => post('/api/item/action', { id, action }),
   setLook: (o) => post('/api/look', o),
   setSweep: (keep) => post('/api/sweep', { keep }),
+  renameMe: (o) => post('/api/rename', o),
+  coRename: (name, nameEn, coId) => post('/api/company/rename', { name, nameEn, coId }),
   leisure: (actId) => post('/api/leisure', { actId }),
   reset: () => post('/api/reset', {}),
 };

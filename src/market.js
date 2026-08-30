@@ -2,7 +2,7 @@
 import { db, getMeta, setMeta } from './db.js';
 import { STOCKS, COMMODITIES, CRYPTOS, INDICES, DISTRICTS } from './catalog-assets.js';
 import * as C from './catalog-content.js';
-import { HINTS, CONFIRM, familyOf } from './catalog-rumor.js';
+import { HINTS, CONFIRM, CO_HINTS, CO_CONFIRM, familyOf } from './catalog-rumor.js';
 
 // ── 时间：现实 MS_PER_GAME_HOUR 毫秒 = 游戏 1 小时（默认 1 分钟）──
 export const SPEED_MIN_MS = 3_000;       // 最快：3 秒 = 1 游戏小时（20 倍速）
@@ -43,10 +43,17 @@ let sectorMom = {};          // 每个资产保留的历史小时数
 let catalyst = null, activeCat = null;
 // 七成的传闻会应验，两成不了了之，一成是放出来骗人的反向消息——
 // 有些风就是放出来骗人的。读得懂方向仍然明显划算，但不是白捡钱。
-export const RUMOR_TRUE_RATE = 0.70;
-export const RUMOR_FAKE_RATE = 0.12;      // 反向走的比例（从不应验的那部分里出）
-export const RUMOR_LEAD_MIN = 30, RUMOR_LEAD_MAX = 110;   // 提前多少游戏小时开始放风
-export const RUMOR_RUN_HOURS = 54;        // 兑现之后，行情走多久
+export const RUMOR_TRUE_RATE = 0.80;       // 八成会应验
+export const RUMOR_FAKE_RATE = 0.08;      // 反向走的比例（从不应验的那部分里出）
+// 整条线必须走完在 7 个游戏日（144 小时）之内：放风 → 兑现 → 走完。
+// 第一条风放出来之后，你还有几十个小时可以从容建仓。
+export const RUMOR_WINDOW = 144;
+export const RUMOR_LEAD_MIN = 26, RUMOR_LEAD_MAX = 62;    // 提前多少小时开始放风
+export const RUMOR_RUN_MIN = 46, RUMOR_RUN_MAX = 76;      // 兑现之后走多久
+export const RUMOR_RUN_HOURS = 60;        // 给界面看的中位数
+// 幅度：点名到公司的传闻，兑现起来是「大幅」，不是挠痒痒
+export const RUMOR_MAG_MIN = 0.24, RUMOR_MAG_MAX = 0.50;
+export const RUMOR_SPILL = 0.22;          // 同板块其他股票跟着沾多少光
 const MAX_DETAIL_TICKS = 600;      // 单次补算的最大精细步数
 export const START_HOD = 8;        // 世界起点落在早上 8:00
 export const WARMUP_HOURS = 720 + START_HOD;   // 预热 30 个游戏日，让一开局就有完整历史行情
@@ -323,48 +330,58 @@ function tickOnce(assetList, hour, sectorSet) {
 
   // ── 传闻 → 催化剂 ──
   // 先排期，再放几条隐晦的风，到点才真的动。三成的传闻不了了之。
-  if (!catalyst && !activeCat && Math.random() < 0.010) {
-    // 传闻只针对股票板块。大宗商品、加密货币、房产商圈也在 sectorSet 里，
-    // 但对它们说「板块传闻」没有意义。
-    const eq = [...new Set(assetList.filter(a => a.kind === 'stock').map(a => a.sector))];
-    const sector = pick(eq);
+  if (!catalyst && !activeCat && Math.random() < 0.012) {
+    // 传闻点名到具体一家上市公司——你至少知道该盯哪一支票了。
+    const stocks = assetList.filter(a => a.kind === 'stock');
+    const a = pick(stocks);
     const up = Math.random() < 0.5;
     const lead = RUMOR_LEAD_MIN + Math.floor(Math.random() * (RUMOR_LEAD_MAX - RUMOR_LEAD_MIN));
-    const nHints = 2 + (Math.random() < 0.45 ? 1 : 0);
+    const run = RUMOR_RUN_MIN + Math.floor(Math.random() * (RUMOR_RUN_MAX - RUMOR_RUN_MIN));
+    // 整条线卡死在 7 个游戏日之内
+    const runCap = Math.max(24, Math.min(run, RUMOR_WINDOW - lead));
+    const nHints = 2 + (Math.random() < 0.5 ? 1 : 0);
     const hints = [];
-    for (let i = 0; i < nHints; i++) hints.push(hour + Math.floor(lead * (0.10 + 0.75 * (i + Math.random()) / nHints)));
+    for (let i = 0; i < nHints; i++) hints.push(hour + Math.floor(lead * (0.06 + 0.62 * (i + Math.random()) / nHints)));
     const roll2 = Math.random();
     const outcome = roll2 < RUMOR_TRUE_RATE ? 1                       // 应验
                   : roll2 < RUMOR_TRUE_RATE + RUMOR_FAKE_RATE ? -1    // 反着走
                   : 0;                                               // 不了了之
-    catalyst = { sector, dir: up ? 1 : -1, outcome,
-      mag: 0.05 + Math.random() * 0.13, fireHour: hour + lead, hints: hints.sort((a, b) => a - b) };
+    catalyst = { symbol: a.symbol, zh: a.zh, en: a.name, sector: a.sector,
+      dir: up ? 1 : -1, outcome,
+      mag: RUMOR_MAG_MIN + Math.random() * (RUMOR_MAG_MAX - RUMOR_MAG_MIN),
+      fireHour: hour + lead, run: runCap, hints: hints.sort((x, y) => x - y) };
   }
   if (catalyst) {
-    // 放风：只描述上下游看得见的迹象，从不直说方向
+    // 放风：点名公司，但只讲看得见的迹象，从不直说「要涨」
     while (catalyst.hints.length && catalyst.hints[0] <= hour) {
       catalyst.hints.shift();
-      const fam = HINTS[familyOf(catalyst.sector)] || HINTS.consumer;
-      const line = pick(catalyst.dir > 0 ? fam.up : fam.down);
-      newsItems.push({ scope: 'rumor', target: catalyst.sector, impact: 0,
-        headline: JSON.stringify({ zh: line[0], en: line[1] }) });
+      // 同一条传闻里别把同一句话说两遍——重复的风声看着就假
+      const pool = (catalyst.dir > 0 ? CO_HINTS.up : CO_HINTS.down)
+        .filter(l => !(catalyst.said || []).includes(l[0]));
+      const line = pick(pool.length ? pool : (catalyst.dir > 0 ? CO_HINTS.up : CO_HINTS.down));
+      (catalyst.said = catalyst.said || []).push(line[0]);
+      newsItems.push({ scope: 'rumor', target: catalyst.symbol, impact: 0,
+        headline: JSON.stringify({ zh: line[0].replace('{X}', catalyst.zh),
+                                   en: line[1].replace('{X}', catalyst.en) }) });
     }
     if (hour >= catalyst.fireHour) {
       if (catalyst.outcome !== 0) {
         const realDir = catalyst.dir * catalyst.outcome;   // outcome = -1 时反着走
-        activeCat = { sector: catalyst.sector,
-          perHour: realDir * catalyst.mag / RUMOR_RUN_HOURS, left: RUMOR_RUN_HOURS };
-        const tp = pick(realDir > 0 ? CONFIRM.up : CONFIRM.down);
-        newsItems.push({ scope: 'sector', target: catalyst.sector, impact: realDir * catalyst.mag * 0.3,
-          headline: JSON.stringify({ zh: tp[0].replace('{X}', catalyst.sector),
-                                     en: tp[1].replace('{X}', C.sectorEn(catalyst.sector)) }) });
+        const run = catalyst.run || RUMOR_RUN_HOURS;
+        activeCat = { symbol: catalyst.symbol, sector: catalyst.sector,
+          perHour: realDir * catalyst.mag / run, left: run };
+        const tp = pick(realDir > 0 ? CO_CONFIRM.up : CO_CONFIRM.down);
+        newsItems.push({ scope: 'asset', target: catalyst.symbol, impact: realDir * catalyst.mag * 0.28,
+          headline: JSON.stringify({ zh: tp[0].replace('{X}', catalyst.zh),
+                                     en: tp[1].replace('{X}', catalyst.en) }) });
       }
       catalyst = null;
     }
   }
-  // 催化剂兑现期间：这个板块每小时都被推着走，内在价值也一起重估
+  // 兑现期间：那一支被点名的票每小时都被推着走，同板块的其他票沾一点光
   if (activeCat) {
-    sectorRet[activeCat.sector] = (sectorRet[activeCat.sector] || 0) + activeCat.perHour;
+    if (activeCat.sector)
+      sectorRet[activeCat.sector] = (sectorRet[activeCat.sector] || 0) + activeCat.perHour * RUMOR_SPILL;
     if (--activeCat.left <= 0) activeCat = null;
   }
 
@@ -408,7 +425,12 @@ function tickOnce(assetList, hour, sectorSet) {
     // 基本面（内在价值）自身缓慢演化
     a.fair = Math.max(1e-6, a.fair * Math.exp(a.mu * DT + 0.40 * a.sigma * SQDT * gauss()));
     // 催化剂是基本面事件，不只是情绪：内在价值同步重估，涨上去才站得住
-    if (activeCat && a.sector === activeCat.sector) a.fair *= Math.exp(activeCat.perHour * 0.85);
+    // 被点名的那一支：股价和内在价值一起被推着走，幅度是同板块其他票的好几倍
+    let catPush = 0;
+    if (activeCat) {
+      if (a.symbol === activeCat.symbol) { catPush = activeCat.perHour; a.fair *= Math.exp(activeCat.perHour * 0.92); }
+      else if (a.sector === activeCat.sector) a.fair *= Math.exp(activeCat.perHour * RUMOR_SPILL * 0.85);
+    }
 
     const theta = isCrypto ? 0.55 : a.kind === 'commodity' ? 1.9 : a.kind === 'index' ? 0.85 : a.kind === 'district' ? 1.05 : 1.15;
     const reversion = theta * Math.log(a.fair / a.price) * DT;
@@ -418,7 +440,7 @@ function tickOnce(assetList, hour, sectorSet) {
     const news = a._news || 0;
     if (news) { a.fair = Math.max(1e-6, a.fair * Math.exp(news * 0.75)); a._news = 0; }
 
-    const r = factor + idio + reversion + jump + news - 0.5 * effSigma * effSigma * DT;
+    const r = factor + idio + reversion + jump + news + catPush - 0.5 * effSigma * effSigma * DT;
     let price = a.price * Math.exp(r);
     price = clamp(price, a.fair * 0.06, a.fair * 9);        // 极端行情护栏
     price = Math.max(price, 1e-6);
@@ -511,6 +533,18 @@ export function advanceMarket() {
   } finally { advancing = false; }
 }
 
+// 只给校准脚本用：不看墙上时钟，直接把世界往前推 n 个小时。
+// 传闻的命中率、幅度这些参数，都是靠它跑几万小时量出来的。
+export function advanceForTest(n) {
+  const list = assets();
+  const sectorSet = new Set(list.map(a => a.sector));
+  let mh = Number(getMeta('market_hour', '0'));
+  const news = [];
+  for (let i = 1; i <= n; i++) news.push(...tickOnce(list, mh + i, sectorSet));
+  setMeta('market_hour', String(mh + n));
+  return news;
+}
+
 // 玩家交易造成的价格冲击
 export function applyImpact(assetId, signedShares) {
   const a = assets().find(x => x.id === assetId);
@@ -544,7 +578,15 @@ function saveRumors() {
 }
 // 给界面看的：正在流传、还没有结果的传闻
 export function pendingRumor() {
-  return catalyst ? { sector: catalyst.sector, hoursLeft: Math.max(0, catalyst.fireHour - currentGameHour()) } : null;
+  if (!catalyst) return null;
+  return { symbol: catalyst.symbol, zh: catalyst.zh, en: catalyst.en, sector: catalyst.sector,
+    hoursLeft: Math.max(0, catalyst.fireHour - currentGameHour()),
+    windowHours: RUMOR_WINDOW };
+}
+// 正在兑现的那一支
+export function activeRumor() {
+  return activeCat ? { symbol: activeCat.symbol, sector: activeCat.sector,
+    hoursLeft: activeCat.left, perHour: activeCat.perHour } : null;
 }
 // 各城市商圈繁荣度：直接影响该城市所有店铺的营收
 export function cityProsperity() {

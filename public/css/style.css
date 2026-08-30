@@ -591,3 +591,12 @@ button{cursor:pointer;border:none;background:none}
   color:var(--dim2);text-align:center;font-variant-numeric:tabular-nums}
 .mixscore.mid{color:var(--txt);border-color:var(--line2)}
 .mixscore.hi{color:var(--gold);border-color:var(--gold);background:var(--glow3)}
+
+/* ══ 3D 人物 ══ */
+.avatar-wrap.is3d{position:relative;padding:0;overflow:hidden;height:360px;
+  background:radial-gradient(120% 90% at 50% 12%,#232a44 0%,#141827 55%,#0d1018 100%)}
+.avatar-wrap.is3d{height:420px}
+.avatar-wrap.is3d canvas{width:100%;height:100%;display:block;cursor:grab}
+.avatar-wrap.is3d canvas:active{cursor:grabbing}
+.av-hint{position:absolute;left:0;right:0;bottom:7px;text-align:center;font-size:10px;
+  color:var(--dim2);pointer-events:none;letter-spacing:.3px}

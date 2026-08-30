@@ -87,7 +87,8 @@ export default {
     return `
     <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
       <div class="stat c5"><label>🏢 ${t('co.company')}</label>
-        <div class="v" style="font-size:19px">${esc(c.name)}</div>
+        <div class="v" style="font-size:19px">${esc(c.name)}
+          <button class="btn btn-xs btn-ghost" id="co-ren" title="${t('co.rename')}">✏️</button></div>
         <div class="d"><span class="tag y">${c.ticker}</span> ${esc(nm({ zh: c.stageZh, en: c.stageEn }))}</div></div>
       <div class="stat c1"><label>💰 ${t('co.valuation')}</label><div class="v">${money(v.value)}</div>
         <div class="d">${nm({ zh: basis[0], en: basis[1] })}${v.basis === 'earnings' ? ` · ${v.mult.toFixed(1)}×` : ''}</div></div>
@@ -302,6 +303,25 @@ export default {
     $('#co-raise') && ($('#co-raise').onclick = () => this.raiseModal(app, data, coId, again));
     $('#co-ipo') && ($('#co-ipo').onclick = () => this.ipoModal(app, data, coId, again));
     $('#co-market') && ($('#co-market').onclick = () => app.go('market'));
+    $('#co-ren') && ($('#co-ren').onclick = () => modal({
+      title: t('co.rename'), icon: '✏️',
+      body: `<label class="field"><span>${t('co.nameZh')}</span>
+               <input id="cr-n" maxlength="24" value="${esc(data.co.name)}"></label>
+             <label class="field"><span>${t('co.nameEn')}</span>
+               <input id="cr-e" maxlength="32" value="${esc(data.co.nameEn || '')}"></label>
+             <p class="dim2" style="font-size:11px;line-height:1.6">${t('co.renameNote', { t: data.co.ticker })}</p>`,
+      footer: `<button class="btn btn-ghost" data-close>${t('common.cancel')}</button>
+               <button class="btn btn-primary" id="cr-go">${t('common.confirm')}</button>`,
+      onMount: (el, close) => {
+        el.querySelector('[data-close]').onclick = close;
+        el.querySelector('#cr-go').onclick = () => {
+          const n = el.querySelector('#cr-n').value.trim();
+          if (n.length < 2) return toast(t('co.errName'), 'err');
+          close();
+          again(() => api.coRename(n, el.querySelector('#cr-e').value.trim(), coId));
+        };
+      },
+    }));
     const dv = $('#co-div'), fd = $('#co-fund');
     if (dv) dv.oninput = () => { divAmt = dv.value; };
     if (fd) fd.oninput = () => { fundAmt = fd.value; };

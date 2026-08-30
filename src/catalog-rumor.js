@@ -160,4 +160,57 @@ export const CONFIRM = {
   down: [['{X}板块集体回调，之前那些细节原来都是伏笔', 'The {X} sector sold off — those small details were the tell all along']],
 };
 
+// ── 点名到公司的传闻 ────────────────────────────────────────
+// {X} 会替换成具体那家公司。说法仍然是隐晦的——只讲看得见的迹象，
+// 不说「要涨」——但你至少知道该盯哪一支股票了。
+export const CO_HINTS = {
+  up: [
+    ['{X} 的供应链最近突然紧了，上游几家都在加班赶货', '{X}’s supply chain has tightened; its upstream suppliers are all running overtime'],
+    ['{X} 悄悄把明年的产能预订提前签掉了一半', '{X} quietly locked in half of next year’s capacity ahead of schedule'],
+    ['{X} 的招聘页一周里多出了四十个岗位，公告里一个字没提', 'Forty new roles appeared on {X}’s careers page in a week, with no announcement'],
+    ['有人看见 {X} 的高管连着两周飞同一个城市', '{X}’s executives have flown to the same city two weeks running'],
+    ['{X} 的几个核心供应商同时上调了报价，对方还照单全收', 'Several of {X}’s key suppliers raised prices at once — and {X} paid without arguing'],
+    ['{X} 的园区停车场周末满了，保安说这个月一直如此', '{X}’s car park is full at weekends, and the guard says it has been all month'],
+    ['{X} 把一笔本来要发的分红改成了留存', '{X} converted a dividend it had planned to pay into retained earnings'],
+    ['{X} 的法务这个季度注册了异常多的商标', '{X}’s legal team filed an unusual number of trademarks this quarter'],
+    ['{X} 的老对手悄悄停掉了对标那条产品线', '{X}’s oldest rival quietly shut down the line that competed with it'],
+    ['券商内部把 {X} 从「观察」挪进了「重点跟踪」，但没发研报', 'A broker moved {X} from watch list to priority coverage without publishing a note'],
+    ['{X} 的仓库这个月租了两倍的面积', '{X} leased twice the warehouse space this month'],
+    ['{X} 的一个沉寂两年的专利族突然续了费', 'A patent family {X} had let go quiet for two years was suddenly renewed'],
+    ['{X} 的员工在社交网络上删掉了「正在找机会」的标签', '{X}’s staff have been removing "open to work" from their profiles'],
+    ['{X} 的物流合作方临时加开了一条夜间线路', '{X}’s logistics partner has added an overnight lane at short notice'],
+    ['{X} 的董事在窗口期结束后第一时间增持了', '{X}’s directors bought the moment the closed period ended'],
+    ['{X} 的客服排班表上，下个季度的人手翻了一倍', '{X}’s support rota for next quarter has twice the headcount'],
+  ],
+  down: [
+    ['{X} 的两家主力供应商把付款账期从 60 天改成了预付', 'Two of {X}’s main suppliers moved it from 60-day terms to payment up front'],
+    ['{X} 的招聘页一夜之间少了三分之一的岗位', 'A third of the roles on {X}’s careers page vanished overnight'],
+    ['{X} 的财报里，那个指标被挪进了脚注，字号还小了一号', 'In {X}’s filing, that metric moved into a footnote, in smaller type'],
+    ['{X} 的几位中层同时更新了简历', 'Several of {X}’s middle managers updated their CVs in the same week'],
+    ['{X} 把年度发布会从三月推到了「稍后公布」', '{X} moved its annual launch from March to "a date to be confirmed"'],
+    ['{X} 的客户主动要求把交付往后推两个季度', '{X}’s customers themselves asked to push delivery back two quarters'],
+    ['{X} 的园区里，有一整层的灯这个月没再亮过', 'One whole floor at {X} has not had its lights on this month'],
+    ['{X} 的审计换了一家事务所，公告写在第七页', '{X} changed auditors; the notice was on page seven'],
+    ['{X} 的高管在窗口期一开就减了持，理由是「个人资金需求」', '{X}’s executives sold as soon as the window opened, citing "personal liquidity"'],
+    ['{X} 的经销商开始在清库存，折扣力度是三年来最大的', '{X}’s dealers are clearing stock at the steepest discounts in three years'],
+    ['{X} 的续约率今年不再单独披露了', '{X} has stopped disclosing its renewal rate separately'],
+    ['{X} 的一个海外仓提前解约了', '{X} broke the lease on one of its overseas warehouses early'],
+    ['{X} 的研发预算被拆进了「其他」这一栏', '{X}’s R&D budget has been folded into "other"'],
+    ['{X} 门口的班车从每天六班减到了三班', 'The shuttle to {X} has gone from six runs a day to three'],
+    ['{X} 的两个长期大客户今年没有出现在名单里', 'Two of {X}’s long-standing major customers are missing from this year’s list'],
+    ['{X} 的法务突然开始批量处置非核心资产', '{X}’s legal team has started disposing of non-core assets in batches'],
+  ],
+};
+// 兑现那一刻的新闻
+export const CO_CONFIRM = {
+  up: [
+    ['{X} 大幅上涨，之前那些迹象终于连成了线', '{X} jumps — the signs finally joined up'],
+    ['{X} 放出超预期的消息，盘中拉升', '{X} surprises to the upside and rips through the session'],
+  ],
+  down: [
+    ['{X} 大幅下挫，之前那些细节原来都是伏笔', '{X} slides — those small details were the tell all along'],
+    ['{X} 的坏消息落地，开盘即杀', '{X}’s bad news lands and the stock is sold from the open'],
+  ],
+};
+
 export function familyOf(sector) { return FAMILY_OF[sector] || 'consumer'; }
