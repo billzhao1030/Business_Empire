@@ -68,13 +68,26 @@ export function outfitOf(p, items) {
 export function lookOf(p, items) {
   const o = outfitOf(p, items);
   const sc = outfitScore(Object.values(o));
-  return { ...sc, slots: o,
+  // 魅力是穿衣服的人：同一身行头，穿在会穿的人身上就是更好看
+  const mult = 1 + CHARM_OUTFIT * Math.min(1, Math.max(0, (Number(p?.charm) || 0) / ATTR_MAX));
+  const score = Math.round(sc.score * mult);
+  return { ...sc, slots: o, score, base: sc.score, charmMult: mult,
     // 一身得体的衣服，值几点声望；同时每小时压力略降——人是会因为体面而放松的
-    prestige: sc.score,
-    stress: -Math.min(0.06, sc.score / 1400) };
+    prestige: score,
+    stress: -Math.min(0.06, score / 1400) };
 }
 
 const clamp = (x, lo, hi) => x < lo ? lo : x > hi ? hi : x;
+const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+// 按权重抽一个。权重全是 0 的时候退回等概率，免得抽出 undefined
+function pickWeighted(list, weightOf) {
+  let total = 0;
+  const w = list.map(x => { const v = Math.max(0, weightOf(x) || 0); total += v; return v; });
+  if (!(total > 0)) return list[Math.floor(Math.random() * list.length)];
+  let r = Math.random() * total;
+  for (let i = 0; i < list.length; i++) if ((r -= w[i]) <= 0) return list[i];
+  return list[list.length - 1];
+}
 const round2 = x => Math.round(x * 100) / 100;
 // 账本条目：存 i18n key + 参数，前端按语言渲染
 export const L = (k, p = {}) => JSON.stringify({ k, p });
@@ -213,6 +226,64 @@ export function efficiency(stamina) {
   if (stamina >= 60) return 1;
   if (stamina >= 25) return 0.75 + 0.25 * (stamina - 25) / 35;
   return 0.40 + 0.35 * Math.max(0, stamina) / 25;
+}
+
+// ── 属性：知识、运气、魅力 ──────────────────────────────────
+// 三条都是 0 到 100，但都是渐近线，不是进度条：越往上，同一件事推得越少。
+// 前 50 点很好拿，80 往上要花真金白银——这也正是那些贵项目存在的意义。
+//
+// 知识 学到的东西不会还回去，永不衰减
+// 运气 手气留不住，每个游戏日都在往回落
+// 魅力 靠维持，停下来就慢慢淡了
+export const ATTR_MAX = 100;
+export const ATTR_SOFT = 1.2;             // 接近上限时的收敛指数
+export const LUCK_DECAY = 1.5 / 24;       // 每小时（合每游戏日 1.5 点）
+export const CHARM_DECAY = 0.6 / 24;
+
+// 一次活动实际涨多少：越接近上限，同样的活动给得越少
+export function attrGain(cur, raw) {
+  if (!(raw > 0)) return 0;
+  const room = Math.max(0, 1 - Math.max(0, cur) / ATTR_MAX);
+  return raw * Math.pow(room, ATTR_SOFT);
+}
+
+// 知识：脑子里的东西换成钱
+export const KNOW_WAGE = 0.35;            // 工资溢价，最高 +35%
+export const KNOW_EXP = 0.80;             // 经验积累加速，最高 +80%
+export const KNOW_BIZ = 0.10;             // 店铺净利，最高 +10%
+// 运气：赌运、生意的运气、身体的运气
+// 彩票各档中奖率最高 ×1.5。上限卡在这儿是有原因的：刮刮乐本来每张只回本
+// 57%，乘到 2 倍就变成了正期望——那不是运气好，那是印钞机。运气能让你少输，
+// 不该让你靠买彩票发家。
+export const LUCK_LOTTO = 0.50;
+export const LUCK_GOOD = 1.20;            // 人生际遇里好事的权重
+export const LUCK_BAD = 0.45;             // 坏事的权重往下压
+export const LUCK_SICK = 0.40;            // 生病概率最多降 40%
+// 魅力：人愿意跟你打交道
+export const CHARM_ROUND = 0.08;          // 融资时投资人少压你 8 个点
+export const CHARM_PRESTIGE = 0.60;       // 声望积累加速，最高 +60%
+export const CHARM_OUTFIT = 0.50;         // 同一身衣服，穿在你身上更好看
+
+// 老板本人给这门生意带来的加成。声望是一部分，脑子是另一部分——
+// 会做生意的人，同样一家店就是能多做出来一点。所有算营收的地方都走这里。
+export function ownerBonus(userId, p) {
+  return prestigeBonus(prestigeOf(userId) + (p?.prestige || 0)) + KNOW_BIZ * knowledgeOf(p);
+}
+const unit = v => Math.min(1, Math.max(0, (Number(v) || 0) / ATTR_MAX));
+export function knowledgeOf(p) { return unit(p?.knowledge); }
+export function luckOf(p) { return unit(p?.luck); }
+export function charmOf(p) { return unit(p?.charm); }
+
+// 一个人现在的三条属性各自在给他什么
+export function attrEffects(p) {
+  const k = knowledgeOf(p), l = luckOf(p), c = charmOf(p);
+  return {
+    k, l, c,
+    wage: 1 + KNOW_WAGE * k, exp: 1 + KNOW_EXP * k, biz: 1 + KNOW_BIZ * k,
+    lotto: 1 + LUCK_LOTTO * l, sick: 1 - LUCK_SICK * l,
+    good: 1 + LUCK_GOOD * l, bad: 1 - LUCK_BAD * l,
+    round: CHARM_ROUND * c, prestige: 1 + CHARM_PRESTIGE * c, outfit: 1 + CHARM_OUTFIT * c,
+  };
 }
 
 // ── 定价策略 ────────────────────────────────────────────────
@@ -459,7 +530,7 @@ export function computeNetWorth(userId) {
   for (const h of holdings) { const a = live.get(h.asset_id); if (a) portfolio += h.qty * a.price; }
 
   const biz = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(userId);
-  const pbonus = prestigeBonus(prestigeOf(userId) + p.prestige);
+  const pbonus = ownerBonus(userId, p);
   const prosp = M.cityProsperity();
   const env = bizEnv();
   // 装进公司的店铺，账面值算在股权里，不能再单独计一次
@@ -531,7 +602,7 @@ export function advancePlayer(userId) {
 
   const ledger = [], nwPoints = [];
   let holdingsDirty = false;   // 只有强平会改持仓，改了才写回
-  const pb = prestigeBonus(prestigeOf(userId) + p.prestige);
+  const pb = ownerBonus(userId, p);
   const prosp = M.cityProsperity();
   const carOwned = items.some(it => ITEM[it.type_id]?.car);
   const bikeOwned = items.some(it => ITEM[it.type_id]?.bike);
@@ -558,7 +629,12 @@ export function advancePlayer(userId) {
   // 宏观周期的需求系数：繁荣时人人多花钱，衰退时先砍掉不必要的
   const macroDemand = M.regimeState().demand ?? 1;
 
+  let attr = attrEffects(p);
   for (let h = from + 1; h <= target; h++) {
+    // ── 属性：运气留不住，魅力要维持，知识不会还回去 ──
+    p.luck = Math.max(0, num(p.luck) - LUCK_DECAY);
+    p.charm = Math.max(0, num(p.charm) - CHARM_DECAY);
+    if (h % 24 === 0) attr = attrEffects(p);          // 一天重算一次就够了
     // ── 作息：体力随睡眠恢复、随清醒与工作消耗 ──
     const hod = h % DAY_HOURS;
     const month = M.gameDate(h).month;          // 旺季按游戏内月份走
@@ -625,14 +701,14 @@ export function advancePlayer(userId) {
     const busy = h < (p.busy_until || 0);                  // 正在消遣，脱不开身
     if (working && !onLeave && phase === 'shift' && shiftHod < tb.shift && !sick && !traveling && !busy) {
       const eff = efficiency(p.stamina) * stressFactor(p.stress);
-      const pay = job.wage * eff;
-      p.cash += pay; p.job_exp += 1; p.job_hours += 1; p.job_income += pay; dayJob += pay;
+      const pay = job.wage * eff * attr.wage;          // 知识溢价：同一个岗位，你值更多钱
+      p.cash += pay; p.job_exp += attr.exp; p.job_hours += 1; p.job_income += pay; dayJob += pay;
       p.stamina += ST_SHIFT; p.worked_today = 1;
     }
     // ── 加班结算：接单时已锁定报酬，这一工时在游戏里真正过完才到账 ──
     if (p.ot_pending > 0 && h >= p.ot_until) {
       p.cash += p.ot_pending; p.job_income += p.ot_pending; dayJob += p.ot_pending;
-      p.job_exp += 1; p.job_hours += 1;
+      p.job_exp += attr.exp; p.job_hours += 1;
       p.ot_pending = 0;
     }
     p.stamina = clamp(p.stamina, 0, STAMINA_MAX);
@@ -662,7 +738,7 @@ export function advancePlayer(userId) {
     p.stress = clamp(p.stress + dStress, 0, STRESS_MAX);
 
     // ── 生病判定（吃得差、住得差会显著提高概率）──
-    if (!sick && !traveling && Math.random() < sickChance(p.stress) * meal.sick) {
+    if (!sick && !traveling && Math.random() < sickChance(p.stress) * meal.sick * attr.sick) {
       const ill = pickIllness(p.stress);
       p.sick_id = ill.id; p.sick_until = h + ill.days * DAY_HOURS; p.sick_treated = 0;
       ledger.push([h, 'health', 0, L('led.fellIll', { ill: { zh: ill.zh, en: ill.en }, days: ill.days }), ill.emoji]);
@@ -909,7 +985,8 @@ export function advancePlayer(userId) {
       }
 
       if (Math.random() < 0.22) {
-        const ev = LIFE_EVENTS[Math.floor(Math.random() * LIFE_EVENTS.length)];
+        // 抽哪一件事，运气说了算：走运的人碰上的好事多，倒霉的事少
+        const ev = pickWeighted(LIFE_EVENTS, e => (e.gain ? attr.good : attr.bad));
         const nw = Math.max(0, quickNetWorth(p, biz, items, holdings, assetsById, loans, deposits));
         // 金额随身家缩放：穷的时候只是小钱，富起来才伤筋动骨
         let amt = 0;
@@ -918,7 +995,8 @@ export function advancePlayer(userId) {
           amt = ev.gain ? mag : -mag;
         }
         if (amt < 0) payFrom(p, -amt); else p.cash += amt;
-        if (ev.prestige) p.prestige = Math.max(0, p.prestige + ev.prestige);
+        if (ev.prestige) p.prestige = Math.max(0,
+          p.prestige + (ev.prestige > 0 ? ev.prestige * attr.prestige : ev.prestige));
         ledger.push([h, 'event', amt, L('led.life', { id: ev.id, amt, prestige: ev.prestige || 0 }), ev.icon]);
       }
 
@@ -951,14 +1029,16 @@ export function advancePlayer(userId) {
                 stress=?,sick_until=?,sick_id=?,sick_treated=?,trip_until=?,trip_id=?,
                 work_streak=?,worked_today=?,streak_day=?,meal_id=?,food_spent=?,rent_spent=?,
                 commute_id=?,transit_spent=?,job_id=?,
-                trip_relief=?,trip_stam=?,trip_nights=?,trip_spent2=? WHERE user_id=?`)
+                trip_relief=?,trip_stam=?,trip_nights=?,trip_spent2=?,
+                knowledge=?,luck=?,charm=? WHERE user_id=?`)
       .run(p.cash, p.bank, p.credit_score, p.last_hour, p.prestige, p.month_profit,
            p.total_tax, p.total_dividend, p.missed_pay, p.peak_networth, p.bankrupt,
            p.job_exp, p.job_hours, p.job_income, p.stamina, p.ot_pending,
            p.stress, p.sick_until, p.sick_id, p.sick_treated, p.trip_until, p.trip_id,
            p.work_streak, p.worked_today, p.streak_day, p.meal_id, p.food_spent, p.rent_spent,
            p.commute_id, p.transit_spent, p.job_id,
-           p.trip_relief, p.trip_stam, p.trip_nights, p.trip_spent2, userId);
+           p.trip_relief, p.trip_stam, p.trip_nights, p.trip_spent2,
+           num(p.knowledge), num(p.luck), num(p.charm), userId);
     const ub = db.prepare(`UPDATE businesses SET demand=?,condition=?,lifetime_profit=?,month_revenue=?,
                            month_cost=?,staff=?,understaffed=? WHERE id=?`);
     for (const b of biz) ub.run(b.demand, b.condition, b.lifetime_profit, b.month_revenue, b.month_cost, b.staff, b.understaffed, b.id);

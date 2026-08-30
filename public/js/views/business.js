@@ -140,7 +140,9 @@ export default {
 
     <div class="card" style="margin-bottom:16px">
       <div class="card-h"><h3>${t('biz.title')}</h3>
-        <span class="sub">${t('common.prestige')} ${int(s.player.prestige)} · ${t('dash.prestigeBonus')} <b class="gold">+${pctPlain(s.player.prestigeBonus)}</b></span>
+        <span class="sub">${t('biz.ownerBonus')} <b class="gold">+${pctPlain(s.player.ownerBonus)}</b>
+          <span class="dim2">（${t('common.prestige')} ${int(s.player.prestige)} → +${pctPlain(s.player.prestigeBonus)}${
+            s.player.knowBonus > 0 ? ` · ${t('attr.knowledge')} → +${pctPlain(s.player.knowBonus)}` : ''}）</span></span>
         <div class="right" style="display:flex;gap:8px">
           ${bs.length ? `<button class="btn btn-sm btn-ghost" id="b-foldall">${
             groupByOwner(bs, s.companies).some(g => isOpen(g.key, true)) ? t('biz.foldAll') : t('biz.unfoldAll')}</button>` : ''}
