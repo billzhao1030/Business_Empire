@@ -203,13 +203,14 @@ export default {
               <div class="dim2" style="font-size:10.5px;margin-top:7px;line-height:1.6">${t('co.ipoPriceHint')}</div>
             </div>
           </div>
-          <div class="dim2" style="font-size:10.5px;margin-top:10px;line-height:1.7">${t('co.ipoNote')}</div>`
+          <div class="dim2" style="font-size:10.5px;margin-top:10px;line-height:1.7">${
+            d.ipo.rounds < 2 ? `<b>${t('co.ipoNoRounds')}</b> · ${t('co.ipoThinBook')}<br>` : ''}${t('co.ipoNote')}</div>`
           : `<div class="summary" style="border-color:var(--orange)">
-              <div><span>${t('co.ipoNeedRounds')}</span><span class="mono">${d.ipo.rounds} / ${d.ipo.needRounds}</span></div>
-              <div><span>${t('co.ipoNeedVal')}</span><span class="mono">${money(v.value)} / ${money(d.ipo.needVal)}</span></div>
-              <div><span>${t('co.ipoNeedShops')}</span><span class="mono">${v.shops} / ${d.ipo.needShops}</span></div>
+              <div><span>${t('co.ipoNeedVal')}</span><span class="mono ${v.value >= d.ipo.needVal ? 'up' : ''}">${money(v.value)} / ${money(d.ipo.needVal)}</span></div>
+              <div><span>${t('co.ipoNeedShops')}</span><span class="mono ${v.shops >= d.ipo.needShops ? 'up' : ''}">${v.shops} / ${d.ipo.needShops}</span></div>
               ${d.ipo.needProfit ? `<div><span>${t('co.ipoNeedProfit')}</span><span class="mono down">${money(v.annual)}</span></div>` : ''}
-            </div>`}`}
+            </div>
+            ${this.ipoTiers(d.ipo)}`}`}
       </div>
     </div>
 
@@ -431,6 +432,30 @@ export default {
         el.querySelector('#rc-go').onclick = () => { close(); again(() => api.coRaise(coId)); };
       },
     });
+  },
+
+  // 上市门槛的阶梯：融过的轮数越少，要求越硬。融资不是必须的，
+  // 只是它替你完成了一部分尽调，市场就不用你自己去证明那么多。
+  ipoTiers(ipo) {
+    const tiers = ipo.tiers || [];
+    if (!tiers.length) return '';
+    const rows = tiers.map(tr => {
+      const here = tr.rounds === ipo.tier.rounds;
+      const label = t('co.ipoTier' + Math.min(2, tr.rounds));
+      return `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;
+          ${here ? '' : 'opacity:.55'}">
+        <span style="width:14px">${here ? '▸' : ''}</span>
+        <span style="flex:1${here ? ';font-weight:600' : ''}">${label}</span>
+        <span class="mono">${money(tr.val)} · ${t('co.ipoTierShops', { n: tr.shops })}</span>
+        <span class="dim2" style="width:56px;text-align:right;font-size:10.5px">${here ? t('co.ipoTierYou') : ''}</span>
+      </div>`;
+    }).join('');
+    return `<div style="margin-top:12px">
+      <div class="dim2" style="font-size:11px;margin-bottom:4px">${t('co.ipoTierTitle')}</div>
+      <div style="font-size:11.5px">${rows}</div>
+      <div class="dim2" style="font-size:10.5px;margin-top:8px;line-height:1.7">${t('co.ipoTierNote')}${
+        ipo.tier.book < 1 ? ' ' + t('co.ipoThinBook') : ''}</div>
+    </div>`;
   },
 
   // ── 上市：发行价和发行比例都由你定，承销商只给建议 ──────────

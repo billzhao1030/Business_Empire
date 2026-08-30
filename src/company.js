@@ -13,7 +13,7 @@ import { FOUND_FEE, INIT_SHARES, BASE_MULT, GROWTH_K, HEAT_K, SCALE_K,
          FAST_HALFLIFE_H, SLOW_HALFLIFE_H, VSLOW_HALFLIFE_H, LEAD_DAYS, GROWTH_MIN, GROWTH_MAX,
          MATURE_DAYS, REV_GROWTH_MIN, TURNAROUND_G, DOWN_SENS,
          ROUNDS, ROUND, STAGE, CO_SECTOR,
-         IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT, IPO_DISCOUNT, IPO_FEE,
+         IPO_TIERS, ipoTier, IPO_FLOAT, IPO_DISCOUNT, IPO_FEE,
          IPO_PRICE_MIN, IPO_PRICE_MAX, IPO_FLOAT_MIN, IPO_FLOAT_MAX,
          IPO_SUB_AT_PAR, IPO_SUB_ELAST, IPO_PULL_FILL, IPO_FLOAT_DRAG,
          IPO_HISTORY_HOURS, CO_SECTOR_MAP } from './catalog-company.js';
@@ -167,8 +167,9 @@ export function syncPublicStake(co) {
 //   定得低 → 钱少拿了，但当天大涨，声望和口碑都在
 export function ipoPlan(co, val, marketLevel = 1, want = {}) {
   const rounds = co.round_n;
-  const ok = rounds >= IPO_MIN_ROUNDS && val.value >= IPO_MIN_VAL
-          && val.shops >= IPO_MIN_SHOPS && val.annual > 0;
+  // 融过几轮决定你落在哪一档门槛上——一轮没融也能上，只是要大得多
+  const tier = ipoTier(rounds);
+  const ok = val.value >= tier.val && val.shops >= tier.shops && val.annual > 0;
   // 行情好的时候承销商敢定高价，熊市里就得让利
   const mood = clamp(marketLevel, 0.75, 1.35);
   const float = clamp(Number(want.float) || IPO_FLOAT, IPO_FLOAT_MIN, IPO_FLOAT_MAX);
@@ -182,8 +183,10 @@ export function ipoPlan(co, val, marketLevel = 1, want = {}) {
                       indPrice * IPO_PRICE_MIN, indPrice * IPO_PRICE_MAX);
   const ratio = price / indPrice;
 
-  // 簿记：定价越高，认购倍数越低。建议价上 1.5 倍认购，是个健康的簿记
-  const sub = IPO_SUB_AT_PAR * Math.pow(ratio, -IPO_SUB_ELAST);
+  // 簿记：定价越高，认购倍数越低。建议价上 1.5 倍认购，是个健康的簿记。
+  // 没有机构领投的单子，簿记本来就薄一层——按建议价照样发得满，
+  // 但你想往上顶价格的时候，会发现底下接的人比别人少。
+  const sub = IPO_SUB_AT_PAR * tier.book * Math.pow(ratio, -IPO_SUB_ELAST);
   const fill = clamp(sub, 0, 1);                       // 真正卖得出去的比例
   const pulled = fill < IPO_PULL_FILL;                 // 认购太差，这单发不出去
 
@@ -196,8 +199,8 @@ export function ipoPlan(co, val, marketLevel = 1, want = {}) {
   const openPrice = fairPrice;
   const pop = price > 0 ? openPrice / price - 1 : 0;   // 正数是涨，负数是破发
   return {
-    ok, rounds, needRounds: IPO_MIN_ROUNDS, needVal: IPO_MIN_VAL, needShops: IPO_MIN_SHOPS,
-    needProfit: val.annual <= 0,
+    ok, rounds, tier, tiers: IPO_TIERS, needVal: tier.val, needShops: tier.shops,
+    book: tier.book, needProfit: val.annual <= 0,
     disc, preVal, indPrice, fairPrice, price, ratio, sub, fill, pulled,
     priceMin: indPrice * IPO_PRICE_MIN, priceMax: indPrice * IPO_PRICE_MAX,
     floatMin: IPO_FLOAT_MIN, floatMax: IPO_FLOAT_MAX, floatDefault: IPO_FLOAT,
@@ -372,6 +375,6 @@ function playerSectorShareGuard() {
 // 你从某个板块的对手手里累计拿走了多少市值
 export function erosionTotal(sector) { return Number(M.getMeta('erosion:' + sector, '0')); }
 
-export { IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT };
+export { IPO_TIERS, ipoTier, IPO_FLOAT };
 
 export { FOUND_FEE, INIT_SHARES, ROUNDS, ROUND, STAGE, CO_SECTOR, ILLIQUID };

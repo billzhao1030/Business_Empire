@@ -10,7 +10,7 @@ import { RIVALS_GEN } from './catalog-rivals-gen.js';
 import { cityOf, cityEconomy, cityTravel, popText, LEGACY_CITIES } from './citybiz.js';
 import { FOUND_FEE, FOUND_MIN_SHOPS, INIT_SHARES, ROUNDS, ROUND, STAGES, STAGE,
          CO_SECTORS, CO_SECTOR, DIVIDEND_TAX, MIN_DIVIDEND, ILLIQUID,
-         IPO_MIN_ROUNDS, IPO_MIN_VAL, IPO_MIN_SHOPS, IPO_FLOAT, IPO_FEE } from './catalog-company.js';
+         IPO_TIERS, IPO_FLOAT, IPO_FEE } from './catalog-company.js';
 import { DESTINATIONS, CABINS, HOTELS, REGIONS_W, DEFAULT_HOME, distanceKm, routeOf, HOMES_AVAILABLE,
          destOf, atlasCity, nearestCity, searchCities, CITY_ALIAS, CITY_COUNT, COUNTRIES, ATLAS } from './catalog-world.js';
 
@@ -1201,8 +1201,7 @@ function coState(uid, coId, want = {}) {
       roundVal: co.round_val, peakVal: co.peak_val, lifetimeProfit: co.lifetime_profit,
       dividendsPaid: co.dividends_paid },
     val, offer, ipo, listed, stakeValue: CO.stakeValue(co, val),
-    ipoReq: { rounds: IPO_MIN_ROUNDS, value: IPO_MIN_VAL, shops: IPO_MIN_SHOPS,
-              float: IPO_FLOAT, fee: IPO_FEE },
+    ipoReq: { tiers: IPO_TIERS, float: IPO_FLOAT, fee: IPO_FEE },
     shops: shops.map(b => shopBrief(b, pb, prosp)),
     outside: outside.map(b => shopBrief(b, pb, prosp)),
     minDividend: MIN_DIVIDEND, dividendTax: DIVIDEND_TAX, autoDivMax: AUTO_DIV_MAX,
@@ -1357,11 +1356,12 @@ export function listCompany(uid, { coId, price, float } = {}) {
   const plan = CO.ipoPlan(co, val, M.indexLevel('BEXI') / 1000, { price, float });
   if (!plan.ok) {
     const need = [];
-    if (plan.rounds < plan.needRounds) need.push(`要先融过 ${plan.needRounds} 轮（现在 ${plan.rounds} 轮）`);
     if (val.value < plan.needVal) need.push(`估值要到 ${S.fmt(plan.needVal)}（现在 ${S.fmt(val.value)}）`);
     if (val.shops < plan.needShops) need.push(`名下要有 ${plan.needShops} 家店（现在 ${val.shops} 家）`);
     if (plan.needProfit) need.push('公司还没有盈利');
-    throw new Err(`还上不了市：${need.join('，')} / Not eligible to list yet`);
+    const tierNote = plan.rounds >= 2 ? ''
+      : `（融过 ${plan.rounds} 轮，走的是${plan.rounds ? '' : '未融资'}这一档；再融一轮门槛会降下来）`;
+    throw new Err(`还上不了市：${need.join('，')}${tierNote} / Not eligible to list yet`);
   }
   // 定价太高，簿记根本填不满——这单发不出去，承销费照付，脸也丢了
   if (plan.pulled) {

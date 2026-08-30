@@ -77,11 +77,29 @@ export const DIVIDEND_TAX = 0.20;
 export const MIN_DIVIDEND = 100;
 
 // ── 上市 ────────────────────────────────────────────────────
-// 门槛：融过 A 轮、盈利、有规模。上市之后公司变成行情页上一支真的股票，
+// 门槛：盈利、有规模。上市之后公司变成行情页上一支真的股票，
 // 股价按基本面（估值 / 总股本）做均值回归，你的持股就是普通的持仓。
-export const IPO_MIN_ROUNDS = 2;          // 至少走完天使 + A 轮
-export const IPO_MIN_VAL = 5_000_000;
-export const IPO_MIN_SHOPS = 12;
+//
+// 融资不是上市的前提。现实里没拿过一分外部钱就直接敲钟的公司多得是——
+// 融资只是替你完成了一部分尽调：机构进过场、账被外人翻过一遍、估值被市场
+// 认过一次。少了这层背书，就得自己拿规模和利润补上，门槛按融过几轮倒推：
+//
+//   融过 2 轮以上   估值 $5M    · 12 家店   机构背书齐了，按原来的门槛
+//   只融过 1 轮     估值 $16M   · 22 家店
+//   一轮没融        估值 $45M   · 36 家店   但你的股份一股没被稀释过
+//
+// book 是簿记的厚度：没有机构领投，愿意接的钱就少一些。按建议价发是发得满的，
+// 想往上顶价格才会发现底下没人接——这正是背书的差别所在。
+export const IPO_TIERS = [
+  { rounds: 2, val:  5_000_000, shops: 12, book: 1.00 },
+  { rounds: 1, val: 16_000_000, shops: 22, book: 0.90 },
+  { rounds: 0, val: 45_000_000, shops: 36, book: 0.80 },
+];
+// 融过几轮 → 落在哪一档（表按轮次从高到低排，取第一个够得着的）
+export function ipoTier(rounds = 0) {
+  const n = Math.max(0, Number(rounds) || 0);
+  return IPO_TIERS.find(t => n >= t.rounds) || IPO_TIERS[IPO_TIERS.length - 1];
+}
 export const IPO_FLOAT = 0.25;            // 向公众增发的比例（默认值，可自己调）
 export const IPO_DISCOUNT = 0.85;         // 发行价对估值的折让（真实 IPO 都要留出上涨空间）
 export const IPO_FEE = 0.05;              // 承销费
