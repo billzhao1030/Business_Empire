@@ -204,7 +204,8 @@ export default {
             </div>
           </div>
           <div class="dim2" style="font-size:10.5px;margin-top:10px;line-height:1.7">${
-            d.ipo.rounds < 2 ? `<b>${t('co.ipoNoRounds')}</b> · ${t('co.ipoThinBook')}<br>` : ''}${t('co.ipoNote')}</div>`
+            d.ipo.rounds === 0 ? `<b>${t('co.ipoNoRounds')}</b> · ${t('co.ipoThinBook')}<br>`
+            : d.ipo.book < 1 ? `${t('co.ipoThinBook')}<br>` : ''}${t('co.ipoNote')}</div>`
           : `<div class="summary" style="border-color:var(--orange)">
               <div><span>${t('co.ipoNeedVal')}</span><span class="mono ${v.value >= d.ipo.needVal ? 'up' : ''}">${money(v.value)} / ${money(d.ipo.needVal)}</span></div>
               <div><span>${t('co.ipoNeedShops')}</span><span class="mono ${v.shops >= d.ipo.needShops ? 'up' : ''}">${v.shops} / ${d.ipo.needShops}</span></div>
