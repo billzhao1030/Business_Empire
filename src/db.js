@@ -344,8 +344,11 @@ addColumn('players','lotto_tickets',  'INTEGER NOT NULL DEFAULT 0');
 addColumn('players','knowledge',      'REAL    NOT NULL DEFAULT 0');
 addColumn('players','luck',           'REAL    NOT NULL DEFAULT 0');
 addColumn('players','charm',          'REAL    NOT NULL DEFAULT 0');
+// 总部：个人名下的店归它管；公司的店各有各的总部
+addColumn('players','hq',             "TEXT    NOT NULL DEFAULT 'none'");
 addColumn('businesses','all_day',     'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses','manager',     'INTEGER NOT NULL DEFAULT 0');
+addColumn('companies','hq',           "TEXT NOT NULL DEFAULT 'none'");
 
 export function getMeta(key, def = null) {
   const row = db.prepare('SELECT value FROM meta WHERE key=?').get(key);

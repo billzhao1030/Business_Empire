@@ -97,11 +97,11 @@ const chev = open => `<span class="chev ${open ? 'open' : ''}">▸</span>`;
 function groupByOwner(bs, companies) {
   const groups = [];
   const mine = bs.filter(b => !b.companyId);
-  if (mine.length) groups.push({ key: 'own:self', emoji: '👤', name: t('biz.grpSelf'), sub: null, list: mine });
+  if (mine.length) groups.push({ key: 'own:self', hqKey: 0, emoji: '👤', name: t('biz.grpSelf'), sub: null, list: mine });
   for (const c of companies || []) {
     const list = bs.filter(b => b.companyId === c.id);
     if (!list.length) continue;
-    groups.push({ key: 'own:co' + c.id, emoji: '🏢', name: nm({ zh: c.name, en: c.nameEn || c.name }),
+    groups.push({ key: 'own:co' + c.id, hqKey: c.id, emoji: '🏢', name: nm({ zh: c.name, en: c.nameEn || c.name }),
       sub: c.ticker + (c.listed ? ' · ' + t('biz.grpListed') : ''), list, company: c });
   }
   // 公司已经没了但店还挂着（理论上不该发生），别把它们藏起来
@@ -141,8 +141,13 @@ export default {
     <div class="card" style="margin-bottom:16px">
       <div class="card-h"><h3>${t('biz.title')}</h3>
         <span class="sub">${t('biz.ownerBonus')} <b class="gold">+${pctPlain(s.player.ownerBonus)}</b>
-          <span class="dim2">（${t('common.prestige')} ${int(s.player.prestige)} → +${pctPlain(s.player.prestigeBonus)}${
-            s.player.knowBonus > 0 ? ` · ${t('attr.knowledge')} → +${pctPlain(s.player.knowBonus)}` : ''}）</span></span>
+          <span class="dim2">· ${t('common.prestige')} ${int(s.player.prestige)} → +${pctPlain(s.player.prestigeBonus)}${
+            s.player.knowBonus > 0 ? ` · ${t('attr.knowledge')} → +${pctPlain(s.player.knowBonus)}` : ''}</span></span>
+        ${(() => { const j = s.job; if (!j || !bs.length) return '';
+          return `<span class="sub" style="margin-left:14px">${t('hq.mgmtNow')}
+            <b class="${j.mgmtHours > 0 ? (j.canJob ? 'gold' : 'down') : 'up'}">${j.mgmtHours.toFixed(2)}h</b>
+            ${j.mgmtSaved > 0 ? `<span class="dim2">· ${t('hq.savedBy', { n: j.mgmtSaved.toFixed(2) })}</span>`
+              : j.mgmtHours > 0 ? `<span class="dim2">· ${t('hq.noHqYet')}</span>` : ''}</span>`; })()}
         <div class="right" style="display:flex;gap:8px">
           ${bs.length ? `<button class="btn btn-sm btn-ghost" id="b-foldall">${
             groupByOwner(bs, s.companies).some(g => isOpen(g.key, true)) ? t('biz.foldAll') : t('biz.unfoldAll')}</button>` : ''}
@@ -155,6 +160,10 @@ export default {
 
     $('#b-new') && ($('#b-new').onclick = () => this.openNew(app));
     $('#b-new2') && ($('#b-new2').onclick = () => this.openNew(app));
+    $$('[data-hq]').forEach(b => b.onclick = e => {
+      e.stopPropagation();
+      app.act(() => api.setHQ(b.dataset.hq, Number(b.dataset.hqkey) || 0), t('toast.success')).catch(() => {});
+    });
     $$('[data-fold]').forEach(el => el.onclick = () => {
       toggle(el.dataset.fold, el.dataset.dflt === '1');
       keepScroll(() => this.render(root, app));
@@ -192,7 +201,46 @@ export default {
           <div class="l">${t('dash.perDayNet')} · ${t('biz.dailyRev')} ${money(rev)}</div>
         </div>
       </div>
-      ${open ? `<div class="fold-b">${clusters.map(c => this.typeCluster(g, c, s, cat)).join('')}</div>` : ''}
+      ${open ? `<div class="fold-b">${this.hqBar(g, s)}${clusters.map(c => this.typeCluster(g, c, s, cat)).join('')}</div>` : ''}
+    </div>`;
+  },
+
+  // ── 总部：把管理这件事本身外包出去 ──────────────────────────
+  // 店长解决的是一家店，不是一个人的时间。到了一定规模就该搭管理层——
+  // 被覆盖的店，管理时间归 0；覆盖不到的还得你自己盯着。
+  hqBar(g, s) {
+    const H = s.hq;
+    if (!H || g.hqKey === undefined) return '';
+    const row = H.rows.find(r => r.key === g.hqKey);
+    if (!row) return '';
+    const cur = row.options.find(o => o.id === row.tier) || row.options[0];
+    return `<div style="padding:11px 14px;margin-bottom:10px;border:1px solid var(--line);border-radius:9px;
+        background:var(--bg2, rgba(255,255,255,.02))">
+      <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:9px">
+        <span style="font-size:14px">${cur.emoji === '—' ? '🏢' : cur.emoji}</span>
+        <b style="font-size:12.5px">${t('hq.title')}</b>
+        <span class="mono" style="font-weight:700">${esc(nm(cur))}</span>
+        ${row.tier === 'none'
+          ? `<span class="dim2" style="font-size:11px">${t('hq.allOnYou', { n: row.shops })}</span>`
+          : `<span class="dim2" style="font-size:11px">${t('hq.covering', {
+              n: row.covers === null ? row.shops : Math.min(row.shops, row.covers) })}${
+              row.uncovered ? ' · ' + t('hq.stillYours', { n: row.uncovered }) : ''}</span>`}
+        <span style="margin-left:auto" class="mono ${row.monthly ? 'down' : 'dim2'}">${
+          row.monthly ? '-' + money(row.monthly) + t('hq.perMonth') : '—'}</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${row.options.map(o => {
+          const on = o.id === row.tier;
+          const enough = o.monthly <= row.purse || o.id === 'none' || on;
+          return `<button class="btn btn-xs ${on ? 'btn-primary' : 'btn-ghost'}"
+            data-hq="${o.id}" data-hqkey="${row.key}" ${enough ? '' : 'disabled'}
+            title="${esc(nm({ zh: o.descZh, en: o.descEn }))}">
+            ${o.emoji === '—' ? '' : o.emoji + ' '}${esc(nm(o))}${
+              o.id === 'none' ? '' : ` · ${o.covers === null ? t('hq.unlimited') : o.covers} · ${money(o.monthly)}`}
+          </button>`; }).join('')}
+      </div>
+      <div class="dim2" style="font-size:10.5px;margin-top:7px;line-height:1.6">${
+        g.hqKey === 0 ? t('hq.paidByYou') : t('hq.paidByCo')}</div>
     </div>`;
   },
 
