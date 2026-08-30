@@ -400,7 +400,11 @@ export default {
     $$('[data-act]').forEach(b => b.onclick = async () => {
       b.disabled = true;
       try { const r = await api.leisure(b.dataset.act);
-        toast(t('leisure.did', { relief: r.relief, h: r.hours }), 'ok');
+        const up = [];
+        if (r.know) up.push('📚 +' + r.know);
+        if (r.luck) up.push('🍀 +' + r.luck);
+        if (r.charm) up.push('✨ +' + r.charm);
+        toast(t('leisure.did', { relief: r.relief, h: r.hours }) + (up.length ? ' · ' + up.join(' ') : ''), 'ok');
         await app.refresh(true);
       } catch (e) { toast(e.message.split(' / ')[0], 'err'); b.disabled = false; }
     });
@@ -434,10 +438,13 @@ export default {
   leisurePanel(app, s) {
     const L = s.leisure;
     if (!L) return '';
-    const cats = L.cats.filter(c => c.id !== 'gamble');
+    const cats = L.cats.filter(c => L.acts.some(a => a.cat === c.id));   // 空的分类不摆出来
     if (!cats.some(c => c.id === leisCat)) leisCat = cats[0].id;
     const list = L.acts.filter(a => a.cat === leisCat)
-      .sort((a, b) => (sortLeis === 'cost' ? a.cost - b.cost : b.relief * b.fresh - a.relief * a.fresh));
+      .sort((a, b) => sortLeis === 'cost' ? a.cost - b.cost
+        : sortLeis === 'know' || sortLeis === 'luck' || sortLeis === 'charm'
+          ? (b[sortLeis] || 0) * b.fresh - (a[sortLeis] || 0) * a.fresh
+          : b.relief * b.fresh - a.relief * a.fresh);
     const hl = s.health;
     return `
     <div class="card" style="margin-bottom:16px">
@@ -448,6 +455,9 @@ export default {
           <select class="sel" id="leis-sort">
             <option value="relief" ${sortLeis === 'relief' ? 'selected' : ''}>${t('leisure.sortRelief')}</option>
             <option value="cost" ${sortLeis === 'cost' ? 'selected' : ''}>${t('leisure.sortCost')}</option>
+            <option value="know" ${sortLeis === 'know' ? 'selected' : ''}>${t('leisure.sortKnow')}</option>
+            <option value="luck" ${sortLeis === 'luck' ? 'selected' : ''}>${t('leisure.sortLuck')}</option>
+            <option value="charm" ${sortLeis === 'charm' ? 'selected' : ''}>${t('leisure.sortCharm')}</option>
           </select>
         </div></div>
       <div class="card-b" style="padding:11px 16px;border-bottom:1px solid var(--line)">
@@ -476,6 +486,9 @@ export default {
               ${a.stamina ? `<span class="${a.stamina > 0 ? 'up' : 'down'}">⚡ ${a.stamina > 0 ? '+' : ''}${a.stamina}</span>` : ''}
               ${a.exp ? `<span class="gold">📘 +${a.exp}</span>` : ''}
               ${a.prestige ? `<span class="gold">⭐ +${a.prestige}</span>` : ''}
+              ${a.know ? `<span class="blue">📚 +${a.know}</span>` : ''}
+              ${a.luck ? `<span class="up">🍀 +${a.luck}</span>` : ''}
+              ${a.charm ? `<span class="gold">✨ +${a.charm}</span>` : ''}
               ${dulled ? `<span class="dim2">${t('leisure.dulled', { p: Math.round(a.fresh * 100) })}</span>` : ''}
             </div>
             <p class="ac-d">${esc(nm({ zh: a.desc, en: a.descEn }))}</p>

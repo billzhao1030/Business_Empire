@@ -23,6 +23,7 @@ export default {
     const TABS = [
       { id: 'wear',  emoji: '🚪', label: t('person.wardrobe') },
       { id: 'look',  emoji: '🧑', label: t('person.appearance') },
+      { id: 'attr',  emoji: '📊', label: t('person.attrs') },
     ];
 
     root.innerHTML = `
@@ -67,7 +68,8 @@ export default {
           ${TABS.map(x => `<button class="ptab ${tab === x.id ? 'active' : ''}" data-ptab="${x.id}">${x.emoji} ${x.label}</button>`).join('')}
         </div>
 
-        ${tab === 'wear' ? this.wardrobe(app, mine, bySlot, lk) : this.appearance(app, lk)}
+        ${tab === 'wear' ? this.wardrobe(app, mine, bySlot, lk)
+          : tab === 'attr' ? this.attrPanel(app) : this.appearance(app, lk)}
       </div>
     </div>`;
 
@@ -94,6 +96,7 @@ export default {
       this.render(root, app);
     });
     $('#p-rename') && ($('#p-rename').onclick = () => this.renameModal(app));
+    $('#at-go') && ($('#at-go').onclick = () => app.go('career'));
     $$('[data-ptab]').forEach(b => b.onclick = () => { tab = b.dataset.ptab; this.render(root, app); });
     $$('[data-slotf]').forEach(b => b.onclick = () => { slotF = b.dataset.slotf; keepScroll(() => this.render(root, app)); });
     $$('[data-wear]').forEach(b => b.onclick = () =>
@@ -105,6 +108,67 @@ export default {
     $$('[data-skin]').forEach(b => b.onclick = () => app.act(() => api.setLook({ skin: +b.dataset.skin })).catch(() => {}));
     $$('[data-hair]').forEach(b => b.onclick = () => app.act(() => api.setLook({ hair: +b.dataset.hair })).catch(() => {}));
     $$('[data-hcol]').forEach(b => b.onclick = () => app.act(() => api.setLook({ haircol: +b.dataset.hcol })).catch(() => {}));
+  },
+
+  // ── 属性：三条自己养出来的能力，各自在给你什么 ────────────
+  // 一条属性只有能换成钱、换成机会，摆在这儿才有意义。所以每一行下面
+  // 都直接写清楚它此刻正在做什么，而不是一个孤零零的数字。
+  attrPanel(app) {
+    const a = app.state.attrs, e = a.eff, s = app.state;
+    const pctS = (v, d = 0) => (v >= 0 ? '+' : '') + (v * 100).toFixed(d) + '%';
+    // [emoji, 名字, 当前值, 上限, 颜色, 每日衰减, 说明, 效果行, 怎么涨]
+    const rows = [
+      { e: '📚', k: 'knowledge', v: a.knowledge, col: 'var(--blue)', decay: 0,
+        eff: [[t('attr.effWage'), pctS(e.wage, 1)], [t('attr.effExp'), pctS(e.exp, 1)], [t('attr.effBiz'), pctS(e.biz, 1)]] },
+      { e: '🍀', k: 'luck', v: a.luck, col: 'var(--up)', decay: a.decay.luck,
+        eff: [[t('attr.effLotto'), pctS(e.lotto, 1)], [t('attr.effGood'), pctS(e.good, 1)], [t('attr.effSick'), '−' + (e.sick * 100).toFixed(1) + '%']] },
+      { e: '✨', k: 'charm', v: a.charm, col: 'var(--gold)', decay: a.decay.charm,
+        eff: [[t('attr.effRound'), pctS(e.round, 1)], [t('attr.effPrestige'), pctS(e.prestige, 1)], [t('attr.effOutfit'), pctS(e.outfit, 1)]] },
+    ];
+    // 身上带着的、不是靠消遣涨出来的那几条，单独摆一排
+    const others = [
+      { e: '🔋', label: t('attr.stamina'), v: int(a.stamina), max: 100, d: t('attr.staminaHint') },
+      { e: '😮‍💨', label: t('attr.stress'), v: int(a.stress), max: 100, d: t('attr.stressHint') },
+      { e: '⭐', label: t('common.prestige'), v: int(a.prestige), d: t('attr.prestigeHint') },
+      { e: '💳', label: t('attr.credit'), v: int(s.player.creditScore), d: t('attr.creditHint') },
+    ];
+    return `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-h"><h3>📊 ${t('person.attrs')}</h3><span class="sub">${t('attr.sub')}</span></div>
+      <div class="card-b">
+        ${rows.map(r => `
+          <div style="margin-bottom:16px">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+              <span style="font-size:15px">${r.e}</span>
+              <b style="font-size:13.5px">${t('attr.' + r.k)}</b>
+              <span class="dim2" style="font-size:11px;flex:1">${t('attr.' + r.k + 'Desc')}</span>
+              <span class="mono" style="font-size:15px;font-weight:800;color:${r.col}">${r.v.toFixed(1)}</span>
+              <span class="dim2" style="font-size:11px">/ ${a.max}</span>
+            </div>
+            <div class="bar" style="height:7px;background:var(--line);border-radius:4px;overflow:hidden">
+              <div style="height:100%;width:${Math.min(100, r.v / a.max * 100)}%;background:${r.col};transition:width .3s"></div>
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:7px;font-size:11.5px">
+              ${r.eff.map(([k, v]) => `<span class="dim2">${k} <b class="mono" style="color:${r.col}">${v}</b></span>`).join('')}
+              ${r.decay ? `<span class="dim2" style="margin-left:auto">${t('attr.decay', { n: r.decay })}</span>`
+                        : `<span class="dim2" style="margin-left:auto">${t('attr.noDecay')}</span>`}
+            </div>
+          </div>`).join('')}
+        <div class="dim2" style="font-size:10.5px;line-height:1.7;border-top:1px solid var(--line);padding-top:11px">
+          ${t('attr.note')}</div>
+        <button class="btn btn-primary btn-block" id="at-go" style="margin-top:11px">🎯 ${t('attr.goTrain')}</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>🧍 ${t('attr.stateNow')}</h3><span class="sub">${t('attr.stateSub')}</span></div>
+      <div class="card-b"><div class="grid g4" style="gap:11px">
+        ${others.map(o => `<div class="stat" style="padding:12px 14px">
+          <label>${o.e} ${o.label}</label>
+          <div class="v mono" style="font-size:19px">${o.v}${o.max ? `<span class="dim2" style="font-size:12px;font-weight:400"> / ${o.max}</span>` : ''}</div>
+          <div class="d">${o.d}</div></div>`).join('')}
+      </div></div>
+    </div>`;
   },
 
   // 改名：昵称和登录用户名都能改

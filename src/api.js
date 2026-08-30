@@ -94,7 +94,7 @@ export function getState(uid, active = true) {
   const nw = S.computeNetWorth(uid);
   const offline = buildOfflineReport(uid, p, hour, nw.total);
   const live = new Map(M.allAssets().map(a => [a.id, a]));
-  const pbonus = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+  const pbonus = S.ownerBonus(uid, p);
   // 界面上的数字必须和结算用的是同一套参数：商圈繁荣度、宏观周期、旺季，一个都不能少
   const env = S.bizEnv();
   const prosp = M.cityProsperity();
@@ -216,7 +216,22 @@ export function getState(uid, active = true) {
       prestigeDouble: Math.max(0, Math.ceil(prestige * (Math.pow(2, 1 / S.PRESTIGE_EXP) - 1))),
       totalDividend: p.total_dividend, realizedPnl: p.realized_pnl, missedPay: p.missed_pay,
       bankrupt: !!p.bankrupt, peak: p.peak_networth, playedHours: hour - p.created_hour, monthProfit: p.month_profit,
+      knowledge: p.knowledge || 0, luck: p.luck || 0, charm: p.charm || 0,
+      // 店铺实际吃到的是「老板加成」：声望一份，脑子一份
+      ownerBonus: S.ownerBonus(uid, p), knowBonus: S.attrEffects(p).biz - 1,
     },
+    // ── 属性：三条自己养出来的能力，以及它们此刻各自在给你什么 ──
+    attrs: (() => {
+      const e = S.attrEffects(p);
+      return {
+        max: S.ATTR_MAX, decay: { luck: S.LUCK_DECAY * 24, charm: S.CHARM_DECAY * 24 },
+        knowledge: p.knowledge || 0, luck: p.luck || 0, charm: p.charm || 0,
+        stamina: p.stamina, stress: p.stress, prestige,
+        eff: { wage: e.wage - 1, exp: e.exp - 1, biz: e.biz - 1,
+               lotto: e.lotto - 1, good: e.good - 1, sick: 1 - e.sick,
+               round: e.round, prestige: e.prestige - 1, outfit: e.outfit - 1 },
+      };
+    })(),
     netWorth: nw, title: S.titleOf(nw.total), offline,
     job: (() => {
       const hod = hour % 24, phase = S.dayPhase(hod), day = Math.floor(hour / 24);
@@ -609,7 +624,7 @@ export function bizAction(uid, { id, action, name, arg }) {
   }
   if (action === 'allday') {
     if (b.all_day) throw new Err('已经是 24 小时营业 / Already open 24/7');
-    const pbonus2 = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+    const pbonus2 = S.ownerBonus(uid, p);
     const cost = S.bizRates(b, pbonus2, 1).allDayCost;
     if (!cost) throw new Err('该店铺已是全天营业 / Already open 24/7');
     if (purse.cash < cost) throw new Err(purse.short(cost));
@@ -632,7 +647,7 @@ export function bizAction(uid, { id, action, name, arg }) {
   if (action === 'autostaff') {
     const on = arg ? 1 : 0;
     let staff = b.staff;
-    if (on) staff = S.bizRates(b, S.prestigeBonus(S.prestigeOf(uid) + p.prestige)).recStaff;
+    if (on) staff = S.bizRates(b, S.ownerBonus(uid, p)).recStaff;
     db.prepare('UPDATE businesses SET auto_staff=?, staff=? WHERE id=?').run(on, staff, b.id);
     return { ok: true };
   }
@@ -970,26 +985,40 @@ export function doLeisure(uid, { actId } = {}) {
   const stamina = a.stamina * fresh;
 
   const num = (v, d = 0) => (Number.isFinite(v) ? v : d);   // 算出 NaN 就不许落库
+  // 属性：越接近上限，同一项活动推得越少。前 50 点好拿，80 往上要花真钱。
+  const at = S.attrEffects(p);
+  const gain = {
+    know:  S.attrGain(num(p.knowledge), num(a.know) * fresh),
+    luck:  S.attrGain(num(p.luck),      num(a.luck) * fresh),
+    charm: S.attrGain(num(p.charm),     num(a.charm) * fresh),
+  };
   if (a.cost) p.cash -= a.cost;
   p.stress = Math.max(0, num(p.stress) - num(relief));
   p.stamina = Math.min(100, Math.max(0, num(p.stamina) + num(stamina)));
-  p.job_exp = num(p.job_exp) + Math.round(num((a.exp || 0) * fresh));
-  p.prestige = num(p.prestige) + num(a.prestige);
+  p.job_exp = num(p.job_exp) + num((a.exp || 0) * fresh * at.exp);   // 知识让学东西更快
+  p.prestige = num(p.prestige) + num(a.prestige * at.prestige);      // 魅力让同一件事传得更开
+  p.knowledge = Math.min(S.ATTR_MAX, num(p.knowledge) + gain.know);
+  p.luck = Math.min(S.ATTR_MAX, num(p.luck) + gain.luck);
+  p.charm = Math.min(S.ATTR_MAX, num(p.charm) + gain.charm);
   p.leisure_spent = (p.leisure_spent || 0) + a.cost;
   p.leisure_n = (p.leisure_n || 0) + 1;
   // 活动本身要占掉游戏时间：这段时间上不了班
   const until = hour + a.hours;
   db.prepare(`UPDATE players SET cash=?, stress=?, stamina=?, job_exp=?, prestige=?,
-              leisure_spent=?, leisure_n=?, busy_until=? WHERE user_id=?`)
+              leisure_spent=?, leisure_n=?, busy_until=?,
+              knowledge=?, luck=?, charm=? WHERE user_id=?`)
     .run(p.cash, p.stress, p.stamina, p.job_exp, p.prestige, p.leisure_spent, p.leisure_n,
-         Math.max(p.busy_until || 0, until), uid);
+         Math.max(p.busy_until || 0, until), p.knowledge, p.luck, p.charm, uid);
   db.prepare(`INSERT INTO leisure(user_id,act_id,last_hour,times,spent) VALUES(?,?,?,1,?)
               ON CONFLICT(user_id,act_id) DO UPDATE SET last_hour=excluded.last_hour,
               times=times+1, spent=spent+excluded.spent`).run(uid, actId, hour, a.cost);
   if (a.cost) ledger(uid, 'leisure', -a.cost, L('led.leisure', { act: { zh: a.name, en: a.en },
     cost: a.cost, relief: Math.round(relief), hours: a.hours }), a.emoji);
+  const r1 = v => Math.round(v * 10) / 10;
   return { ok: true, relief: Math.round(relief), stamina: Math.round(stamina),
-           exp: Math.round((a.exp || 0) * fresh), fresh, until, hours: a.hours };
+           exp: Math.round((a.exp || 0) * fresh * at.exp), fresh, until, hours: a.hours,
+           know: r1(gain.know), luck: r1(gain.luck), charm: r1(gain.charm),
+           attrs: { knowledge: r1(p.knowledge), luck: r1(p.luck), charm: r1(p.charm) } };
 }
 
 export function setLiving(uid, { mealId, homeId, commuteId }) {
@@ -1032,10 +1061,11 @@ export function buyLottery(uid, { id, n }) {
   if (p.cash < spend) throw new Err(`现金不足，需要 ${S.fmt(spend)} / Need ${S.fmt(spend)}`);
 
   let jackpot = jackpotOf(l), won = 0, jackpotHit = false;
+  const luck = S.attrEffects(p).lotto;      // 运气直接抬各档的中奖率
   const wins = [];
   for (let i = 0; i < count; i++) {
     for (const [odds, prize] of l.tiers) {
-      if (Math.random() < 1 / odds) {
+      if (Math.random() < luck / odds) {
         const amt = prize === 'JACKPOT' ? jackpot : prize;
         won += amt;
         wins.push({ prize: amt, jackpot: prize === 'JACKPOT' });
@@ -1153,13 +1183,13 @@ function coState(uid, coId, want = {}) {
   // 公司清单：切换用，顺便让每一家的关键数字都能一眼看到
   const roster = all.map(c => {
     const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, c.id);
-    const v = CO.valuate(c, shops, S.prestigeBonus(S.prestigeOf(uid) + p.prestige), M.cityProsperity(), curHour());
+    const v = CO.valuate(c, shops, S.ownerBonus(uid, p), M.cityProsperity(), curHour());
     return { id: c.id, name: c.name, ticker: c.ticker, stage: c.stage,
       stageZh: STAGE[c.stage]?.zh, stageEn: STAGE[c.stage]?.en,
       value: v.value, stake: c.player_shares / c.shares, cash: c.cash, shops: v.shops,
       growth: v.growth, listed: c.stage === 'public' };
   });
-  const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+  const pb = S.ownerBonus(uid, p);
   const prosp = M.cityProsperity();
   const bizAll = db.prepare('SELECT * FROM businesses WHERE user_id=?').all(uid);
   const owned = new Set(all.map(c => c.id));
@@ -1175,7 +1205,7 @@ function coState(uid, coId, want = {}) {
   const shops = bizAll.filter(b => b.company_id === co.id);
   const outside = freeShops;                        // 别家公司的店不在这儿挪
   const val = CO.valuate(co, shops, pb, prosp, curHour());
-  const offer = co.stage === 'public' ? null : CO.roundOffer(co, val, p.credit_score);
+  const offer = co.stage === 'public' ? null : CO.roundOffer(co, val, p.credit_score, S.attrEffects(p).round);
   const stake = co.player_shares / co.shares;
   const mkt = M.indexLevel('BEXI') / 1000;      // 大盘冷暖决定承销商敢不敢定高价
   const ipo = co.stage === 'public' ? null : CO.ipoPlan(co, val, mkt, want);
@@ -1349,7 +1379,7 @@ export function listCompany(uid, { coId, price, float } = {}) {
   if (db.prepare('SELECT COUNT(*) c FROM assets WHERE symbol=?').get(co.ticker).c)
     throw new Err(`代码 ${co.ticker} 已被占用 / Ticker ${co.ticker} is taken`);
   const p = P(uid);
-  const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige);
+  const pb = S.ownerBonus(uid, p);
   const prosp = M.cityProsperity();
   const shops = db.prepare('SELECT * FROM businesses WHERE user_id=? AND company_id=?').all(uid, co.id);
   const val = CO.valuate(co, shops, pb, prosp, curHour());
@@ -1630,7 +1660,7 @@ export function companyBoard(uid) {
   }
   // 自己名下还没上市的公司，按估值排进来
   const p = P(uid);
-  const pb = S.prestigeBonus(S.prestigeOf(uid) + p.prestige), prosp = M.cityProsperity();
+  const pb = S.ownerBonus(uid, p), prosp = M.cityProsperity();
   const myCoIds = new Set();
   for (const co of CO.companiesOf(uid)) {
     myCoIds.add(co.id);

@@ -340,6 +340,10 @@ addColumn('players','transit_spent',  'REAL    NOT NULL DEFAULT 0');
 addColumn('players','lotto_spent',    'REAL    NOT NULL DEFAULT 0');
 addColumn('players','lotto_won',      'REAL    NOT NULL DEFAULT 0');
 addColumn('players','lotto_tickets',  'INTEGER NOT NULL DEFAULT 0');
+// 属性：知识不会还回去，运气和魅力靠维持
+addColumn('players','knowledge',      'REAL    NOT NULL DEFAULT 0');
+addColumn('players','luck',           'REAL    NOT NULL DEFAULT 0');
+addColumn('players','charm',          'REAL    NOT NULL DEFAULT 0');
 addColumn('businesses','all_day',     'INTEGER NOT NULL DEFAULT 0');
 addColumn('businesses','manager',     'INTEGER NOT NULL DEFAULT 0');
 

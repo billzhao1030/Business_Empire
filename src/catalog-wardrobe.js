@@ -112,7 +112,7 @@ export const WEARABLES = W.map(([id,name,en,emoji,slot,style,price,prestige,shap
 // 一整套搭得配不配：同风格越多越好看，风格越杂越难看
 export function outfitScore(pieces) {
   const worn = pieces.filter(Boolean);
-  if (!worn.length) return { score: 0, style: null, coherence: 0, prestige: 0, bonus: 0 };
+  if (!worn.length) return { score: 0, style: null, coherence: 0, prestige: 0, bonus: 0, filled: 0, worn: 0 };
   const count = {};
   for (const w of worn) count[w.style] = (count[w.style] || 0) + 1;
   const [topStyle, n] = Object.entries(count).sort((a, b) => b[1] - a[1])[0];

@@ -1,12 +1,12 @@
 // ── 创业公司：估值、增长、融资 ──────────────────────────────
 import { db } from './db.js';
 import * as M from './market.js';
-import { bizRates, bizEnv, prestigeBonus, prestigeOf } from './sim.js';
+import { bizRates, bizEnv, ownerBonus } from './sim.js';
 
 // 公司主人的声望加成（店铺营收会跟着它走）
 function prestigeBonusOf(userId) {
-  const p = db.prepare('SELECT prestige FROM players WHERE user_id=?').get(userId);
-  return prestigeBonus(prestigeOf(userId) + (p ? p.prestige : 0));
+  const p = db.prepare('SELECT prestige, knowledge FROM players WHERE user_id=?').get(userId);
+  return ownerBonus(userId, p);
 }
 import { FOUND_FEE, INIT_SHARES, BASE_MULT, GROWTH_K, HEAT_K, SCALE_K,
          MULT_MIN, MULT_MAX, BOOK_RECOVERY, ILLIQUID,
@@ -120,12 +120,13 @@ export function stepGrowth(co, annualRate) {
 
 // ── 融资 ────────────────────────────────────────────────────
 // 投资人给的估值总比你自己算的低。增长越好、信用越好，压得越少。
-export function roundOffer(co, val, creditScore = 680) {
+export function roundOffer(co, val, creditScore = 680, charmBump = 0) {
   const r = ROUNDS[co.round_n];
   if (!r) return null;
   const growthBump = clamp(co.growth || 0, 0, 1.5) * 0.10;
   const creditBump = clamp((creditScore - 600) / 300, -0.2, 0.2) * 0.06;
-  const disc = clamp(r.disc + growthBump + creditBump, 0.5, 0.98);
+  // 谈判桌上，人是变量。同样的数字，有人就是能少被压几个点
+  const disc = clamp(r.disc + growthBump + creditBump + charmBump, 0.5, 0.98);
   const pre = val.value * disc;
   const raise = pre * r.sell / (1 - r.sell);
   const post = pre + raise;

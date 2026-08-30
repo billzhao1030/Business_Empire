@@ -17,7 +17,7 @@ export const LEISURE_CATS = [
   { id:'learn',   zh:'学点东西', en:'Learning',     emoji:'📖' },
   { id:'thrill',  zh:'刺激',     en:'Thrills',      emoji:'🎢' },
   { id:'care',    zh:'照顾自己', en:'Self-care',    emoji:'🧖' },
-  { id:'gamble',  zh:'博彩',     en:'Games of Chance', emoji:'🎰' },
+  { id:'gamble',  zh:'碰运气',   en:'Chancing It',  emoji:'🍀' },
 ];
 
 // [id, 中文, English, emoji, 分类, 花费, 占用小时, 压力↓, 体力, 经验, 声望, 中文, English]
@@ -109,12 +109,77 @@ const A = [
 ['acupuncture','针灸','Acupuncture','🪡','care',90,2,22,3,0,0,'扎完躺半小时，整个人是软的。','Half an hour afterwards you are made of dough.'],
 ['retreat','静修营','Silent Retreat','🕯️','care',1_400,72,70,10,3,8,'三天不说话，回来像换了个人。','Three days without speaking. You come back different.'],
 ['sleepin','睡到自然醒','Sleeping In','🌤️','care',0,4,16,14,0,0,'没有闹钟的早晨，是奢侈品。','A morning without an alarm is a luxury good.'],
+// ── 碰运气 ──────────────────────────────────────────────────
+['claw','抓娃娃机','Claw Machine','🧸','gamble',15,1,6,0,0,0,'第七次终于抓上来了，成本是买十个的钱。','It came up on the seventh try, for the price of ten of them.'],
+['scratch','刮刮乐','Scratchcards','🎫','gamble',20,1,7,0,0,0,'刮开之前的那三秒，才是你买的东西。','The three seconds before you scratch — that is the purchase.'],
+['blindbox','拆盲盒','Blind Boxes','📦','gamble',45,1,9,0,0,0,'明知道是概率，手还是伸过去了。','You know it is arithmetic. Your hand goes out anyway.'],
+['temple','去庙里拜拜','Praying for Luck','🛕','gamble',30,3,13,1,0,1,'香火钱不贵，图的是走出来那一下的踏实。','The incense is cheap. What you buy is the walk back out.'],
+['fortune','算命','A Fortune Teller','🔮','gamble',80,2,11,0,1,0,'她说的每一句都对，因为每一句都能对。','Everything she said was true, because all of it could be.'],
+['mahjong','麻将局','Mahjong Night','🀄','gamble',60,5,15,-3,0,1,'四个人一桌，输赢都在明面上。','Four people at a table, and nothing hidden.'],
+['horses','赛马场','A Day at the Races','🐎','gamble',150,5,19,-1,0,4,'赌的是马，看的是人。','You bet on the horses and watch the people.'],
+['poker','德州扑克局','Poker Night','🃏','gamble',220,5,13,-4,1,3,'牌是发的，钱是打出来的。','The cards are dealt. The money is played.'],
+['casino','赌场一晚','A Night at the Casino','🎰','gamble',800,6,17,-6,0,9,'没有窗户，没有钟，这两件事是故意的。','No windows and no clocks. Both on purpose.'],
 ];
 
-export const LEISURE = A.map(([id,name,en,emoji,cat,cost,hours,relief,stamina,exp,prestige,desc,descEn]) =>
-  ({ id, name, en, emoji, cat, cost, hours, relief, stamina, exp, prestige, desc, descEn,
+// ── 属性：每一项活动都在悄悄改变你这个人 ────────────────────
+// 知识 学到的东西不会还回去，永久累积
+// 运气 手气这种东西留不住，每天都在往回落
+// 魅力 靠维持，停下来就慢慢淡了
+//
+// 按分类给基线，再按这一项的时长和花费缩放——一次滑雪周末和一次夜跑不该
+// 给出同一个数。跟同类明显不一样的，在 TWEAK 里单独写。
+const ATTR_BY_CAT = {
+  sport:   { know: 0,    luck: 0.10, charm: 0.55 },
+  screen:  { know: 0.30, luck: 0,    charm: 0.10 },
+  culture: { know: 1.00, luck: 0,    charm: 0.85 },
+  social:  { know: 0.20, luck: 0.30, charm: 1.65 },
+  outdoor: { know: 0.20, luck: 0.35, charm: 0.20 },
+  home:    { know: 0.40, luck: 0,    charm: 0.20 },
+  learn:   { know: 2.60, luck: 0,    charm: 0.30 },
+  thrill:  { know: 0.10, luck: 1.40, charm: 0.60 },
+  care:    { know: 0.10, luck: 0.15, charm: 1.45 },
+  gamble:  { know: 0.15, luck: 2.60, charm: 0.35 },
+};
+// 个别项目跟它那一类的性格不一样
+const TWEAK = {
+  photo:      { know: 1.4 },                      // 扫街是在学着看东西
+  journal:    { know: 1.1, charm: 0 },
+  stargaze:   { know: 1.2 },
+  read:       { know: 1.3 },
+  boardgame:  { luck: 0.9 },
+  gala:       { charm: 3.4, know: 0.3 },          // 慈善晚宴就是去认识人的
+  wedding:    { charm: 2.1 },
+  barber_trip:{ charm: 2.2 },                     // 理发是性价比最高的一次形象投资
+  spa_day:    { charm: 2.4 },
+  therapy:    { know: 1.1, charm: 1.0 },
+  retreat:    { know: 2.0, charm: 1.2, luck: 0.5 },
+  workshop:   { charm: 1.5 },                     // 工作坊一半价值在认识的人身上
+  sleepin:    { charm: 0.7 },
+  mba:        { charm: 1.2 },
+  language:   { charm: 1.2 },
+  temple:     { luck: 3.2 },
+  fortune:    { luck: 3.0 },
+  poker:      { know: 1.0, luck: 2.2, charm: 1.0 },
+  casino:     { luck: 3.0, charm: 1.0 },
+  skydive:    { luck: 2.0 },
+  surf:       { luck: 0.8 },
+};
+// 规模因子：花得多、耗时长的，效果也大些，但收敛得很快，
+// 不然一次高管研修班能把整条属性条填满
+const attrScale = (hours, cost) => Math.pow(hours / 3, 0.25) * Math.pow(1 + cost / 300, 0.45);
+
+export const LEISURE = A.map(([id,name,en,emoji,cat,cost,hours,relief,stamina,exp,prestige,desc,descEn]) => {
+  const base = ATTR_BY_CAT[cat] || { know: 0, luck: 0, charm: 0 };
+  const tw = TWEAK[id] || {};
+  const k = attrScale(hours, cost);
+  const r1 = v => Math.round(v * 10) / 10;
+  return { id, name, en, emoji, cat, cost, hours, relief, stamina, exp, prestige, desc, descEn,
+     know:  r1((tw.know  ?? base.know)  * k),
+     luck:  r1((tw.luck  ?? base.luck)  * k),
+     charm: r1((tw.charm ?? base.charm) * k),
      // 同一项做完要隔一阵才有同样的效果——连着看三场电影，第三场就没意思了
-     cool: Math.max(6, Math.round(hours * 3)) }));
+     cool: Math.max(6, Math.round(hours * 3)) };
+});
 
 export const LEISURE_BY_CAT = LEISURE_CATS.map(c => ({ ...c, items: LEISURE.filter(a => a.cat === c.id) }));
 // 重复做同一项，效果递减：第一次满效，之后按这个比例往下掉，冷却过了回满
