@@ -55,13 +55,32 @@ export const WARMUP_HOURS = 720 + START_HOD;   // 预热 30 个游戏日，让�
 // 只卡住收益是不够的——那样日历照样跳掉好几个月，回来一看已经是明年了。
 export const OFFLINE_CAP_HOURS = Math.max(24, Number(process.env.OFFLINE_CAP_DAYS || 7) * 24);
 
-// 把超出上限的那段现实时间直接抹掉：时间原点往前推，游戏时钟就退回到
-// 「上次结算 + 7 天」。时钟、行情、玩家结算三者从此说的是同一件事。
+// 「离线」指的是没人在玩，不是服务器没开着。
+// 之前这里拿 market_hour 当锚点，可是只要进程活着，每 5 秒一次的心跳就把
+// market_hour 死死钉在墙上时钟上——差值永远是 0，上限永远不触发。
+// 关掉浏览器出去一天，回来一看日历已经翻过去两个月，就是这么来的。
+//
+// 现在锚在「最后一次真的有人在玩」的那个游戏小时上：世界最多再往前 7 个游戏日，
+// 然后停在那儿等你回来。日历、行情、店铺、工资，一起停。
+export function markActive() {
+  const h = currentGameHour();
+  setMeta('active_hour', String(h));
+  setMeta('active_ms', String(Date.now()));
+  return h;
+}
+function activeHour() {
+  const v = getMeta('active_hour');
+  if (v !== undefined && v !== null && v !== '') return Number(v);
+  // 老存档没有这个键：用玩家最后一次露面的那个小时补上，没有玩家就用当前行情小时
+  const row = db.prepare('SELECT MAX(last_seen_hour) h FROM players').get();
+  const h = Number(row?.h ?? 0) || Number(getMeta('market_hour', '0'));
+  setMeta('active_hour', String(h));
+  return h;
+}
 export function clampOfflineGap() {
-  const mh = Number(getMeta('market_hour', '0'));
-  if (!mh) return 0;                                   // 世界还没初始化
-  const raw = Math.max(0, Math.floor((Date.now() - bootTime()) / MS_PER_GAME_HOUR));
-  const skip = raw - mh - OFFLINE_CAP_HOURS;
+  if (!Number(getMeta('market_hour', '0'))) return 0;   // 世界还没初始化
+  const cap = activeHour() + OFFLINE_CAP_HOURS;
+  const skip = currentGameHour() - cap;
   if (skip <= 0) return 0;
   setMeta('epoch_ms', String(Number(getMeta('epoch_ms')) + skip * MS_PER_GAME_HOUR));
   return skip;

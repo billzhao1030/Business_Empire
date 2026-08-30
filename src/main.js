@@ -24,18 +24,21 @@ M.initAssets();
 M.loadSectorMom();
 M.loadRumors();
 {
-  // 启动时先收住离线的口子，再补算行情。关掉一整天回来，世界也只往前 7 天。
+  // 启动时先收住离线的口子，再补算行情。没人玩的时候世界最多往前 7 个游戏日。
   const skipped = M.clampOfflineGap();
-  if (skipped > 0) console.log(`\n  ⏳  离线超过 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，跳过 ${Math.round(skipped / 24)} 天不予模拟`);
+  if (skipped > 0) console.log(`\n  ⏳  无人游玩超过 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，时钟停在上限处，跳过 ${Math.round(skipped / 24)} 天`);
 }
 M.advanceMarket();
+let idleLogged = false;
 // 每次推进行情之前先把离线的口子收住：进程可能被挂起（合上笔记本），
 // 也可能整个关掉重开，两种情况都走这里。
 function tickWorld() {
   const skipped = M.clampOfflineGap();
-  if (skipped > 0) {
-    console.log(`  ⏳  离线超过 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，跳过 ${Math.round(skipped / 24)} 天不予模拟`);
+  if (skipped > 0 && !idleLogged) {
+    idleLogged = true;
+    console.log(`  ⏸  没人在玩，世界已走满 ${M.OFFLINE_CAP_HOURS / 24} 个游戏日，时钟就停在这里等你回来`);
   }
+  if (skipped <= 0) idleLogged = false;
   M.advanceMarket();
   CO.syncPublicFundamentals();   // 上市公司的股价要围着自己的经营基本面转
   CO.applyMarketShare();         // 玩家的连锁做大了，同赛道的上市公司要让出份额
